@@ -1,0 +1,29 @@
+name: Release
+
+run-name: Release (${{ inputs.bump }}) from ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump type
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: minor
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: otfabric/.github/.github/workflows/go-package-release.yml@v2
+    with:
+      bump: ${{ inputs.bump }}
+      release-name-prefix: go-knx
+      update-major-tag: false
+      test-exclude-regex: "(/example(s)?($|/)|/interop($|/))"
+    secrets: inherit
