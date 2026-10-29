@@ -104,15 +104,16 @@ func (c *tconn) onRequest(from netip.AddrPort, m *knxnetip.TunnellingRequest) {
 	if ld.Source == 0 {
 		ld.Source = c.addr
 	}
-	// The confirmation: the frame as sent, marked L_Data.con without
-	// error.
+	// Deliver first, then confirm: an L_Data.con says the telegram is on
+	// the network, so the devices have it when the client learns it was
+	// sent.
 	con := ld.Clone()
+	c.s.distribute(Telegram{Origin: FromTunnel, Channel: c.channel, Frame: ld}, c)
 	con.MsgCode = cemi.LDataCon
 	con.Ctrl1 &^= cemi.Ctrl1ConfirmError
 	if b, err := cemi.Marshal(con); err == nil {
 		c.enqueue(b)
 	}
-	c.s.distribute(Telegram{Origin: FromTunnel, Channel: c.channel, Frame: ld}, c)
 }
 
 // sender sends the queued cEMI frames as TUNNELLING_REQUESTs, one at a
