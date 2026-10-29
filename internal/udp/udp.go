@@ -45,6 +45,9 @@ func ResolveEndpoint(ctx context.Context, s string, defPort uint16) (netip.AddrP
 // LocalIPFor returns the local IPv4 address the system routes to remote
 // from (no packet is sent).
 func LocalIPFor(remote netip.AddrPort) (netip.Addr, error) {
+	if !remote.Addr().IsValid() {
+		return netip.Addr{}, fmt.Errorf("%w: no remote address", knx.ErrInvalidOption)
+	}
 	c, err := net.DialUDP("udp4", nil, net.UDPAddrFromAddrPort(remote))
 	if err != nil {
 		return netip.Addr{}, err

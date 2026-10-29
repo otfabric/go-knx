@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -290,6 +291,12 @@ func MulticastInterface() string {
 }
 
 func probeMulticast() error {
+	if runtime.GOOS == "windows" {
+		// Windows runners pass a one-datagram probe but lose the
+		// loopback copies under load: the multicast tests run on Linux
+		// and macOS.
+		return errors.New("multicast loopback tests are not run on Windows")
+	}
 	tmp, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero})
 	if err != nil {
 		return err
