@@ -158,7 +158,8 @@ func TestGoKNXServer(t *testing.T) {
 		tunnels = append(tunnels, knx.MustParseIndividualAddress(fmt.Sprintf("1.1.%d", i)))
 	}
 	s, err := server.New(server.WithListenAddr(fmt.Sprintf("0.0.0.0:%d", port)), server.WithDiscovery(false), server.WithName(serverName),
-		server.WithIndividualAddress(knx.MustParseIndividualAddress("1.1.0")), server.WithTunnelAddresses(tunnels...))
+		server.WithIndividualAddress(knx.MustParseIndividualAddress("1.1.0")), server.WithTunnelAddresses(tunnels...),
+		server.WithConcurrentBusmonitor(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +212,47 @@ func TestGoKNXServer(t *testing.T) {
 				}
 			}
 			record(t, peer, "group read of a go-knx device", err, "")
+
+			// Contract 1.1: TCP, device management, busmonitor, where the
+			// adapter offers them.
+			tcpTarget := []string{"--target", "host.docker.internal", "--port", fmt.Sprint(port), "--tcp"}
+			if peer == "xknx" || peer == "calimero-tools" {
+				drain(seen)
+				_, err = runClient(ctx, peer, host, "write", append(tcpTarget, "--group", "1/0/1", "--dpt", "1.001", "--value", "off", "--data", "00")...)
+				if err == nil {
+					err = waitWrite(seen, "1/0/1", []byte{0}, 10*time.Second)
+				}
+				record(t, peer, "group write to go-knx over TCP", err, "")
+				d, err := runClient(ctx, peer, host, "read", append(tcpTarget, "--group", "1/0/2", "--dpt", "9.001", "--timeout", "8")...)
+				if err == nil && !strings.EqualFold(fmt.Sprint(d.Data["data"]), "0C33") && !strings.HasPrefix(fmt.Sprint(d.Data["value"]), "21.5") {
+					err = fmt.Errorf("response %v", d.Data)
+				}
+				record(t, peer, "group read of a go-knx device over TCP", err, "")
+			}
+			if peer == "calimero-tools" {
+				d, err := runClient(ctx, peer, host, "property", append(target, "--object", "0", "--pid", "11")...)
+				if err == nil && !strings.EqualFold(fmt.Sprint(d.Data["data"]), "00FA00000001") {
+					err = fmt.Errorf("serial %v", d.Data)
+				}
+				record(t, peer, "device management: go-knx serial number", err, "")
+				mon := background(t, peer, host, "busmonitor", append(target, "--count", "1", "--timeout", "20")...)
+				err = s.GroupWrite(knx.MustParseGroupAddress("1/0/7"), apdu.GroupValue{Data: []byte{1}, Small: true})
+				if err == nil {
+					var md adapterDoc
+					md, err = mon()
+					frames, _ := md.Data["frames"].([]any)
+					if err == nil && len(frames) == 0 {
+						err = fmt.Errorf("no frame")
+					}
+					if err == nil {
+						raw := fmt.Sprint(frames[0].(map[string]any)["raw"])
+						if len(raw) < 10 || !strings.EqualFold(raw[6:10], "0807") {
+							err = fmt.Errorf("frame %s", raw)
+						}
+					}
+				}
+				record(t, peer, "busmonitor of go-knx sees a telegram (TP1 frame)", err, "")
+			}
 		})
 	}
 }

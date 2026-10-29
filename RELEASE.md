@@ -5,6 +5,21 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.2.1
+
+**Date:** 2026-10-29
+**Previous release:** v0.2.0
+
+## Changes
+
+- The interop suite pins knx-interop v0.2.0 (container contract 1.1) and
+  tests more of the server against independent clients: xknx and Calimero
+  tools over TCP (write, read), Calimero tools' device management (serial
+  number) and busmonitor (a telegram of the server, decoded from the TP1
+  frame). No library changes.
+
+---
+
 ## v0.2.0
 
 **Date:** 2026-10-29
