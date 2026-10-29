@@ -37,6 +37,7 @@ type options struct {
 	serial      [6]byte
 	mac         [6]byte
 	discovery   bool
+	tcp         bool
 	routing     bool
 	group       string
 	aliveTime   time.Duration
@@ -58,6 +59,7 @@ func defaultOptions() options {
 		serial:      [6]byte{0x00, 0xFA, 0x00, 0x00, 0x00, 0x01},
 		mac:         [6]byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01},
 		discovery:   true,
+		tcp:         true,
 		group:       "224.0.23.12:3671",
 		aliveTime:   DefaultConnectionAliveTime,
 		reqTimeout:  time.Second,
@@ -130,6 +132,11 @@ func WithMAC(m [6]byte) Option { return func(o *options) error { o.mac = m; retu
 // answers search requests sent to it (default true). Unicast searches
 // and description requests are always answered.
 func WithDiscovery(on bool) Option { return func(o *options) error { o.discovery = on; return nil } }
+
+// WithTCP sets whether the server also accepts KNXnet/IP over TCP on the
+// same port (default true): core v2 and tunnelling v2 with the
+// tunnelling feature services.
+func WithTCP(on bool) Option { return func(o *options) error { o.tcp = on; return nil } }
 
 // WithRouting enables KNXnet/IP routing: telegrams of tunnelling clients
 // and devices are sent as ROUTING_INDICATIONs to the multicast group, and

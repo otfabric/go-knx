@@ -78,6 +78,11 @@ type Server struct {
 	ifIP    netip.Addr
 	routing *ratelimit.Bucket
 
+	tcpLn     *net.TCPListener
+	tcpConns  map[*tcpConn]struct{}
+	props     *propStore
+	startTime time.Time
+
 	mu      sync.Mutex
 	conns   map[uint8]*tconn
 	next    uint8
@@ -100,7 +105,9 @@ func New(opts ...Option) (*Server, error) {
 			return nil, err
 		}
 	}
-	return &Server{o: o, conns: map[uint8]*tconn{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), routing: ratelimit.New(o.routingRate)}, nil
+	s := &Server{o: o, conns: map[uint8]*tconn{}, tcpConns: map[*tcpConn]struct{}{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), routing: ratelimit.New(o.routingRate), startTime: time.Now()}
+	s.props = &propStore{s: s}
+	return s, nil
 }
 
 // AddDevice adds a virtual device to the network.
@@ -195,18 +202,55 @@ func (s *Server) Start(ctx context.Context) error {
 		return knx.ErrClosed
 	}
 	s.main, s.disc = main, disc
+	// TCP (core v2) on the same address and port as UDP.
+	if s.o.tcp {
+		la := udp.AddrPortOf(main.LocalAddr())
+		ln, err := net.ListenTCP("tcp4", net.TCPAddrFromAddrPort(la))
+		if err != nil {
+			s.o.logger.Warnf("server: TCP disabled: %v", err)
+			s.o.tcp = false
+		} else {
+			s.tcpLn = ln
+		}
+	}
 	s.wg.Add(2)
 	if disc != nil {
 		s.wg.Add(1)
 	}
+	if s.tcpLn != nil {
+		s.wg.Add(1)
+	}
 	s.mu.Unlock()
-	s.o.logger.Infof("server: listening on %s (discovery %t, routing %t)", main.LocalAddr(), s.o.discovery, s.o.routing)
+	s.o.logger.Infof("server: listening on %s (tcp %t, discovery %t, routing %t)", main.LocalAddr(), s.o.tcp, s.o.discovery, s.o.routing)
 	go s.readLoop(main)
 	go s.janitor()
 	if disc != nil {
 		go s.readLoop(disc)
 	}
+	if s.tcpLn != nil {
+		go s.acceptLoop(s.tcpLn)
+	}
 	return nil
+}
+
+// busmonitorFrame returns the L_Busmon.ind of a telegram for busmonitor
+// connections: the TP1 frame with a status and a timestamp (milliseconds
+// since the server started, modulo 2^16). Extended frames have no TP1
+// standard format and are not monitored.
+func (s *Server) busmonitorFrame(f *cemi.LData) []byte {
+	raw, err := cemi.TP1Frame(f)
+	if err != nil {
+		return nil
+	}
+	ms := uint16(time.Since(s.startTime).Milliseconds())
+	b, err := cemi.Marshal(&cemi.Raw{MsgCode: cemi.LBusmonInd, AddInfo: []cemi.AdditionalInfo{
+		{Type: cemi.AddInfoBusmonitorStatus, Data: []byte{0x00}},
+		{Type: cemi.AddInfoTimestamp, Data: []byte{byte(ms >> 8), byte(ms)}},
+	}, Data: raw})
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // Serve starts the server and blocks until ctx is done, then closes it.
@@ -258,12 +302,22 @@ func (s *Server) Close() error {
 	for _, c := range s.conns {
 		conns = append(conns, c)
 	}
-	main, disc := s.main, s.disc
+	main, disc, ln := s.main, s.disc, s.tcpLn
+	tcps := make([]*tcpConn, 0, len(s.tcpConns))
+	for t := range s.tcpConns {
+		tcps = append(tcps, t)
+	}
 	s.mu.Unlock()
 	for _, c := range conns {
 		s.disconnect(c, true, nil)
 	}
 	close(s.closing)
+	if ln != nil {
+		_ = ln.Close()
+	}
+	for _, t := range tcps {
+		t.close()
+	}
 	if main != nil {
 		_ = main.Close()
 	}
@@ -335,7 +389,7 @@ func (s *Server) readLoop(c *net.UDPConn) {
 			continue
 		}
 		s.o.metrics.OnFrameReceived(fa, uint16(m.Service()), n)
-		s.handle(from, m)
+		s.handle(peer{addr: from}, m)
 	}
 }
 
@@ -346,54 +400,82 @@ func reply(h knxnetip.HPAI, from netip.AddrPort) netip.AddrPort {
 	return h.Addr
 }
 
-func (s *Server) handle(from netip.AddrPort, m knxnetip.Message) {
+// reply answers a peer: over its TCP connection, or over UDP to the
+// endpoint of h (the source of the datagram for route back endpoints).
+func (s *Server) reply(p peer, h knxnetip.HPAI, m knxnetip.Message) {
+	if p.tcp != nil {
+		p.tcp.write(m)
+		return
+	}
+	s.write(reply(h, p.addr), m)
+}
+
+func (s *Server) handle(p peer, m knxnetip.Message) {
+	from := p.addr
 	switch m := m.(type) {
 	case *knxnetip.SearchRequest:
-		if m.Discovery.Protocol != knxnetip.IPv4UDP {
+		if m.Discovery.Protocol != knxnetip.IPv4UDP || p.tcp != nil {
 			return
 		}
 		s.write(reply(m.Discovery, from), &knxnetip.SearchResponse{Control: s.endpoint(from), DIBs: s.dibs(nil, false)})
 	case *knxnetip.SearchRequestExt:
-		if m.Discovery.Protocol != knxnetip.IPv4UDP {
-			return
-		}
 		if dibs, ok := s.searchExt(m); ok {
-			s.write(reply(m.Discovery, from), &knxnetip.SearchResponse{Extended: true, Control: s.endpoint(from), DIBs: dibs})
+			switch {
+			case p.tcp != nil:
+				// A search over TCP (core v2) is answered on the connection.
+				p.tcp.write(&knxnetip.SearchResponse{Extended: true, Control: knxnetip.TCPHPAI(), DIBs: dibs})
+			case m.Discovery.Protocol == knxnetip.IPv4UDP:
+				s.write(reply(m.Discovery, from), &knxnetip.SearchResponse{Extended: true, Control: s.endpoint(from), DIBs: dibs})
+			}
 		}
 	case *knxnetip.DescriptionRequest:
-		s.write(reply(m.Control, from), &knxnetip.DescriptionResponse{DIBs: s.dibs(nil, false)})
+		s.reply(p, m.Control, &knxnetip.DescriptionResponse{DIBs: s.dibs(nil, false)})
 	case *knxnetip.ConnectRequest:
-		s.onConnect(from, m)
+		s.onConnect(p, m)
 	case *knxnetip.ConnectionStateRequest:
 		st := knxnetip.StatusConnectionID
-		if c := s.conn(m.Channel); c != nil && c.from(from) {
+		if c := s.conn(m.Channel); c != nil && c.from(p) {
 			c.mu.Lock()
 			c.lastSeen = time.Now()
 			c.mu.Unlock()
 			st = knxnetip.StatusNoError
 		}
-		s.write(reply(m.Control, from), &knxnetip.ConnectionStateResponse{Channel: m.Channel, Status: st})
+		s.reply(p, m.Control, &knxnetip.ConnectionStateResponse{Channel: m.Channel, Status: st})
 	case *knxnetip.DisconnectRequest:
 		c := s.conn(m.Channel)
-		if c == nil || !c.from(from) {
-			s.write(reply(m.Control, from), &knxnetip.DisconnectResponse{Channel: m.Channel, Status: knxnetip.StatusConnectionID})
+		if c == nil || !c.from(p) {
+			s.reply(p, m.Control, &knxnetip.DisconnectResponse{Channel: m.Channel, Status: knxnetip.StatusConnectionID})
 			return
 		}
 		// Remove the connection first: once the client has the response,
 		// the channel is gone.
 		s.disconnect(c, false, nil)
-		s.write(reply(m.Control, from), &knxnetip.DisconnectResponse{Channel: m.Channel, Status: knxnetip.StatusNoError})
+		s.reply(p, m.Control, &knxnetip.DisconnectResponse{Channel: m.Channel, Status: knxnetip.StatusNoError})
 	case *knxnetip.DisconnectResponse:
 		// The answer to our own DISCONNECT_REQUEST; the connection is gone.
 	case *knxnetip.TunnellingRequest:
-		if c := s.conn(m.Channel); c != nil && c.from(from) {
-			c.onRequest(from, m)
+		if c := s.conn(m.Channel); c != nil && c.from(p) && c.kind != kindDevMgmt {
+			c.onRequest(p, m)
 		} else {
 			s.o.metrics.OnDropped(net.UDPAddrFromAddrPort(from), "unknown_channel")
 		}
 	case *knxnetip.TunnellingAck:
-		if c := s.conn(m.Channel); c != nil && c.from(from) {
+		if c := s.conn(m.Channel); c != nil && c.from(p) {
 			offerSeq(c.ackCh, ack{seq: m.Seq, status: m.Status})
+		}
+	case *knxnetip.DeviceConfigurationRequest:
+		if c := s.conn(m.Channel); c != nil && c.from(p) && c.kind == kindDevMgmt {
+			c.onDeviceConfiguration(p, m)
+		} else {
+			s.o.metrics.OnDropped(net.UDPAddrFromAddrPort(from), "unknown_channel")
+		}
+	case *knxnetip.DeviceConfigurationAck:
+		if c := s.conn(m.Channel); c != nil && c.from(p) {
+			offerSeq(c.ackCh, ack{seq: m.Seq, status: m.Status})
+		}
+	case *knxnetip.TunnellingFeature:
+		if c := s.conn(m.Channel); c != nil && c.from(p) && c.kind != kindDevMgmt {
+			c.onFeature(p, m)
 		}
 	case *knxnetip.RoutingIndication:
 		if !s.o.routing || m.SystemBroadcast {
@@ -414,13 +496,18 @@ func (s *Server) handle(from netip.AddrPort, m knxnetip.Message) {
 	}
 }
 
-// families returns the supported service families. Core v1: TCP and the
-// v2 tunnelling features are not implemented (extended search is
-// answered nevertheless).
+// families returns the supported service families: core v2 (extended
+// search, TCP) and tunnelling v2 (TCP, feature services) when TCP is on,
+// v1 otherwise; device management v1.
 func (s *Server) families() knxnetip.ServiceFamilies {
+	v := uint8(1)
+	if s.o.tcp {
+		v = 2
+	}
 	f := knxnetip.ServiceFamilies{Families: []knxnetip.ServiceFamily{
-		{ID: knxnetip.FamilyCore, Version: 1},
-		{ID: knxnetip.FamilyTunnelling, Version: 1},
+		{ID: knxnetip.FamilyCore, Version: v},
+		{ID: knxnetip.FamilyDeviceManagement, Version: 1},
+		{ID: knxnetip.FamilyTunnelling, Version: v},
 	}}
 	if s.o.routing {
 		f.Families = append(f.Families, knxnetip.ServiceFamily{ID: knxnetip.FamilyRouting, Version: 1})
@@ -543,24 +630,53 @@ func (s *Server) conn(ch uint8) *tconn {
 	return s.conns[ch]
 }
 
-func (s *Server) onConnect(from netip.AddrPort, m *knxnetip.ConnectRequest) {
+// maxDevMgmt bounds the device management connections.
+const maxDevMgmt = 4
+
+func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
+	from := p.addr
 	ctrl := reply(m.Control, from)
 	refuse := func(st knxnetip.Status) {
-		s.write(ctrl, &knxnetip.ConnectResponse{Status: st})
+		s.reply(p, m.Control, &knxnetip.ConnectResponse{Status: st})
 	}
-	if m.Control.Protocol != knxnetip.IPv4UDP || m.Data.Protocol != knxnetip.IPv4UDP {
+	// UDP HPAIs over UDP, TCP HPAIs over TCP.
+	want := knxnetip.IPv4UDP
+	if p.tcp != nil {
+		want, ctrl = knxnetip.IPv4TCP, p.addr
+	}
+	if m.Control.Protocol != want || m.Data.Protocol != want {
 		refuse(knxnetip.StatusHostProtocolType)
 		return
 	}
-	if m.CRI.Type != knxnetip.TunnelConnection {
+	var kind connKind
+	switch {
+	case m.CRI.Type == knxnetip.DeviceManagementConnection:
+		kind = kindDevMgmt
+	case m.CRI.Type != knxnetip.TunnelConnection:
 		refuse(knxnetip.StatusConnectionType)
 		return
-	}
-	if m.CRI.Layer != knxnetip.TunnelLinkLayer {
+	case m.CRI.Layer == knxnetip.TunnelLinkLayer:
+		kind = kindTunnel
+	case m.CRI.Layer == knxnetip.TunnelBusmonitor:
+		kind = kindBusmonitor
+	default:
 		refuse(knxnetip.StatusTunnellingLayer)
 		return
 	}
 	data := reply(m.Data, from)
+	if p.tcp != nil {
+		data = p.addr
+	}
+	dataHPAI := s.dataEndpoint(m, from)
+	if p.tcp != nil {
+		dataHPAI = knxnetip.TCPHPAI()
+	}
+	crd := func(c *tconn) knxnetip.CRD {
+		if c.kind == kindDevMgmt {
+			return knxnetip.CRD{Type: knxnetip.DeviceManagementConnection}
+		}
+		return knxnetip.CRD{Type: knxnetip.TunnelConnection, Address: c.addr}
+	}
 
 	s.mu.Lock()
 	if s.closed {
@@ -570,46 +686,59 @@ func (s *Server) onConnect(from netip.AddrPort, m *knxnetip.ConnectRequest) {
 	// A repeated CONNECT_REQUEST of a client whose response was lost gets
 	// its existing channel.
 	for _, c := range s.conns {
-		if c.ctrl == ctrl && c.data == data {
+		if c.kind == kind && c.ctrl == ctrl && c.data == data && c.tcp == p.tcp {
 			s.mu.Unlock()
-			s.write(ctrl, &knxnetip.ConnectResponse{Channel: c.channel, Data: s.dataEndpoint(m, from), CRD: knxnetip.CRD{Type: knxnetip.TunnelConnection, Address: c.addr}})
+			s.reply(p, m.Control, &knxnetip.ConnectResponse{Channel: c.channel, Data: dataHPAI, CRD: crd(c)})
 			return
 		}
 	}
 	used := map[knx.IndividualAddress]bool{}
+	devmgmt := 0
 	for _, c := range s.conns {
-		used[c.addr] = true
+		if c.kind == kindDevMgmt {
+			devmgmt++
+		} else {
+			used[c.addr] = true
+		}
 	}
 	var addr knx.IndividualAddress
-	found := false
-	if m.CRI.HasAddress {
-		ours := false
-		for _, a := range s.o.tunnels {
-			ours = ours || a == m.CRI.Address
-		}
-		switch {
-		case !ours:
+	if kind == kindDevMgmt {
+		if devmgmt >= maxDevMgmt {
 			s.mu.Unlock()
-			refuse(knxnetip.StatusNoTunnellingAddress)
-			return
-		case used[m.CRI.Address]:
-			s.mu.Unlock()
-			refuse(knxnetip.StatusConnectionInUse)
+			refuse(knxnetip.StatusNoMoreConnections)
 			return
 		}
-		addr, found = m.CRI.Address, true
 	} else {
-		for _, a := range s.o.tunnels {
-			if !used[a] {
-				addr, found = a, true
-				break
+		found := false
+		if m.CRI.HasAddress {
+			ours := false
+			for _, a := range s.o.tunnels {
+				ours = ours || a == m.CRI.Address
+			}
+			switch {
+			case !ours:
+				s.mu.Unlock()
+				refuse(knxnetip.StatusNoTunnellingAddress)
+				return
+			case used[m.CRI.Address]:
+				s.mu.Unlock()
+				refuse(knxnetip.StatusConnectionInUse)
+				return
+			}
+			addr, found = m.CRI.Address, true
+		} else {
+			for _, a := range s.o.tunnels {
+				if !used[a] {
+					addr, found = a, true
+					break
+				}
 			}
 		}
-	}
-	if !found {
-		s.mu.Unlock()
-		refuse(knxnetip.StatusNoMoreConnections)
-		return
+		if !found {
+			s.mu.Unlock()
+			refuse(knxnetip.StatusNoMoreConnections)
+			return
+		}
 	}
 	ch := s.next
 	for i := 0; i < 256; i++ {
@@ -619,14 +748,18 @@ func (s *Server) onConnect(from netip.AddrPort, m *knxnetip.ConnectRequest) {
 		}
 	}
 	s.next = ch
-	c := &tconn{s: s, channel: ch, addr: addr, ctrl: ctrl, data: data, lastSeen: time.Now(),
-		queue: make(chan []byte, s.o.queueSize), ackCh: make(chan ack, 1), done: make(chan struct{})}
+	c := &tconn{s: s, kind: kind, channel: ch, addr: addr, ctrl: ctrl, data: data, tcp: p.tcp, lastSeen: time.Now(),
+		queue: make(chan out, s.o.queueSize), ackCh: make(chan ack, 1), done: make(chan struct{})}
 	s.conns[ch] = c
 	s.mu.Unlock()
 
-	s.write(ctrl, &knxnetip.ConnectResponse{Channel: ch, Data: s.dataEndpoint(m, from), CRD: knxnetip.CRD{Type: knxnetip.TunnelConnection, Address: addr}})
+	s.reply(p, m.Control, &knxnetip.ConnectResponse{Channel: ch, Data: dataHPAI, CRD: crd(c)})
 	s.o.metrics.OnConnect(net.UDPAddrFromAddrPort(ctrl), ch)
-	s.o.logger.Infof("server: channel %d connected from %s as %s", ch, ctrl, addr)
+	transport := "udp"
+	if p.tcp != nil {
+		transport = "tcp"
+	}
+	s.o.logger.Infof("server: channel %d (%s, %s) connected from %s as %s", ch, kind, transport, ctrl, addr)
 	s.wg.Add(1)
 	go c.sender()
 }
@@ -646,7 +779,11 @@ func (s *Server) disconnect(c *tconn, notify bool, cause error) {
 	// metrics never lag behind what the client sees.
 	s.o.metrics.OnDisconnect(net.UDPAddrFromAddrPort(c.ctrl), c.channel, cause)
 	if notify {
-		s.write(c.ctrl, &knxnetip.DisconnectRequest{Channel: c.channel, Control: s.endpoint(c.ctrl)})
+		if c.tcp != nil {
+			c.tcp.write(&knxnetip.DisconnectRequest{Channel: c.channel, Control: knxnetip.TCPHPAI()})
+		} else {
+			s.write(c.ctrl, &knxnetip.DisconnectRequest{Channel: c.channel, Control: s.endpoint(c.ctrl)})
+		}
 	}
 	s.o.logger.Infof("server: channel %d disconnected (%v)", c.channel, cause)
 }
@@ -751,8 +888,19 @@ func (s *Server) distribute(t Telegram, origin *tconn) {
 	if err != nil {
 		return
 	}
+	var busmon []byte
 	for _, c := range targets {
-		c.enqueue(b)
+		switch c.kind {
+		case kindTunnel:
+			c.enqueue(out{cemi: b})
+		case kindBusmonitor:
+			if busmon == nil {
+				busmon = s.busmonitorFrame(ind)
+			}
+			if busmon != nil {
+				c.enqueue(out{cemi: busmon})
+			}
+		}
 	}
 	if s.o.routing && t.Origin != FromRouting && ind.HopCount() > 0 {
 		if s.routing.Allow() {

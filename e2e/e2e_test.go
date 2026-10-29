@@ -51,7 +51,7 @@ func TestDescribe(t *testing.T) {
 	if !ok || d.Name != "e2e" || d.Medium != knxnetip.MediumIP {
 		t.Fatalf("device info %+v", d)
 	}
-	if v, ok := mustFamilies(t, dibs).Version(knxnetip.FamilyTunnelling); !ok || v != 1 {
+	if v, ok := mustFamilies(t, dibs).Version(knxnetip.FamilyTunnelling); !ok || v != 2 {
 		t.Fatalf("tunnelling family %v %v", v, ok)
 	}
 }
