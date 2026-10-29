@@ -144,6 +144,7 @@ type secureOptions struct {
 // Secure, SESSION_REQUEST...) authenticated as one of the users (IDs
 // 1..127); plain connection requests are refused with E_CONNECTION_TYPE.
 // device is the device authentication code (secure.DeviceAuthenticationCode).
+// Device management connections are for user 1, the management user.
 // Search and description stay plain. WithTCP must stay on.
 func WithSecure(device secure.Key, users map[uint8]SecureUser) Option {
 	return func(o *options) error {

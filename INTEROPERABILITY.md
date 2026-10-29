@@ -22,11 +22,28 @@ go-knx is tested against independent KNX implementations in two places:
 | KNXUltimate 6.3.1 | — | discovery, connect, write, read, 12 DPT vectors: pass; description: known difference of KNXUltimate | both directions: pass |
 | knx-interop probe | — | 23 of 23 negative checks pass | — |
 
-Not covered yet: KNXnet/IP over TCP, tunnelling v2 feature services,
-busmonitor, device management, KNX IP Secure, KNX Data Secure (not
-implemented in go-knx). The matrix, the known differences of the other
-stacks and the reports filed upstream are in knx-interop's
-docs/INTEROPERABILITY.md.
+The matrix, the known differences of the other stacks and the reports
+filed upstream are in knx-interop's docs/INTEROPERABILITY.md.
+
+## KNX Secure (2026-10-30, manual)
+
+Verified by hand with xknx 4.0.0 and Calimero 3.0-M1 (the knx-interop
+images) and knxctl built from this version, in one Docker network for
+routing and through published ports for tunnelling. The automated
+scenarios follow with knx-interop's container contract 1.2.
+
+| Scenario | xknx 4.0.0 | Calimero 3.0-M1 |
+|---|---|---|
+| Secure tunnelling: peer client → go-knx server (session, device authentication verified by the client, write, read) | pass | tools: pass |
+| Secure tunnelling: go-knx client → peer server (session, device authentication, user bound address, write, read; wrong password and plain connection refused) | — (no server) | server: pass |
+| Secure device management: go-knx → peer server (user 1, property read) | — | server: pass; other users refused with E_CONNECTION_TYPE, as go-knx does |
+| Secure routing, both directions, with timer synchronisation | pass | tools: pass (Calimero synchronises with go-knx's timer) |
+| Data Secure group write, go-knx → peer (keyring written by go-knx) | pass | tools: pass (decrypted) |
+| Data Secure group write, peer → go-knx | pass | **not working**: Calimero tools refuse to send without a "surrogate" with go-knx's keyring and, with an ETS keyring, first ask a device for its sequence number (S-A_Sync), which go-knx does not answer |
+| Keyring written by go-knx loaded by the peer | pass (signature verified) | pass |
+
+Passing these shows that go-knx and those stacks agree with each other;
+it does not show conformance to the KNX specification.
 
 ## Running
 

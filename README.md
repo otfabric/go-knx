@@ -37,7 +37,9 @@ tests against independent stacks live in
 | Routing: indications, ROUTING_BUSY flow control, rate limit, echo suppression | ✅ |
 | Group communication: write, read (first or all responses), respond, subscriptions, callbacks | ✅ |
 | KNXnet/IP server: discovery, description, tunnelling over UDP and TCP (multiple clients, channel limits, feature services), busmonitor, device management (device, router and KNXnet/IP parameter objects), routing, virtual group objects with flags | ✅ |
-| KNX IP Secure, KNX Data Secure | ⏳ frames only; see [status](docs/IMPLEMENTATION-STATUS.md) |
+| KNX IP Secure: secure tunnelling sessions (client and server, over TCP), secure routing with timer synchronisation (`secure`, `tunnel.WithSecure`, `server.WithSecure`, `routing.WithSecure`) | ✅ from public sources, verified against xknx and Calimero ([why not "conformant"](docs/standards/SPECIFICATIONS.md#knx-secure-sources)) |
+| KNX Data Secure for group communication (S-A_Data, security tables; `datasecure`, `client.WithDataSecure`) | ✅ same sources; S-A_Sync and point to point security not implemented |
+| ETS keyrings (.knxkeys): verify, decrypt, write test keyrings (`keyring`) | ✅ |
 | KNX TP/RF media, ETS project import, KNX IoT | ❌ out of scope |
 
 Interoperability, verified both ways against Calimero 3.0-M1, knxd 0.14.73,
@@ -155,9 +157,10 @@ Observability: [OBSERVABILITY.md](OBSERVABILITY.md). Tests:
 ## Security
 
 KNXnet/IP without KNX IP Secure has no authentication and no encryption:
-anyone on the network can read and send telegrams. Isolate KNX IP networks.
-See [SECURITY.md](SECURITY.md) for the threat model and the status of KNX
-Secure.
+anyone on the network can read and send telegrams. Isolate KNX IP networks,
+and use KNX IP Secure and Data Secure where the installation supports them.
+See [SECURITY.md](SECURITY.md) for the threat model and what go-knx's KNX
+Secure covers.
 
 ## Standards and licensing
 

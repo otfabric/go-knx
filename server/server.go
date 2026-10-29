@@ -705,6 +705,12 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 		refuse(knxnetip.StatusTunnellingLayer)
 		return
 	}
+	if s.o.secure != nil && kind == kindDevMgmt && user != 1 {
+		// Device management is for the management user (user 1), as
+		// Calimero's secure server has it.
+		refuse(knxnetip.StatusConnectionType)
+		return
+	}
 	data := reply(m.Data, from)
 	if p.tcp != nil {
 		data = p.addr

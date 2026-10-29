@@ -38,6 +38,14 @@
   it does not know whether it runs over a tunnel or routing.
 - **Server** (`server`, `device`) is the other side: a KNXnet/IP server
   with a virtual network behind it.
+- **Security** (`secure`, `datasecure`, `keyring`) is layered in, not
+  bolted on: `secure` holds the KNX IP Secure primitives (key
+  derivation, CCM, session handshake MACs, SECURE_WRAPPER, the routing
+  timer); `tunnel`, `server` and `routing` use them to wrap every frame of
+  a secure session or of secure routing in their transports. Data Secure
+  works on cEMI frames (`datasecure.Table.Outgoing/Incoming`), so it runs
+  over any link; `client.WithDataSecure` applies it. `keyring` reads ETS
+  keyrings into credentials, tables and backbone keys.
 
 ## Concurrency and resource ownership
 

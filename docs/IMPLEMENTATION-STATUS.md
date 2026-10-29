@@ -1,6 +1,6 @@
 # Implementation status
 
-State of the KNX ecosystem (go-knx, knxctl, knx-interop) on 2026-10-29.
+State of the KNX ecosystem (go-knx, knxctl, knx-interop) on 2026-10-30.
 Every "verified" refers to an automated test; interoperability claims name
 the implementation versions. Nothing here is a conformance claim
 ([CONFORMANCE](standards/CONFORMANCE.md)).
@@ -16,7 +16,7 @@ the implementation versions. Nothing here is a conformance claim
 | 4 Interoperability expansion | done | knx-interop matrix, 4 independent stacks + probe, JSON/Markdown reports |
 | 5 Routing and advanced DPT | done for plain routing | routing between go-knx, xknx, KNXUltimate, Calimero tools and knxd, all directions; DPT matrix of 12 vectors across every implementation |
 | 5b TCP, feature services, device management, busmonitor | done (v0.2.0) | see Features; go-knx server ↔ xknx and Calimero tools over TCP, Calimero tools property read and busmonitor (interop/, v0.2.1) |
-| 6 Security (KNX IP Secure, KNX Data Secure) | **not started** | blocked on a decision: see "Blockers" |
+| 6 Security (KNX IP Secure, KNX Data Secure) | done from public sources (v0.3.0) | AN159/AN158 example vectors (via xknx's tests), keyring files exported by ETS (xknx's fixtures), go-knx ↔ xknx and Calimero by hand (INTEROPERABILITY.md); automated with knx-interop contract 1.2 |
 | 7 Release readiness | released | go-knx v0.2.1, knxctl v0.2.0, knx-interop v0.2.0 |
 
 ## Features
@@ -37,9 +37,10 @@ the implementation versions. Nothing here is a conformance claim
 | Virtual devices (group objects, CRWTUI flags) | device | complete (application layer only) | 99 % | reads answered to every client |
 | Device management connection (M_PropRead, M_PropWrite) | devmgmt, server | complete; server properties read only | e2e, unit | go-knx client → Calimero server (UDP, TCP); Calimero tools `get --local` → go-knx server |
 | Busmonitor tunnelling | tunnel, cemi, server | complete (standard frames) | e2e, unit, fuzzed TP1 decoder | go-knx client → knxd server (TP1 frame and check octet decoded); Calimero tools `monitor` → go-knx server (frames and FCS decoded) |
-| KNX IP Secure | — | frames only | — | — |
-| KNX Data Secure | — | APCI only | — | — |
-| ETS project / keyring import | — | not implemented | — | — |
+| KNX IP Secure: tunnelling sessions (client, server), SECURE_WRAPPER, secure routing with timer synchronisation | secure, tunnel, server, routing | complete over TCP; no secure sessions over UDP; the server's routing stays plain | 96 %, AN159 vectors, xknx handshake vectors, e2e | xknx and Calimero tools → go-knx server; go-knx → Calimero server (tunnel, device management); routing both ways with xknx and Calimero tools (manual, 2026-10-30) |
+| KNX Data Secure (group communication) | datasecure, client | S-A_Data (auth+conf, auth only), security tables; no S-A_Sync, no point to point security | 99 %, xknx vectors | both ways with xknx; go-knx → Calimero tools; Calimero → go-knx not working (S-A_Sync) |
+| ETS keyring (.knxkeys) | keyring | read (signature, decryption), write test keyrings | 98 %, ETS-exported fixtures | xknx and Calimero load keyrings written by go-knx |
+| ETS project import | — | not implemented | — | — |
 
 ## Deviations and decisions
 
@@ -52,6 +53,11 @@ the implementation versions. Nothing here is a conformance claim
 | DPT 17/18 scene numbers | raw 0..63 (xknx presents 1..64) | the encoding |
 | Tunnelling v2 status codes 0x2D, 0x2E | used for the extended CRI | cross-checked with xknx's code list |
 | Standard frames | NPDU ≤ 15 octets enforced on encode and decode | frame format |
+| Data Secure CTR stream | The 4-octet MAC is encrypted first and the APDU continues the same key stream | xknx; checked against its vectors and both ways with xknx, decrypted by Calimero |
+| Plain connection to a secure server | refused with E_CONNECTION_TYPE | Calimero's secure server answers the same |
+| Secure device management | user 1 (management user) only | Calimero's secure server refuses other users |
+| Secure routing timer | starts at 0 when the process starts; adopts any newer timer | the synchronisation of xknx's reading of 3/8/9 §2.2.2.3; Calimero and xknx synchronise with it |
+| Wrapper serial number of a secure tunnelling client | 00FA followed by 4 random octets | not checked by xknx or Calimero; the server uses its own serial |
 
 ## Known issues found in other implementations
 
@@ -75,13 +81,10 @@ restart; both are fixed in the knx-interop harness.
 
 ## Blockers
 
-1. **KNX IP Secure and Data Secure** need Application Notes 158/159 or the
-   secure clauses of the specification. Whether they are in the free public
-   set is unresolved ([LICENSING](standards/LICENSING.md)). Options: obtain
-   them through MyKNX / membership; or implement from the public
-   descriptions plus independent stacks (xknx MIT, Calimero) as reference
-   and verify against Calimero and xknx. This is a licensing and sourcing
-   decision for the maintainers.
+1. ~~KNX IP Secure and Data Secure sourcing~~: decided 2026-10-30 —
+   implemented from public sources and verified against xknx and Calimero
+   ([LICENSING](standards/LICENSING.md)). Conformance to AN158/AN159 is not
+   established.
 2. ~~Publishing GPL-carrying interop images~~: decided — they are built
    when needed and never published.
 3. Hardware validation (a physical KNX IP interface or router) is not
@@ -89,9 +92,9 @@ restart; both are fixed in the knx-interop harness.
 
 ## Next steps
 
-1. Decide on the secure sourcing (blocker 1), then: KNXnet/IP over TCP and
-   tunnelling v2 feature services (prerequisite of secure tunnelling),
-   secure sessions, secure routing with timer synchronisation, keyring
-   import, Data Secure group communication; secure scenarios in knx-interop.
-2. knx-interop contract 1.1: TCP, device management and busmonitor
-   scenarios across all stacks.
+1. knx-interop contract 1.2: the secure scenarios of INTEROPERABILITY.md
+   automated across xknx, Calimero and go-knx.
+2. Data Secure S-A_Sync (answer and ask for sequence numbers), so that
+   Calimero tools can send secured group telegrams to go-knx.
+3. Secure routing in the server (`server.WithRouting` with a backbone key)
+   and secure sessions over UDP.
