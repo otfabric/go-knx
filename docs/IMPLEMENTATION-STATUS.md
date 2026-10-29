@@ -54,26 +54,23 @@ the implementation versions. Nothing here is a conformance claim
 
 ## Known issues found in other implementations
 
-Recorded in knx-interop `tests/known-differences.tsv`:
+Recorded in knx-interop `tests/known-differences.tsv` and reported upstream
+on 2026-10-29:
 
-- KNXUltimate 6.3.1 announces port 3671 in its DESCRIPTION_REQUEST HPAI while
-  listening on an ephemeral port; describe fails against every server.
-- calimero-server 3.0-M1 restarts its control endpoint (≈10 s without
-  answers) after a 3-octet datagram or a CONNECT_REQUEST whose CRI has length 0.
-- calimero-tools 3.0-M1 `describe --json --nat` throws a NullPointerException.
-- knxd's server drops a source address learned on an earlier tunnel
-  connection; knxd as a client sends its own client addresses unless the
-  `single` filter is used.
+- KNXUltimate 6.3.1 announces port 3671 in its DESCRIPTION_REQUEST HPAI
+  while listening on an ephemeral port; describe fails against every server
+  ([KNXUltimate#117](https://github.com/Supergiovane/KNXUltimate/issues/117)).
+- calimero-tools 3.0-M1 `describe --json --nat` throws a
+  NullPointerException ([calimero-tools#24](https://github.com/calimero-project/calimero-tools/issues/24)).
+- knxd 0.14.73's tunnel client never sends its DISCONNECT_REQUEST, leaving
+  dead connections on servers ([knxd#667](https://github.com/knxd/knxd/issues/667)).
+- calimero-server 3.0-M1 restarts its control endpoint (about 10 s without
+  answers) after a 3-octet datagram or a CRI of length 0: already fixed on
+  master (d276d8a8), not reported.
 
-None of these were reported upstream yet.
-
-## Open interoperability failures
-
-Two of 344 matrix results fail, both between third-party implementations:
-knxd as client through the Calimero server for DPT 5.010 (reproducible,
-not analysed yet), and one intermittent probe heartbeat check on the
-Calimero server right after its outage. Details: knx-interop
-docs/INTEROPERABILITY.md.
+The two unexplained matrix failures of the first runs were traced to the
+knxd disconnect bug and to a probe check that ran during calimero-server's
+restart; both are fixed in the knx-interop harness.
 
 ## Blockers
 
@@ -84,8 +81,8 @@ docs/INTEROPERABILITY.md.
    descriptions plus independent stacks (xknx MIT, Calimero) as reference
    and verify against Calimero and xknx. This is a licensing and sourcing
    decision for the maintainers.
-2. **Publishing GPL-carrying interop images** (Calimero, knxd) to GHCR:
-   open decision (knx-interop THIRD_PARTY_NOTICES.md).
+2. ~~Publishing GPL-carrying interop images~~: decided — they are built
+   when needed and never published.
 3. Hardware validation (a physical KNX IP interface or router) is not
    possible here.
 

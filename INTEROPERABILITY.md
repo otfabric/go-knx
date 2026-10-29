@@ -25,7 +25,7 @@ go-knx is tested against independent KNX implementations in two places:
 Not covered yet: KNXnet/IP over TCP, tunnelling v2 feature services,
 busmonitor, device management, KNX IP Secure, KNX Data Secure (not
 implemented in go-knx). The matrix, the known differences of the other
-stacks and the open third-party failures are in knx-interop's
+stacks and the reports filed upstream are in knx-interop's
 docs/INTEROPERABILITY.md.
 
 ## Running

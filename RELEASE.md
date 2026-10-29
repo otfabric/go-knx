@@ -7,7 +7,7 @@ that version as the release notes. Add the section, headed exactly
 
 ## v0.1.0
 
-**Date:** 2026-10-29 (planned; not released)
+**Date:** 2026-10-29
 **Previous release:** none
 
 ## Summary
@@ -18,7 +18,13 @@ retransmission, heartbeats, NAT and reconnection; routing; group
 communication; and a KNXnet/IP server with virtual devices.
 Interoperability verified both ways against Calimero 3.0-M1 and knxd
 0.14.73, and against xknx 4.0.0 and KNXUltimate 6.3.1 as clients and
-routing peers. Coverage 97.7 %.
+routing peers, in the knx-interop matrix and this repository's interop
+suite (amd64 and arm64). Coverage 97.7 %.
+
+Fixes found by the interoperability tests: route back data endpoints for
+NAT clients, a default routing source address (routers drop 0.0.0), ACK
+status handling, write deadlines on multicast sends, ordering of
+disconnect metrics and responses.
 
 ## Not included
 

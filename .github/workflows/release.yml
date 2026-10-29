@@ -25,4 +25,5 @@ jobs:
       bump: ${{ inputs.bump }}
       release-name-prefix: go-knx
       update-major-tag: false
+      test-exclude-regex: "(/example(s)?($|/)|/interop($|/))"
     secrets: inherit
