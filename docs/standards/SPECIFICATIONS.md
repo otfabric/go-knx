@@ -56,9 +56,29 @@ The code was written from:
 
 ## Not yet covered by any source in this repository
 
-- KNX IP Secure and KNX Data Secure: AN158 and AN159 may be members-only
-  (see LICENSING.md). The implementation waits for verified access.
+- KNX IP Secure and KNX Data Secure are implemented without AN158/AN159
+  (see "KNX Secure sources" below and LICENSING.md).
 - Tunnelling feature services (TUNNELLING_FEATURE_*) semantics beyond the
   frame layout.
 - Device management (local device management with M_PropRead etc. over
   DEVICE_CONFIGURATION_REQUEST).
+
+## KNX Secure sources
+
+KNX IP Secure (3/8/9, AN159) and KNX Data Secure (AN158) are implemented
+from public sources only; the application notes themselves were not
+available to the project:
+
+| Source | Licence | Used for |
+|---|---|---|
+| xknx 4.0.0 `xknx/secure`, `xknx/io/ip_secure.py`, `xknx/knxip/` | MIT | CCM construction (CBC-MAC block 0, counter 0), key derivations (PBKDF2 salts and iterations), session handshake MACs, SECURE_WRAPPER and TIMER_NOTIFY layout, routing timer synchronisation, S-A_Data layout, keyring decryption and signature |
+| AN159 v06 and AN158 v07 example frames, as cited by xknx's tests | facts quoted in MIT tests | golden vectors in `secure` and `datasecure` |
+| KNX keyring support article | public web page | keyring structure and key derivation |
+| Calimero 3.0 (GPL) | — | black-box interoperability peer only; its source was not read |
+
+The code was written for go-knx, not translated line by line. Where the
+behaviour rests on xknx's reading of the specification rather than on a
+cited clause (for example the routing timer constants, or the 8 random
+octets in front of keyring passwords), the code comment says so. Passing
+the interop matrix shows that go-knx and those stacks agree; it does not
+show conformance, and no certification is claimed.
