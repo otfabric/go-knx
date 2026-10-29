@@ -1,0 +1,633 @@
+{
+ "_note": "Reference vectors produced by xknx 4.0.0 (DPTBase.parse_transcoder(dpt).to_knx / from_knx), computed once with a throwaway script on 2026-10-29. They record xknx behaviour, not the KNX specification; differences are listed in xknx_test.go. Hex is the DPT payload (for small types the APCI low bits).",
+ "encode": [
+  {
+   "dpt": "9.001",
+   "value": 0,
+   "hex": "0000"
+  },
+  {
+   "dpt": "9.001",
+   "value": 21.5,
+   "hex": "0c33"
+  },
+  {
+   "dpt": "9.001",
+   "value": -30,
+   "hex": "8a24"
+  },
+  {
+   "dpt": "9.001",
+   "value": 0.01,
+   "hex": "0001"
+  },
+  {
+   "dpt": "9.001",
+   "value": -0.01,
+   "hex": "87ff"
+  },
+  {
+   "dpt": "9.001",
+   "value": 0.02,
+   "hex": "0002"
+  },
+  {
+   "dpt": "9.001",
+   "value": 20.47,
+   "hex": "07ff"
+  },
+  {
+   "dpt": "9.001",
+   "value": 20.48,
+   "hex": "0c00"
+  },
+  {
+   "dpt": "9.001",
+   "value": -20.48,
+   "hex": "8000"
+  },
+  {
+   "dpt": "9.001",
+   "value": 100,
+   "hex": "1ce2"
+  },
+  {
+   "dpt": "9.001",
+   "value": 1000.5,
+   "hex": "361b"
+  },
+  {
+   "dpt": "9.001",
+   "value": -273,
+   "hex": "a156"
+  },
+  {
+   "dpt": "9.001",
+   "value": 670433.28,
+   "hex": "7ffe"
+  },
+  {
+   "dpt": "9.001",
+   "value": 25,
+   "hex": "0ce2"
+  },
+  {
+   "dpt": "9.001",
+   "value": 0.5,
+   "hex": "0032"
+  },
+  {
+   "dpt": "9.001",
+   "value": 655.36,
+   "hex": "3400"
+  },
+  {
+   "dpt": "9.001",
+   "value": 3.14159,
+   "hex": "013a"
+  },
+  {
+   "dpt": "9.002",
+   "value": -671088.64,
+   "hex": "f800"
+  },
+  {
+   "dpt": "9.001",
+   "value": 0.125,
+   "hex": "000c"
+  },
+  {
+   "dpt": "9.001",
+   "value": 0.375,
+   "hex": "0026"
+  },
+  {
+   "dpt": "9.001",
+   "value": 12.345,
+   "hex": "04d2"
+  },
+  {
+   "dpt": "9.002",
+   "value": 1000000.0,
+   "error": "ConversionError"
+  },
+  {
+   "dpt": "9.004",
+   "value": 0,
+   "hex": "0000"
+  },
+  {
+   "dpt": "9.004",
+   "value": 1,
+   "hex": "0064"
+  },
+  {
+   "dpt": "9.004",
+   "value": 1.5,
+   "hex": "0096"
+  },
+  {
+   "dpt": "9.004",
+   "value": 300,
+   "hex": "2753"
+  },
+  {
+   "dpt": "9.004",
+   "value": 50000,
+   "hex": "64c5"
+  },
+  {
+   "dpt": "9.004",
+   "value": 670433.28,
+   "hex": "7ffe"
+  },
+  {
+   "dpt": "9.002",
+   "value": -10,
+   "hex": "8418"
+  },
+  {
+   "dpt": "9.002",
+   "value": -0.5,
+   "hex": "87ce"
+  },
+  {
+   "dpt": "9.002",
+   "value": 1.5,
+   "hex": "0096"
+  },
+  {
+   "dpt": "9.002",
+   "value": 655.36,
+   "hex": "3400"
+  },
+  {
+   "dpt": "5.001",
+   "value": 0,
+   "hex": "00"
+  },
+  {
+   "dpt": "5.001",
+   "value": 1,
+   "hex": "03"
+  },
+  {
+   "dpt": "5.001",
+   "value": 50,
+   "hex": "80"
+  },
+  {
+   "dpt": "5.001",
+   "value": 99.6,
+   "hex": "fe"
+  },
+  {
+   "dpt": "5.001",
+   "value": 100,
+   "hex": "ff"
+  },
+  {
+   "dpt": "5.001",
+   "value": 33.3,
+   "hex": "55"
+  },
+  {
+   "dpt": "5.001",
+   "value": 0.2,
+   "hex": "01"
+  },
+  {
+   "dpt": "5.001",
+   "value": 0.19,
+   "hex": "00"
+  },
+  {
+   "dpt": "5.003",
+   "value": 0,
+   "hex": "00"
+  },
+  {
+   "dpt": "5.003",
+   "value": 90,
+   "hex": "40"
+  },
+  {
+   "dpt": "5.003",
+   "value": 180,
+   "hex": "80"
+  },
+  {
+   "dpt": "5.003",
+   "value": 359,
+   "hex": "fe"
+  },
+  {
+   "dpt": "5.003",
+   "value": 360,
+   "hex": "ff"
+  },
+  {
+   "dpt": "5.010",
+   "value": 0,
+   "hex": "00"
+  },
+  {
+   "dpt": "5.010",
+   "value": 128,
+   "hex": "80"
+  },
+  {
+   "dpt": "5.010",
+   "value": 255,
+   "hex": "ff"
+  },
+  {
+   "dpt": "6.001",
+   "value": -128,
+   "hex": "80"
+  },
+  {
+   "dpt": "6.001",
+   "value": -1,
+   "hex": "ff"
+  },
+  {
+   "dpt": "6.001",
+   "value": 0,
+   "hex": "00"
+  },
+  {
+   "dpt": "6.001",
+   "value": 127,
+   "hex": "7f"
+  },
+  {
+   "dpt": "7.001",
+   "value": 0,
+   "hex": "0000"
+  },
+  {
+   "dpt": "7.001",
+   "value": 1,
+   "hex": "0001"
+  },
+  {
+   "dpt": "7.001",
+   "value": 65535,
+   "hex": "ffff"
+  },
+  {
+   "dpt": "8.001",
+   "value": -32768,
+   "hex": "8000"
+  },
+  {
+   "dpt": "8.001",
+   "value": -1,
+   "hex": "ffff"
+  },
+  {
+   "dpt": "8.001",
+   "value": 32767,
+   "hex": "7fff"
+  },
+  {
+   "dpt": "12.001",
+   "value": 0,
+   "hex": "00000000"
+  },
+  {
+   "dpt": "12.001",
+   "value": 4294967295,
+   "hex": "ffffffff"
+  },
+  {
+   "dpt": "13.001",
+   "value": -2147483648,
+   "hex": "80000000"
+  },
+  {
+   "dpt": "13.001",
+   "value": -1,
+   "hex": "ffffffff"
+  },
+  {
+   "dpt": "13.001",
+   "value": 2147483647,
+   "hex": "7fffffff"
+  },
+  {
+   "dpt": "14.056",
+   "value": 0.0,
+   "hex": "00000000"
+  },
+  {
+   "dpt": "14.056",
+   "value": 1.5,
+   "hex": "3fc00000"
+  },
+  {
+   "dpt": "14.056",
+   "value": -0.1,
+   "hex": "bdcccccd"
+  },
+  {
+   "dpt": "14.056",
+   "value": 3.4028234663852886e+38,
+   "hex": "7f7fffff"
+  },
+  {
+   "dpt": "14.056",
+   "value": 1e-45,
+   "hex": "00000001"
+  },
+  {
+   "dpt": "14.056",
+   "value": 230.0,
+   "hex": "43660000"
+  },
+  {
+   "dpt": "29.010",
+   "value": -9223372036854775808,
+   "hex": "8000000000000000"
+  },
+  {
+   "dpt": "29.010",
+   "value": -1,
+   "hex": "ffffffffffffffff"
+  },
+  {
+   "dpt": "29.010",
+   "value": 9223372036854775807,
+   "hex": "7fffffffffffffff"
+  },
+  {
+   "dpt": "16.000",
+   "value": "",
+   "hex": "0000000000000000000000000000"
+  },
+  {
+   "dpt": "16.000",
+   "value": "KNX is OK",
+   "hex": "4b4e58206973204f4b0000000000"
+  },
+  {
+   "dpt": "16.000",
+   "value": "abcdefghijklmn",
+   "hex": "6162636465666768696a6b6c6d6e"
+  },
+  {
+   "dpt": "16.001",
+   "value": "Grüße",
+   "hex": "4772fcdf65000000000000000000"
+  },
+  {
+   "dpt": "16.001",
+   "value": "été",
+   "hex": "e974e90000000000000000000000"
+  },
+  {
+   "dpt": "17.001",
+   "value": 0,
+   "error": "ConversionError"
+  },
+  {
+   "dpt": "17.001",
+   "value": 5,
+   "hex": "04"
+  },
+  {
+   "dpt": "17.001",
+   "value": 63,
+   "hex": "3e"
+  },
+  {
+   "dpt": "20.102",
+   "value": 0,
+   "hex": "00"
+  },
+  {
+   "dpt": "20.102",
+   "value": 1,
+   "hex": "01"
+  },
+  {
+   "dpt": "20.102",
+   "value": 2,
+   "hex": "02"
+  },
+  {
+   "dpt": "20.102",
+   "value": 3,
+   "hex": "03"
+  },
+  {
+   "dpt": "20.102",
+   "value": 4,
+   "hex": "04"
+  }
+ ],
+ "decode": [
+  {
+   "dpt": "9.002",
+   "hex": "0000",
+   "value": 0.0
+  },
+  {
+   "dpt": "9.002",
+   "hex": "0c33",
+   "value": 21.5
+  },
+  {
+   "dpt": "9.002",
+   "hex": "8a24",
+   "value": -30.0
+  },
+  {
+   "dpt": "9.002",
+   "hex": "0001",
+   "value": 0.01
+  },
+  {
+   "dpt": "9.002",
+   "hex": "87ff",
+   "value": -0.01
+  },
+  {
+   "dpt": "9.002",
+   "hex": "07ff",
+   "value": 20.47
+  },
+  {
+   "dpt": "9.002",
+   "hex": "8000",
+   "value": -20.48
+  },
+  {
+   "dpt": "9.002",
+   "hex": "7ffe",
+   "value": 670433.28
+  },
+  {
+   "dpt": "9.002",
+   "hex": "f800",
+   "value": -671088.64
+  },
+  {
+   "dpt": "9.002",
+   "hex": "7fff",
+   "error": "ConversionError"
+  },
+  {
+   "dpt": "9.002",
+   "hex": "4e20",
+   "value": 8028.16
+  },
+  {
+   "dpt": "9.002",
+   "hex": "1388",
+   "value": 36.16
+  },
+  {
+   "dpt": "14.056",
+   "hex": "3fc00000",
+   "value": 1.5
+  },
+  {
+   "dpt": "14.056",
+   "hex": "bdcccccd",
+   "value": -0.1
+  },
+  {
+   "dpt": "14.056",
+   "hex": "7f7fffff",
+   "value": 3.402823e+38
+  },
+  {
+   "dpt": "14.056",
+   "hex": "00000001",
+   "value": 1.401298e-45
+  },
+  {
+   "dpt": "14.056",
+   "hex": "c3800000",
+   "value": -256.0
+  },
+  {
+   "dpt": "10.001",
+   "hex": "0c1e00",
+   "value": {
+    "hour": 12,
+    "minutes": 30,
+    "seconds": 0,
+    "day": "no_day"
+   }
+  },
+  {
+   "dpt": "10.001",
+   "hex": "ec1e3b",
+   "value": {
+    "hour": 12,
+    "minutes": 30,
+    "seconds": 59,
+    "day": "sunday"
+   }
+  },
+  {
+   "dpt": "10.001",
+   "hex": "000000",
+   "value": {
+    "hour": 0,
+    "minutes": 0,
+    "seconds": 0,
+    "day": "no_day"
+   }
+  },
+  {
+   "dpt": "10.001",
+   "hex": "173b3b",
+   "value": {
+    "hour": 23,
+    "minutes": 59,
+    "seconds": 59,
+    "day": "no_day"
+   }
+  },
+  {
+   "dpt": "11.001",
+   "hex": "1d0a1a",
+   "value": {
+    "year": 2026,
+    "month": 10,
+    "day": 29
+   }
+  },
+  {
+   "dpt": "11.001",
+   "hex": "01015a",
+   "value": {
+    "year": 1990,
+    "month": 1,
+    "day": 1
+   }
+  },
+  {
+   "dpt": "11.001",
+   "hex": "1f0c59",
+   "value": {
+    "year": 2089,
+    "month": 12,
+    "day": 31
+   }
+  },
+  {
+   "dpt": "11.001",
+   "hex": "010100",
+   "value": {
+    "year": 2000,
+    "month": 1,
+    "day": 1
+   }
+  },
+  {
+   "dpt": "18.001",
+   "hex": "00",
+   "value": {
+    "scene_number": 1,
+    "learn": false
+   }
+  },
+  {
+   "dpt": "18.001",
+   "hex": "01",
+   "value": {
+    "scene_number": 2,
+    "learn": false
+   }
+  },
+  {
+   "dpt": "18.001",
+   "hex": "80",
+   "value": {
+    "scene_number": 1,
+    "learn": true
+   }
+  },
+  {
+   "dpt": "18.001",
+   "hex": "bf",
+   "value": {
+    "scene_number": 64,
+    "learn": true
+   }
+  },
+  {
+   "dpt": "18.001",
+   "hex": "3f",
+   "value": {
+    "scene_number": 64,
+    "learn": false
+   }
+  }
+ ]
+}

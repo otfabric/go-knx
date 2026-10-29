@@ -23,17 +23,21 @@
 //	KindTime      TimeOfDay            DPT 10
 //	KindDate      Date                 DPT 11
 //	KindString    string               DPT 16
-//	KindScene     uint8                DPT 17, 26
+//	KindScene     uint8                DPT 17
 //	KindSceneControl SceneControl      DPT 18
 //	KindDateTime  DateTime             DPT 19
 //	KindEnum      Enum                 DPT 20
-//	KindBits      uint64 (bit set)     DPT 21, 22
+//	KindBits      uint64 (bit set)     DPT 21, 22, 26
 //	KindRGB       RGB                  DPT 232
 //	KindRGBW      RGBW                 DPT 251
 //	KindXYY       XYY                  DPT 242
 //
 // Encode accepts these types and, where unambiguous, convertible ones (any
 // Go integer or float for a number, a name for an enumeration).
+//
+// Decode accepts every value the format can carry; Encode also enforces
+// the range of the subtype (9.001 decodes -300 °C, but refuses to encode
+// it). Dates are checked field by field, not against the calendar.
 //
 // Only subtypes whose semantics are published (KNX Standard volume 3/7/2,
 // Datapoint Types) are registered; an unknown subtype of a known main type

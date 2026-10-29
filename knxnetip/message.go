@@ -5,6 +5,8 @@ package knxnetip
 import (
 	"encoding/binary"
 	"fmt"
+
+	"github.com/otfabric/go-knx"
 )
 
 // Message is the body of a KNXnet/IP frame of one service type.
@@ -25,6 +27,11 @@ func Append(b []byte, m Message) ([]byte, error) {
 		return b[:start], fmt.Errorf("%w: %s frame of %d octets exceeds %d", errTooLong, m.Service(), n, MaxFrameLen)
 	}
 	binary.BigEndian.PutUint16(b[start+4:], uint16(n))
+	// Never emit what this package would refuse to decode: a structure
+	// whose length octet overflowed, a field out of range.
+	if _, err := ParseBody(m.Service(), b[start+HeaderLen:]); err != nil {
+		return b[:start], fmt.Errorf("%w: %s frame does not encode to a valid frame: %v", knx.ErrInvalidValue, m.Service(), err)
+	}
 	return b, nil
 }
 
@@ -53,7 +60,10 @@ func ParseBody(t ServiceType, p []byte) (Message, error) {
 	switch t {
 	case SearchRequestType:
 		h, err := exactHPAI(t, p)
-		return &SearchRequest{Discovery: h}, err
+		if err != nil {
+			return nil, err
+		}
+		return &SearchRequest{Discovery: h}, nil
 	case SearchRequestExtType:
 		return parseSearchRequestExt(p)
 	case SearchResponseType, SearchResponseExtType:
@@ -68,7 +78,10 @@ func ParseBody(t ServiceType, p []byte) (Message, error) {
 		return &SearchResponse{Extended: t == SearchResponseExtType, Control: h, DIBs: ds}, nil
 	case DescriptionRequestType:
 		h, err := exactHPAI(t, p)
-		return &DescriptionRequest{Control: h}, err
+		if err != nil {
+			return nil, err
+		}
+		return &DescriptionRequest{Control: h}, nil
 	case DescriptionResponseType:
 		ds, err := ParseDIBs(p)
 		if err != nil {

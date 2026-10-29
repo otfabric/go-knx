@@ -1,0 +1,230 @@
+{
+ "_note": "Golden KNXnet/IP frames, built by hand (with a throwaway length-computing script) from the frame structures of the KNXnet/IP specification as implemented in this package: header, HPAI, DIB, CRI/CRD and service bodies. Addresses, serials, MACs and keys are arbitrary example values; no frame was copied from a specification document or a capture.",
+ "frames": [
+  {
+   "name": "search_request",
+   "service": "0x0201",
+   "hex": "06100201000e0801e000170c0e57"
+  },
+  {
+   "name": "search_request_route_back",
+   "service": "0x0201",
+   "hex": "06100201000e0801000000000000"
+  },
+  {
+   "name": "search_request_ext",
+   "service": "0x020B",
+   "hex": "0610020b001c0801c0a80102c351028204050102080300246d010203"
+  },
+  {
+   "name": "search_response",
+   "service": "0x0202",
+   "hex": "06100202004e0801c0a801640e57360102001101000000fa12345678e000170c00246d0102034b4e5820495020526f7574657200000000000000000000000000000000000a020201030104010501"
+  },
+  {
+   "name": "search_response_ext",
+   "service": "0x020C",
+   "hex": "0610020c00660801c0a801640e57360102001101000000fa12345678e000170c00246d0102034b4e5820495020526f7574657200000000000000000000000000000000000a0202010301040105010c0700fe11010005110200060808010000fe091a0499abcd"
+  },
+  {
+   "name": "description_request",
+   "service": "0x0203",
+   "hex": "06100203000e0801c0a80102c351"
+  },
+  {
+   "name": "description_response",
+   "service": "0x0204",
+   "hex": "06100204007c360102001101000000fa12345678e000170c00246d0102034b4e5820495020526f7574657200000000000000000000000000000000000a0202010301040105011003c0a80164ffffff00c0a8010103021404c0a80164ffffff00c0a80101c0a8010104000605110111020406040108fe00fa01020304"
+  },
+  {
+   "name": "connect_request_tunnel",
+   "service": "0x0205",
+   "hex": "06100205001a0801c0a80102c3510801c0a80102c35204040200"
+  },
+  {
+   "name": "connect_request_tunnel_ext_cri",
+   "service": "0x0205",
+   "hex": "06100205001c0801c0a80102c3510801c0a80102c352060402001105"
+  },
+  {
+   "name": "connect_request_route_back_busmon",
+   "service": "0x0205",
+   "hex": "06100205001a0801000000000000080100000000000004048000"
+  },
+  {
+   "name": "connect_request_tcp",
+   "service": "0x0205",
+   "hex": "06100205001a0802000000000000080200000000000004040200"
+  },
+  {
+   "name": "connect_request_device_mgmt",
+   "service": "0x0205",
+   "hex": "0610020500180801c0a80102c3510801c0a80102c3520203"
+  },
+  {
+   "name": "connect_request_remlog",
+   "service": "0x0205",
+   "hex": "06100205001a0801c0a80102c3510801c0a80102c3520406aabb"
+  },
+  {
+   "name": "connect_response_tunnel",
+   "service": "0x0206",
+   "hex": "06100206001415000801c0a801640e57040411ff"
+  },
+  {
+   "name": "connect_response_device_mgmt",
+   "service": "0x0206",
+   "hex": "06100206001216000801c0a801640e570203"
+  },
+  {
+   "name": "connect_response_remlog",
+   "service": "0x0206",
+   "hex": "06100206001317000801c0a801640e57030601"
+  },
+  {
+   "name": "connect_response_no_more_connections",
+   "service": "0x0206",
+   "hex": "0610020600080024"
+  },
+  {
+   "name": "connect_response_refused_trailer",
+   "service": "0x0206",
+   "hex": "06100206000a00220102"
+  },
+  {
+   "name": "connectionstate_request",
+   "service": "0x0207",
+   "hex": "06100207001015000801c0a80102c351"
+  },
+  {
+   "name": "connectionstate_response",
+   "service": "0x0208",
+   "hex": "0610020800081500"
+  },
+  {
+   "name": "connectionstate_response_error",
+   "service": "0x0208",
+   "hex": "0610020800081521"
+  },
+  {
+   "name": "disconnect_request",
+   "service": "0x0209",
+   "hex": "06100209001015000801c0a80102c351"
+  },
+  {
+   "name": "disconnect_response",
+   "service": "0x020A",
+   "hex": "0610020a00081500"
+  },
+  {
+   "name": "tunnelling_request",
+   "service": "0x0420",
+   "hex": "061004200015041500001100bce000000a03010081"
+  },
+  {
+   "name": "tunnelling_request_ind",
+   "service": "0x0420",
+   "hex": "06100420001704157f002900bce011050a030300800c33"
+  },
+  {
+   "name": "tunnelling_ack",
+   "service": "0x0421",
+   "hex": "06100421000a04150000"
+  },
+  {
+   "name": "tunnelling_ack_error",
+   "service": "0x0421",
+   "hex": "06100421000a04150729"
+  },
+  {
+   "name": "device_configuration_request",
+   "service": "0x0310",
+   "hex": "06100310001104150000fc000b01351001"
+  },
+  {
+   "name": "device_configuration_ack",
+   "service": "0x0311",
+   "hex": "06100311000a04150000"
+  },
+  {
+   "name": "tunnelling_feature_get",
+   "service": "0x0422",
+   "hex": "06100422000c041501000300"
+  },
+  {
+   "name": "tunnelling_feature_response",
+   "service": "0x0423",
+   "hex": "06100423000d04150100030001"
+  },
+  {
+   "name": "tunnelling_feature_set",
+   "service": "0x0424",
+   "hex": "06100424000d04150200080001"
+  },
+  {
+   "name": "tunnelling_feature_info",
+   "service": "0x0425",
+   "hex": "06100425000d04150300030001"
+  },
+  {
+   "name": "routing_indication",
+   "service": "0x0530",
+   "hex": "0610053000112900bce011010a03010081"
+  },
+  {
+   "name": "routing_system_broadcast",
+   "service": "0x0533",
+   "hex": "0610053300112900ace0110100000103ec"
+  },
+  {
+   "name": "routing_lost_message",
+   "service": "0x0531",
+   "hex": "06100531000a04000005"
+  },
+  {
+   "name": "routing_busy",
+   "service": "0x0532",
+   "hex": "06100532000c060000640000"
+  },
+  {
+   "name": "secure_wrapper",
+   "service": "0x0950",
+   "hex": "06100950002e000100000000000100fa1234567800000102030405060708a0a1a2a3a4a5a6a7a8a9aaabacadaeaf"
+  },
+  {
+   "name": "session_request",
+   "service": "0x0951",
+   "hex": "06100951002e0801c0a80102c351000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+  },
+  {
+   "name": "session_response",
+   "service": "0x0952",
+   "hex": "0610095200380001000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1fa0a1a2a3a4a5a6a7a8a9aaabacadaeaf"
+  },
+  {
+   "name": "session_authenticate",
+   "service": "0x0953",
+   "hex": "0610095300180001a0a1a2a3a4a5a6a7a8a9aaabacadaeaf"
+  },
+  {
+   "name": "session_status",
+   "service": "0x0954",
+   "hex": "0610095400080200"
+  },
+  {
+   "name": "timer_notify",
+   "service": "0x0955",
+   "hex": "06100955002400000000010200fa123456780000a0a1a2a3a4a5a6a7a8a9aaabacadaeaf"
+  },
+  {
+   "name": "unknown_service",
+   "service": "0x0601",
+   "hex": "061006010009010203"
+  },
+  {
+   "name": "unknown_service_empty",
+   "service": "0x7777",
+   "hex": "061077770006"
+  }
+ ]
+}

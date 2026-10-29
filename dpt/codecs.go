@@ -90,8 +90,8 @@ func toInt(v any) (int64, error) {
 			return int64(x), nil
 		}
 	case float32:
-		if float64(x) == math.Trunc(float64(x)) {
-			return int64(x), nil
+		if f := float64(x); f == math.Trunc(f) && f >= -9.2e18 && f <= 9.2e18 {
+			return int64(f), nil
 		}
 	}
 	return 0, errValue("%v (%T) is not an integer", v, v)
@@ -175,6 +175,10 @@ var controlCodec = codec{
 	decode: func(t *Type, b []byte) (any, error) { return Control{Control: b[0]&2 != 0, Value: b[0]&1 != 0}, nil },
 	parse: func(t *Type, s string) (any, error) {
 		// "control,value": "1,0", "true,on"; a single value means no control.
+		// Format's "control=true value=false" is accepted too.
+		if c, v, ok := strings.Cut(s, " "); ok && strings.HasPrefix(c, "control=") && strings.HasPrefix(v, "value=") {
+			s = c[len("control="):] + "," + v[len("value="):]
+		}
 		parts := strings.Split(s, ",")
 		if len(parts) == 1 {
 			v, err := parseBoolText(t, parts[0])
@@ -252,6 +256,10 @@ var stepCodec = codec{
 func encodeText(t *Type, s string, n int) ([]byte, error) {
 	out := make([]byte, 0, n)
 	for _, r := range s {
+		if r == 0 {
+			// NUL terminates the text; Decode rejects data after it.
+			return nil, errValue("NUL character in text of %s", t.ID)
+		}
 		if r > 0xFF || (t.ID.Sub == 0 && t.ID.Main == 16 && r > 0x7F) || (t.ID.Main == 4 && t.ID.Sub == 1 && r > 0x7F) {
 			return nil, errValue("character %q is not in the character set of %s", r, t.ID)
 		}
@@ -286,11 +294,25 @@ func decodeText(t *Type, b []byte) (string, error) {
 	return sb.String(), nil
 }
 
+// unquoteText undoes the quoting of Format for DPT 4 and 16 text.
+func unquoteText(s string) string {
+	if len(s) >= 2 && s[0] == '"' {
+		if u, err := strconv.Unquote(s); err == nil {
+			return u
+		}
+	}
+	return s
+}
+
 var charCodec = codec{
 	encode: func(t *Type, v any) ([]byte, error) {
 		s, ok := v.(string)
 		if !ok {
 			return nil, errValue("%v (%T) is not a string", v, v)
+		}
+		if s == "" {
+			// NUL, which Decode returns as "".
+			return []byte{0}, nil
 		}
 		if utf8.RuneCountInString(s) != 1 {
 			return nil, errValue("%q is not one character", s)
@@ -303,7 +325,7 @@ var charCodec = codec{
 		}
 		return decodeText(t, b)
 	},
-	parse: func(t *Type, s string) (any, error) { return s, nil },
+	parse: func(t *Type, s string) (any, error) { return unquoteText(s), nil },
 	format: func(t *Type, v any) (string, bool) {
 		s, ok := v.(string)
 		return strconv.Quote(s), ok
@@ -319,7 +341,7 @@ var stringCodec = codec{
 		return encodeText(t, s, 14)
 	},
 	decode: func(t *Type, b []byte) (any, error) { return decodeText(t, b) },
-	parse:  func(t *Type, s string) (any, error) { return s, nil },
+	parse:  func(t *Type, s string) (any, error) { return unquoteText(s), nil },
 	format: func(t *Type, v any) (string, bool) {
 		s, ok := v.(string)
 		return strconv.Quote(s), ok
@@ -539,7 +561,9 @@ var float32Codec = codec{
 		if err := checkRange(t, f); err != nil {
 			return nil, err
 		}
-		if math.Abs(f) > math.MaxFloat32 {
+		// Not math.MaxFloat32: Decode returns its shortest decimal,
+		// 3.4028235e38, which is slightly larger but rounds to it.
+		if math.IsInf(float64(float32(f)), 0) {
 			return nil, errValue("%v out of the float32 range", f)
 		}
 		return binary.BigEndian.AppendUint32(nil, math.Float32bits(float32(f))), nil
@@ -758,8 +782,12 @@ var dateTimeCodec = codec{
 		if !ok {
 			return nil, errValue("%v (%T) is not a dpt.DateTime", v, v)
 		}
-		if d.Year < 1900 || d.Year > 2155 || d.Month < 1 || d.Month > 12 || d.Day < 1 || d.Day > 31 ||
-			d.Weekday > 7 || d.Hour > 24 || d.Minute > 59 || d.Second > 59 || (d.Hour == 24 && (d.Minute != 0 || d.Second != 0)) {
+		// Fields flagged invalid (ND, NT) need only fit their bits, as
+		// Decode accepts them.
+		badDate := d.Month > 15 || d.Day > 31 || (!d.NoDate && (d.Month < 1 || d.Month > 12 || d.Day < 1))
+		badTime := d.Hour > 31 || d.Minute > 63 || d.Second > 63 ||
+			(!d.NoTime && (d.Hour > 24 || d.Minute > 59 || d.Second > 59 || (d.Hour == 24 && (d.Minute != 0 || d.Second != 0))))
+		if d.Year < 1900 || d.Year > 2155 || d.Weekday > 7 || badDate || badTime {
 			return nil, errValue("date and time %v out of range", d)
 		}
 		f := flagBits(d.Fault, d.WorkingDay, d.NoWorkingDay, d.NoYear, d.NoDate, d.NoWeekday, d.NoTime, d.SummerTime)
@@ -779,7 +807,7 @@ var dateTimeCodec = codec{
 		if !d.NoDate && (d.Month < 1 || d.Month > 12 || d.Day < 1 || d.Day > 31) {
 			return nil, errValue("date %02d-%02d out of range", d.Month, d.Day)
 		}
-		if !d.NoTime && (d.Hour > 24 || d.Minute > 59 || d.Second > 59) {
+		if !d.NoTime && (d.Hour > 24 || d.Minute > 59 || d.Second > 59 || (d.Hour == 24 && (d.Minute != 0 || d.Second != 0))) {
 			return nil, errValue("time %02d:%02d:%02d out of range", d.Hour, d.Minute, d.Second)
 		}
 		return d, nil
@@ -989,6 +1017,11 @@ var xyyCodec = codec{
 			Brightness: float64(b[4]) * 100 / 255, ColorValid: b[5]&2 != 0, BrightnessValid: b[5]&1 != 0}, nil
 	},
 	parse: func(t *Type, s string) (any, error) {
+		// "x,y,brightness", or Format's "x=X y=Y brightness=B %".
+		if f := strings.Fields(strings.TrimSuffix(s, "%")); len(f) == 3 &&
+			strings.HasPrefix(f[0], "x=") && strings.HasPrefix(f[1], "y=") && strings.HasPrefix(f[2], "brightness=") {
+			s = f[0][2:] + "," + f[1][2:] + "," + f[2][len("brightness="):]
+		}
 		parts := strings.Split(s, ",")
 		if len(parts) != 3 {
 			return nil, errValue("%q: want x,y,brightness", s)

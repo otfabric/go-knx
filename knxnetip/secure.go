@@ -5,10 +5,13 @@ package knxnetip
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
+
+	"github.com/otfabric/go-knx"
 )
 
-var errTooLong = errors.New("knxnetip: frame too long")
+var errTooLong = fmt.Errorf("%w: knxnetip: frame too long", knx.ErrInvalidValue)
 
 // MACLen is the length of the CCM message authentication code of KNX IP
 // Secure.

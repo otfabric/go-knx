@@ -1,0 +1,18 @@
+# Codecov configuration for go-knx.
+# CI uploads coverage for the library packages; examples/, the end-to-end
+# and interop suites and test helpers are not counted.
+coverage:
+  status:
+    project:
+      default:
+        target: 85%
+        threshold: 1%
+    patch:
+      default:
+        target: 70%
+
+ignore:
+  - "examples/**"
+  - "e2e/**"
+  - "interop/**"
+  - "internal/testutil/**"

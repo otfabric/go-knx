@@ -187,6 +187,9 @@ func parseLData(b []byte) (Frame, error) {
 	if len(rest) != 7+n+1 {
 		return nil, malformed("%s: NPDU length %d, %d octets of TPDU", MessageCode(b[0]), n, len(rest)-7)
 	}
+	if rest[0]&Ctrl1Standard != 0 && n > MaxStandardNPDU {
+		return nil, malformed("%s: standard frame with an NPDU of %d octets (at most %d)", MessageCode(b[0]), n, MaxStandardNPDU)
+	}
 	return &LData{
 		MsgCode:     MessageCode(b[0]),
 		AddInfo:     infos,
