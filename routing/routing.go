@@ -40,6 +40,7 @@ const (
 type Option func(*options) error
 
 type options struct {
+	address   knx.IndividualAddress
 	iface     string
 	group     string
 	rate      int
@@ -52,6 +53,23 @@ type options struct {
 
 func invalid(format string, a ...any) error {
 	return fmt.Errorf("%w: routing: %s", knx.ErrInvalidOption, fmt.Sprintf(format, a...))
+}
+
+// DefaultIndividualAddress is the source address a Conn puts in
+// telegrams sent with source 0.0.0: 15.15.255, the address of an
+// unconfigured device. Routers drop telegrams from 0.0.0.
+var DefaultIndividualAddress = knx.MustParseIndividualAddress("15.15.255")
+
+// WithIndividualAddress sets the source address put in telegrams sent
+// with source 0.0.0 (default 15.15.255).
+func WithIndividualAddress(a knx.IndividualAddress) Option {
+	return func(o *options) error {
+		if a == 0 {
+			return invalid("individual address 0.0.0")
+		}
+		o.address = a
+		return nil
+	}
 }
 
 // WithInterface joins the group and sends on the named interface.
@@ -147,7 +165,7 @@ type Conn struct {
 
 // Listen joins the routing multicast group.
 func Listen(ctx context.Context, opts ...Option) (*Conn, error) {
-	o := options{group: "224.0.23.12:3671", rate: DefaultRate, queueSize: DefaultQueueSize, ttl: DefaultTTL, logger: knx.NopLogger(), metrics: knx.NopMetrics{}}
+	o := options{address: DefaultIndividualAddress, group: "224.0.23.12:3671", rate: DefaultRate, queueSize: DefaultQueueSize, ttl: DefaultTTL, logger: knx.NopLogger(), metrics: knx.NopMetrics{}}
 	for _, opt := range opts {
 		if err := opt(&o); err != nil {
 			return nil, err
@@ -184,7 +202,8 @@ func Listen(ctx context.Context, opts ...Option) (*Conn, error) {
 // Group returns the multicast group.
 func (c *Conn) Group() netip.AddrPort { return c.group }
 
-// Send sends a cEMI frame (an L_Data.ind) as a ROUTING_INDICATION. It
+// Send sends a cEMI frame (an L_Data.ind) as a ROUTING_INDICATION; a
+// source of 0.0.0 is replaced by the Conn's individual address. It
 // waits for the rate limit and for a pending ROUTING_BUSY wait time, and
 // refuses frames with hop count 0.
 func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
@@ -192,9 +211,12 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 		if ld.HopCount() == 0 {
 			return fmt.Errorf("%w: routing: hop count 0 is not routed", knx.ErrInvalidValue)
 		}
-		if ld.MsgCode != cemi.LDataInd {
+		if ld.MsgCode != cemi.LDataInd || ld.Source == 0 {
 			ld = ld.Clone()
 			ld.MsgCode = cemi.LDataInd
+			if ld.Source == 0 {
+				ld.Source = c.o.address
+			}
 			f = ld
 		}
 	}
