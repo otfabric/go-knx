@@ -314,8 +314,10 @@ func (c *Conn) readLoop() {
 		if c.o.loopback {
 			h := sha256.Sum256(buf[:n])
 			c.mu.Lock()
-			_, own := c.echoes[h]
-			delete(c.echoes, h)
+			// Kept until it expires: a system may loop a datagram back
+			// more than once.
+			sent, own := c.echoes[h]
+			own = own && time.Since(sent) < 2*time.Second
 			c.mu.Unlock()
 			if own {
 				continue
