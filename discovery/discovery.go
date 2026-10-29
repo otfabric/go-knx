@@ -81,7 +81,8 @@ func WithExtended(params ...knxnetip.SearchParam) Option {
 }
 
 // WithUnicast sends the search to one server instead of the multicast
-// group: a directed search, answered by servers that support it.
+// group: a directed search, answered by servers that support it. Search
+// then returns as soon as the server answered.
 func WithUnicast(addr string) Option { return func(o *options) error { o.unicast = addr; return nil } }
 
 // WithNAT announces the route back endpoint 0.0.0.0:0, for clients behind
@@ -279,6 +280,9 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 		}
 		seen[key] = true
 		results = append(results, r)
+		if o.unicast != "" {
+			break // a directed search has one answer
+		}
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].Endpoint().Compare(results[j].Endpoint()) < 0 })
 	if results == nil {
