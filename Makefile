@@ -103,15 +103,16 @@ cross: ## Build every package for the release platforms
 	@for t in linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do \
 		echo "build $$t"; GOOS=$${t%/*} GOARCH=$${t#*/} CGO_ENABLED=0 go build ./... || exit 1; done
 
-# Independent implementations: otfabric/knx-interop, pinned in
-# interop/harness_test.go (see INTEROPERABILITY.md). interop-images builds
-# knx-interop's source at INTEROP_REF as :dev images, to test unreleased
-# adapters (KNX_INTEROP_IMAGE_<ADAPTER>=...:dev).
-INTEROP_REF ?= main
+# Independent implementations: otfabric/knx-interop v0.1.0. The published
+# (MIT) images are pinned by digest in interop/harness_test.go; the images
+# with GPL binaries are never published, so interop-images builds them from
+# knx-interop's source at INTEROP_REF as :dev (KNX_INTEROP_IMAGE_<ADAPTER>
+# overrides any image).
+INTEROP_REF ?= v0.1.0
 interop-images: ## Build the knx-interop images from source as :dev (needs Docker)
 	@rm -rf $(BIN_DIR)/knx-interop && mkdir -p $(BIN_DIR)
 	@git clone -q --depth 1 --branch $(INTEROP_REF) https://github.com/otfabric/knx-interop.git $(BIN_DIR)/knx-interop
-	@$(MAKE) -C $(BIN_DIR)/knx-interop images VERSION=dev ADAPTERS="xknx knxultimate knxd calimero-server calimero-tools"
+	@$(MAKE) -C $(BIN_DIR)/knx-interop images VERSION=dev ADAPTERS="knxd calimero-server calimero-tools"
 
 interop: ## Run the interop suite against the knx-interop images (Docker; writes bin/interop-report.json)
 	@mkdir -p $(BIN_DIR)

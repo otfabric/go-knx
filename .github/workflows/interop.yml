@@ -4,8 +4,9 @@ run-name: "Interop (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ 
 # Runs go-knx against the independent implementations of otfabric/knx-interop
 # (Calimero, knxd, xknx, KNXUltimate): go-knx's tunnelling client against
 # Calimero's and knxd's servers, and their clients against go-knx's server.
-# The adapter images are built from knx-interop's source at INTEROP_REF
-# (feat/adapters until knx-interop's first merge; then main).
+# Published knx-interop images are pinned by digest (interop/harness_test.go);
+# the Calimero and knxd images are built from knx-interop's source at
+# INTEROP_REF (default v0.1.0).
 
 on:
   push:
@@ -16,7 +17,7 @@ on:
     inputs:
       interop-ref:
         description: knx-interop ref to build the adapters from
-        default: feat/adapters
+        default: v0.1.0
 
 permissions:
   contents: read
@@ -38,7 +39,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Build the knx-interop adapter images
-        run: make interop-images INTEROP_REF=${{ inputs.interop-ref || 'feat/adapters' }}
+        run: make interop-images INTEROP_REF=${{ inputs.interop-ref || 'v0.1.0' }}
       - name: Interop suite
         run: make interop
       - name: Summary
