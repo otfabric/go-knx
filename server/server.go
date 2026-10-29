@@ -92,8 +92,9 @@ type Server struct {
 	started bool
 	closed  bool
 
-	closing chan struct{}
-	wg      sync.WaitGroup
+	sessionID uint16 // last secure session identifier
+	closing   chan struct{}
+	wg        sync.WaitGroup
 }
 
 // New returns a server; [Server.Start] or [Server.Serve] opens its
@@ -103,6 +104,23 @@ func New(opts ...Option) (*Server, error) {
 	for _, opt := range opts {
 		if err := opt(&o); err != nil {
 			return nil, err
+		}
+	}
+	if o.secure != nil {
+		if !o.tcp {
+			return nil, invalid("WithSecure needs TCP (WithTCP(true))")
+		}
+		for id, u := range o.secure.users {
+			if u.Address == 0 {
+				continue
+			}
+			ours := false
+			for _, a := range o.tunnels {
+				ours = ours || a == u.Address
+			}
+			if !ours {
+				return nil, invalid("secure user %d: %s is not a tunnelling address", id, u.Address)
+			}
 		}
 	}
 	s := &Server{o: o, conns: map[uint8]*tconn{}, tcpConns: map[*tcpConn]struct{}{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), routing: ratelimit.New(o.routingRate), startTime: time.Now()}
@@ -512,7 +530,19 @@ func (s *Server) families() knxnetip.ServiceFamilies {
 	if s.o.routing {
 		f.Families = append(f.Families, knxnetip.ServiceFamily{ID: knxnetip.FamilyRouting, Version: 1})
 	}
+	if s.o.secure != nil {
+		f.Families = append(f.Families, knxnetip.ServiceFamily{ID: knxnetip.FamilySecurity, Version: 1})
+	}
 	return f
+}
+
+// securedFamilies is the SECURED_SERVICE_FAMILIES DIB: the services that
+// need KNX IP Secure.
+func (s *Server) securedFamilies() knxnetip.ServiceFamilies {
+	return knxnetip.ServiceFamilies{Secured: true, Families: []knxnetip.ServiceFamily{
+		{ID: knxnetip.FamilyDeviceManagement, Version: 1},
+		{ID: knxnetip.FamilyTunnelling, Version: 1},
+	}}
 }
 
 func (s *Server) deviceInfo() knxnetip.DeviceInfo {
@@ -534,6 +564,9 @@ func (s *Server) dibs(types []knxnetip.DIBType, extended bool) knxnetip.DIBs {
 		if extended {
 			ds = append(ds, knxnetip.ExtendedDeviceInfo{MaxAPDU: 254})
 		}
+		if s.o.secure != nil {
+			ds = append(ds, s.securedFamilies())
+		}
 		return ds
 	}
 	var ds knxnetip.DIBs
@@ -549,9 +582,13 @@ func (s *Server) dibs(types []knxnetip.DIBType, extended bool) knxnetip.DIBs {
 			ds = append(ds, knxnetip.KNXAddresses{Addresses: append([]knx.IndividualAddress{s.o.address}, s.o.tunnels...)})
 		case knxnetip.DIBTunnellingInfo:
 			ds = append(ds, s.tunnellingInfo())
+		case knxnetip.DIBSecuredServices:
+			if s.o.secure != nil {
+				ds = append(ds, s.securedFamilies())
+			}
 		default:
-			// Not offered by this server: IP configuration, secured
-			// services, manufacturer data.
+			// Not offered by this server: IP configuration, manufacturer
+			// data.
 		}
 	}
 	return ds
@@ -648,6 +685,11 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 		refuse(knxnetip.StatusHostProtocolType)
 		return
 	}
+	user, authed := p.tcp.secured()
+	if s.o.secure != nil && !authed {
+		refuse(knxnetip.StatusConnectionType)
+		return
+	}
 	var kind connKind
 	switch {
 	case m.CRI.Type == knxnetip.DeviceManagementConnection:
@@ -730,7 +772,20 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 		}
 	} else {
 		found := false
-		if m.CRI.HasAddress {
+		if bound := s.secureAddress(user, authed); bound != 0 {
+			// A secure user tunnels with its own address.
+			switch {
+			case m.CRI.HasAddress && m.CRI.Address != bound:
+				s.mu.Unlock()
+				refuse(knxnetip.StatusAuthorisationError)
+				return
+			case used[bound]:
+				s.mu.Unlock()
+				refuse(knxnetip.StatusConnectionInUse)
+				return
+			}
+			addr, found = bound, true
+		} else if m.CRI.HasAddress {
 			ours := false
 			for _, a := range s.o.tunnels {
 				ours = ours || a == m.CRI.Address
@@ -782,6 +837,15 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 	s.o.logger.Infof("server: channel %d (%s, %s) connected from %s as %s", ch, kind, transport, ctrl, addr)
 	s.wg.Add(1)
 	go c.sender()
+}
+
+// secureAddress returns the tunnelling address bound to an
+// authenticated secure user, 0 for none.
+func (s *Server) secureAddress(user uint8, authed bool) knx.IndividualAddress {
+	if s.o.secure == nil || !authed {
+		return 0
+	}
+	return s.o.secure.users[user].Address
 }
 
 // disconnect removes a connection; notify sends DISCONNECT_REQUEST to the

@@ -117,7 +117,16 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		if err != nil {
 			return nil, fmt.Errorf("tunnel: dial tcp %s: %w", server, err)
 		}
-		tr = &tcpTransport{c: tc, server: server}
+		tt := &tcpTransport{c: tc, server: server}
+		tr = tt
+		if o.secure != nil {
+			st, err := handshake(tt, *o.secure, o.connectTimeout)
+			if err != nil {
+				_ = tc.Close()
+				return nil, err
+			}
+			tr = st
+		}
 	} else {
 		sock, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(local))
 		if err != nil {

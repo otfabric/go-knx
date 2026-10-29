@@ -9,10 +9,15 @@
 // per second) and paused for the wait time of a ROUTING_BUSY. Telegrams
 // with hop count 0 are not sent. With multicast loopback enabled, the
 // Conn's own indications are recognised and not delivered back.
+//
+// With [WithSecure] the Conn speaks KNX IP Secure routing: every frame is
+// sent and received in a SECURE_WRAPPER under the backbone key, with the
+// synchronised multicast timer as sequence (package secure).
 package routing
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -27,6 +32,7 @@ import (
 	"github.com/otfabric/go-knx/internal/ratelimit"
 	"github.com/otfabric/go-knx/internal/udp"
 	"github.com/otfabric/go-knx/knxnetip"
+	"github.com/otfabric/go-knx/secure"
 )
 
 // Defaults.
@@ -49,7 +55,32 @@ type options struct {
 	ttl       int
 	logger    knx.Logger
 	metrics   knx.Metrics
+	secure    *secureOptions
+	serial    [6]byte
 }
+
+type secureOptions struct {
+	key     secure.Key
+	latency time.Duration
+}
+
+// WithSecure enables KNX IP Secure routing with the backbone key and the
+// latency tolerance of the backbone (0: secure.DefaultLatency). Listen
+// then synchronises the multicast timer, which takes up to about 3.3 s
+// at the default latency when no other secure router answers.
+func WithSecure(key secure.Key, latency time.Duration) Option {
+	return func(o *options) error {
+		if latency < 0 {
+			return invalid("latency %v", latency)
+		}
+		o.secure = &secureOptions{key: key, latency: latency}
+		return nil
+	}
+}
+
+// WithSerialNumber sets the KNX serial number sent in secure frames
+// (default 00FA followed by four random octets).
+func WithSerialNumber(s [6]byte) Option { return func(o *options) error { o.serial = s; return nil } }
 
 func invalid(format string, a ...any) error {
 	return fmt.Errorf("%w: routing: %s", knx.ErrInvalidOption, fmt.Sprintf(format, a...))
@@ -155,6 +186,7 @@ type Conn struct {
 	mu        sync.Mutex
 	busyUntil time.Time
 	echoes    map[[32]byte]time.Time
+	timer     *secure.RoutingTimer
 
 	inbound chan cemi.Frame
 	events  chan Event
@@ -166,6 +198,8 @@ type Conn struct {
 // Listen joins the routing multicast group.
 func Listen(ctx context.Context, opts ...Option) (*Conn, error) {
 	o := options{address: DefaultIndividualAddress, group: "224.0.23.12:3671", rate: DefaultRate, queueSize: DefaultQueueSize, ttl: DefaultTTL, logger: knx.NopLogger(), metrics: knx.NopMetrics{}}
+	o.serial[0], o.serial[1] = 0x00, 0xFA
+	_, _ = rand.Read(o.serial[2:])
 	for _, opt := range opts {
 		if err := opt(&o); err != nil {
 			return nil, err
@@ -194,10 +228,31 @@ func Listen(ctx context.Context, opts ...Option) (*Conn, error) {
 	}
 	c := &Conn{o: o, sock: sock, group: group, rate: ratelimit.New(o.rate), echoes: map[[32]byte]time.Time{},
 		inbound: make(chan cemi.Frame, o.queueSize), events: make(chan Event, 16), closing: make(chan struct{})}
+	if o.secure != nil {
+		c.timer = secure.NewRoutingTimer(o.secure.key, o.serial, o.secure.latency, c.sendNotify)
+	}
 	c.wg.Add(1)
 	go c.readLoop()
+	if c.timer != nil {
+		c.timer.Synchronize(ctx)
+	}
 	return c, nil
 }
+
+// sendNotify sends a TIMER_NOTIFY of the routing timer.
+func (c *Conn) sendNotify(m *knxnetip.TimerNotify) {
+	b, err := knxnetip.Marshal(m)
+	if err != nil {
+		return
+	}
+	if err := c.transmit(context.Background(), b, knxnetip.TimerNotifyType); err != nil {
+		c.o.logger.Debugf("routing: timer notify: %v", err)
+	}
+}
+
+// IndividualAddress returns the source address of telegrams sent with
+// source 0.0.0.
+func (c *Conn) IndividualAddress() knx.IndividualAddress { return c.o.address }
 
 // Group returns the multicast group.
 func (c *Conn) Group() netip.AddrPort { return c.group }
@@ -243,6 +298,27 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	if err != nil {
 		return err
 	}
+	if c.timer != nil {
+		w, err := secure.Seal(c.o.secure.key, 0, c.timer.Next(), c.o.serial, randUint16(), frame)
+		if err != nil {
+			return err
+		}
+		if frame, err = knxnetip.Marshal(w); err != nil {
+			return err
+		}
+	}
+	return c.transmit(ctx, frame, knxnetip.RoutingIndicationType)
+}
+
+func randUint16() uint16 {
+	var b [2]byte
+	_, _ = rand.Read(b[:])
+	return uint16(b[0])<<8 | uint16(b[1])
+}
+
+// transmit sends a frame to the group and remembers it to recognise its
+// echo.
+func (c *Conn) transmit(ctx context.Context, frame []byte, service knxnetip.ServiceType) error {
 	if c.o.loopback {
 		c.mu.Lock()
 		now := time.Now()
@@ -264,7 +340,7 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	if _, err := c.sock.WriteToUDPAddrPort(frame, c.group); err != nil {
 		return fmt.Errorf("routing: send: %w", err)
 	}
-	c.o.metrics.OnFrameSent(net.UDPAddrFromAddrPort(c.group), uint16(knxnetip.RoutingIndicationType), len(frame))
+	c.o.metrics.OnFrameSent(net.UDPAddrFromAddrPort(c.group), uint16(service), len(frame))
 	return nil
 }
 
@@ -329,6 +405,11 @@ func (c *Conn) readLoop() {
 			continue
 		}
 		c.o.metrics.OnFrameReceived(fa, uint16(m.Service()), n)
+		if c.timer != nil {
+			if m = c.unwrap(fa, m); m == nil {
+				continue
+			}
+		}
 		switch m := m.(type) {
 		case *knxnetip.RoutingIndication:
 			if m.SystemBroadcast {
@@ -357,6 +438,46 @@ func (c *Conn) readLoop() {
 	}
 }
 
+// unwrap verifies a frame of secure routing and returns the frame it
+// carries; TIMER_NOTIFY frames go to the timer. It returns nil for
+// frames that are not delivered.
+func (c *Conn) unwrap(from *net.UDPAddr, m knxnetip.Message) knxnetip.Message {
+	switch w := m.(type) {
+	case *knxnetip.TimerNotify:
+		if !c.timer.HandleNotify(w) {
+			c.o.metrics.OnDropped(from, "authentication")
+		}
+		return nil
+	case *knxnetip.SecureWrapper:
+		if !c.timer.Authenticated() {
+			c.o.metrics.OnDropped(from, "timer_unsynchronised")
+			return nil
+		}
+		if w.SessionID != 0 {
+			c.o.metrics.OnDropped(from, "session")
+			return nil
+		}
+		frame, err := secure.Open(c.o.secure.key, w)
+		if err != nil {
+			c.o.metrics.OnDecodeError(from, err)
+			return nil
+		}
+		if !c.timer.Accept(w) {
+			c.o.metrics.OnDropped(from, "timer")
+			return nil
+		}
+		inner, err := knxnetip.Parse(frame)
+		if err != nil {
+			c.o.metrics.OnDecodeError(from, err)
+			return nil
+		}
+		return inner
+	default:
+		c.o.metrics.OnDropped(from, "unsecured")
+		return nil
+	}
+}
+
 func (c *Conn) event(e Event) {
 	select {
 	case c.events <- e:
@@ -368,6 +489,9 @@ func (c *Conn) event(e Event) {
 func (c *Conn) Close() error {
 	c.once.Do(func() {
 		close(c.closing)
+		if c.timer != nil {
+			c.timer.Stop()
+		}
 		_ = c.sock.Close()
 		c.wg.Wait()
 	})

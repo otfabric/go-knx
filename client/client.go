@@ -28,6 +28,7 @@ import (
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/apdu"
 	"github.com/otfabric/go-knx/cemi"
+	"github.com/otfabric/go-knx/datasecure"
 	"github.com/otfabric/go-knx/dpt"
 	"github.com/otfabric/go-knx/routing"
 	"github.com/otfabric/go-knx/tunnel"
@@ -51,7 +52,10 @@ type Telegram struct {
 	Service apdu.APCI
 	// Value is the data of a write or response (empty for a read).
 	Value apdu.GroupValue
+	// Frame is the frame, decrypted when it was secured.
 	Frame *cemi.LData
+	// Secure is set for a telegram received with KNX Data Secure.
+	Secure bool
 }
 
 // Decode decodes the value with datapoint type id.
@@ -69,6 +73,7 @@ type Client struct {
 	source knx.IndividualAddress
 	prio   knx.Priority
 	logger knx.Logger
+	secure *datasecure.Table
 
 	mu      sync.Mutex
 	subs    map[*Subscription]struct{}
@@ -90,6 +95,14 @@ type Option func(*Client)
 // which a tunnelling server replaces by the tunnel's address; set it for
 // routing).
 func WithSource(a knx.IndividualAddress) Option { return func(c *Client) { c.source = a } }
+
+// WithDataSecure secures the group communication with KNX Data Secure:
+// telegrams to the table's secured groups are sent as S-A_Data, received
+// ones are verified and decrypted, and plain or failing telegrams to
+// those groups are dropped. The source address is part of the MAC, so
+// telegrams are sent with the client's source (WithSource) or else the
+// link's individual address.
+func WithDataSecure(t *datasecure.Table) Option { return func(c *Client) { c.secure = t } }
 
 // WithPriority sets the priority of the telegrams (default low).
 func WithPriority(p knx.Priority) Option { return func(c *Client) { c.prio = p } }
@@ -255,7 +268,19 @@ func (c *Client) send(ctx context.Context, g knx.GroupAddress, tpdu []byte) erro
 	if _, routed := c.link.(*routing.Conn); routed {
 		code = cemi.LDataInd
 	}
-	return c.link.Send(ctx, cemi.NewGroupFrame(code, c.source, g, c.prio, tpdu))
+	f := cemi.NewGroupFrame(code, c.source, g, c.prio, tpdu)
+	if c.secure != nil && c.secure.Secured(g) {
+		if f.Source == 0 {
+			if a, ok := c.link.(interface{ IndividualAddress() knx.IndividualAddress }); ok {
+				f.Source = a.IndividualAddress()
+			}
+		}
+		var err error
+		if f, err = c.secure.Outgoing(f); err != nil {
+			return err
+		}
+	}
+	return c.link.Send(ctx, f)
 }
 
 // Response is an answer to a group read.
@@ -472,11 +497,19 @@ func (c *Client) readLoop(ctx context.Context) {
 		if !ok {
 			continue
 		}
+		secured := false
+		if c.secure != nil {
+			secured = datasecure.IsSecure(ld)
+			if ld, err = c.secure.Incoming(ld); err != nil {
+				c.logger.Debugf("client: drop telegram to %s: %v", g, err)
+				continue
+			}
+		}
 		svc, v, err := apdu.ParseGroupValue(ld.TPDU)
 		if err != nil {
 			continue
 		}
-		t := Telegram{Time: time.Now(), Source: ld.Source, Group: g, Service: svc, Value: v, Frame: ld}
+		t := Telegram{Time: time.Now(), Source: ld.Source, Group: g, Service: svc, Value: v, Frame: ld, Secure: secured}
 		c.mu.Lock()
 		subs := make([]*Subscription, 0, len(c.subs))
 		for s := range c.subs {

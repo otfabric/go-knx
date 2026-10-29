@@ -113,7 +113,7 @@ func (t *Table) Incoming(f *cemi.LData) (*cemi.LData, error) {
 	}
 	t.mu.Lock()
 	key, ok := t.keys[g]
-	last, known := t.senders[f.Source]
+	_, known := t.senders[f.Source]
 	t.mu.Unlock()
 	if !ok {
 		return nil, fmt.Errorf("%w: datasecure: no key for group %s", knx.ErrSecurity, g)
@@ -130,7 +130,7 @@ func (t *Table) Incoming(f *cemi.LData) (*cemi.LData, error) {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if last = t.senders[f.Source]; seq <= last {
+	if last := t.senders[f.Source]; seq <= last {
 		return nil, fmt.Errorf("%w: datasecure: sequence %d of %s not above %d", knx.ErrSecurity, seq, f.Source, last)
 	}
 	t.senders[f.Source] = seq

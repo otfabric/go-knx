@@ -282,3 +282,27 @@ func TestEncodeErrors(t *testing.T) {
 		t.Errorf("empty: %v", err)
 	}
 }
+
+func TestLookups(t *testing.T) {
+	k, err := LoadFile("testdata/SecureTest.knxkeys", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := k.Interface(ia(t, "5.0.1")).Credentials()
+	if err != nil || c.UserID != 2 || c.DeviceCode == nil {
+		t.Fatalf("credentials %+v %v", c, err)
+	}
+	if _, err := k.Interface(ia(t, "4.0.1")).Credentials(); !errors.Is(err, knx.ErrInvalidValue) {
+		t.Errorf("interface without user: %v", err)
+	}
+	tab, err := k.DataSecure(1)
+	if err != nil || !tab.Secured(ga(t, "0/4/0")) || tab.Sequence() != 1 {
+		t.Errorf("data secure %v", err)
+	}
+	if key, lat, ok := k.BackboneKey(); !ok || lat != time.Second || key[0] != 0x15 {
+		t.Errorf("backbone %x %v %v", key, lat, ok)
+	}
+	if _, _, ok := (&Keyring{}).BackboneKey(); ok {
+		t.Error("backbone of an empty keyring")
+	}
+}

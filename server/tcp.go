@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-knx/knxnetip"
+	"github.com/otfabric/go-knx/secure"
 )
 
 // tcpConn is a KNXnet/IP connection over TCP (core v2). It carries the
@@ -21,10 +22,41 @@ type tcpConn struct {
 	remote netip.AddrPort
 	wmu    sync.Mutex
 	once   sync.Once
+
+	// The KNX IP Secure session, when the client opened one: set by
+	// SESSION_REQUEST (its frames are wrapped from then on), authenticated
+	// by SESSION_AUTHENTICATE. Only serveTCP's goroutine writes them
+	// after the session starts; smu guards them for writers.
+	smu       sync.Mutex
+	sess      *secure.Session
+	clientPub [32]byte
+	serverPub [32]byte
+	user      uint8
+	authed    bool
+}
+
+// secured reports whether the client authenticated a secure session, and
+// as which user.
+func (t *tcpConn) secured() (uint8, bool) {
+	if t == nil {
+		return 0, false
+	}
+	t.smu.Lock()
+	defer t.smu.Unlock()
+	return t.user, t.authed
 }
 
 func (t *tcpConn) write(m knxnetip.Message) {
-	b, err := knxnetip.Marshal(m)
+	t.smu.Lock()
+	sess := t.sess
+	t.smu.Unlock()
+	var b []byte
+	var err error
+	if sess != nil && m.Service() != knxnetip.SessionResponseType {
+		b, err = sess.Marshal(m)
+	} else {
+		b, err = knxnetip.Marshal(m)
+	}
 	if err != nil {
 		t.s.o.logger.Errorf("server: encode %s: %v", m.Service(), err)
 		return
@@ -118,6 +150,12 @@ func (s *Server) serveTCP(t *tcpConn) {
 			return // a stream cannot resynchronise
 		}
 		s.o.metrics.OnFrameReceived(ta, uint16(m.Service()), len(b))
+		if s.o.secure != nil {
+			if !s.handleSecure(t, m) {
+				return
+			}
+			continue
+		}
 		s.handle(peer{addr: t.remote, tcp: t}, m)
 	}
 }

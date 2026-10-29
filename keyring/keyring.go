@@ -424,8 +424,7 @@ func parseTree(b []byte) (*element, error) {
 // key.
 func signature(root *element, hash []byte) ([]byte, error) {
 	var b []byte
-	var add func(s string) error
-	add = func(s string) error {
+	add := func(s string) error {
 		if len(s) > 255 {
 			return malformed("value of %d octets in the signature", len(s))
 		}

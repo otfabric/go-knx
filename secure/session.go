@@ -157,3 +157,34 @@ func (s *Session) Unwrap(w *knxnetip.SecureWrapper) ([]byte, error) {
 	s.rx, s.rxSeen = seq, true
 	return frame, nil
 }
+
+// Credentials identify a secure tunnelling user to a server.
+type Credentials struct {
+	// UserID is the user (1 is the management user; tunnelling users
+	// start at 2).
+	UserID uint8
+	// UserKey is the user's password key.
+	UserKey Key
+	// DeviceCode is the device authentication code of the server. When
+	// set, the client verifies the server's SESSION_RESPONSE with it; nil
+	// skips that check.
+	DeviceCode *Key
+}
+
+// NewCredentials derives the credentials of a user from the passwords;
+// an empty device password leaves DeviceCode nil.
+func NewCredentials(userID uint8, userPassword, devicePassword string) (Credentials, error) {
+	c := Credentials{UserID: userID}
+	var err error
+	if c.UserKey, err = UserPasswordKey(userPassword); err != nil {
+		return c, err
+	}
+	if devicePassword != "" {
+		d, err := DeviceAuthenticationCode(devicePassword)
+		if err != nil {
+			return c, err
+		}
+		c.DeviceCode = &d
+	}
+	return c, nil
+}

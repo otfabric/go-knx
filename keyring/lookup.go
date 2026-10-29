@@ -2,7 +2,14 @@
 
 package keyring
 
-import "github.com/otfabric/go-knx"
+import (
+	"fmt"
+	"time"
+
+	"github.com/otfabric/go-knx"
+	"github.com/otfabric/go-knx/datasecure"
+	"github.com/otfabric/go-knx/secure"
+)
 
 // Interface returns the interface with the individual address, or nil.
 func (k *Keyring) Interface(a knx.IndividualAddress) *Interface {
@@ -51,4 +58,33 @@ func (k *Keyring) Senders() map[knx.IndividualAddress]uint64 {
 		out[d.IndividualAddress] = d.SequenceNumber
 	}
 	return out
+}
+
+// Credentials returns the secure tunnelling credentials of a tunnelling
+// interface: its user and password, and the host's device authentication
+// password when the keyring has it.
+func (i *Interface) Credentials() (secure.Credentials, error) {
+	if i.UserID == 0 {
+		return secure.Credentials{}, fmt.Errorf("%w: keyring: interface %s has no secure tunnelling user", knx.ErrInvalidValue, i.IndividualAddress)
+	}
+	return secure.NewCredentials(i.UserID, i.Password, i.Authentication)
+}
+
+// DataSecure returns the Data Secure tables of the keyring: its group
+// keys and senders; seq is the first sending sequence number (0: derived
+// from the clock, see datasecure.NewTable).
+func (k *Keyring) DataSecure(seq uint64) (*datasecure.Table, error) {
+	keys := make(map[knx.GroupAddress]datasecure.Key, len(k.GroupKeys))
+	for g, key := range k.GroupKeys {
+		keys[g] = datasecure.Key(key)
+	}
+	return datasecure.NewTable(keys, k.Senders(), seq)
+}
+
+// BackboneKey returns the secure routing backbone key and latency.
+func (k *Keyring) BackboneKey() (secure.Key, time.Duration, bool) {
+	if k.Backbone == nil {
+		return secure.Key{}, 0, false
+	}
+	return secure.Key(k.Backbone.Key), k.Backbone.Latency, true
 }
