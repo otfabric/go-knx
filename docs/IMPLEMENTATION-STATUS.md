@@ -15,9 +15,9 @@ the implementation versions. Nothing here is a conformance claim
 | 3 Working server | done | Calimero tools, xknx, KNXUltimate and knxd clients → go-knx server: discover, describe, connect, write, read (matrix; interop/ through NAT) |
 | 4 Interoperability expansion | done | knx-interop matrix, 4 independent stacks + probe, JSON/Markdown reports |
 | 5 Routing and advanced DPT | done for plain routing | routing between go-knx, xknx, KNXUltimate, Calimero tools and knxd, all directions; DPT matrix of 12 vectors across every implementation |
-| 5b TCP, feature services, device management, busmonitor | done (v0.2.0) | see Features |
+| 5b TCP, feature services, device management, busmonitor | done (v0.2.0) | see Features; go-knx server ↔ xknx and Calimero tools over TCP, Calimero tools property read and busmonitor (interop/, v0.2.1) |
 | 6 Security (KNX IP Secure, KNX Data Secure) | **not started** | blocked on a decision: see "Blockers" |
-| 7 Release readiness | prepared, not released | docs, CI, coverage; RELEASE.md sections planned as v0.1.0 |
+| 7 Release readiness | released | go-knx v0.2.1, knxctl v0.2.0, knx-interop v0.2.0 |
 
 ## Features
 
