@@ -136,7 +136,7 @@ func TestDeviceManagement(t *testing.T) {
 }
 
 func TestBusmonitor(t *testing.T) {
-	_, addr := startServer(t)
+	_, addr := startServer(t, server.WithConcurrentBusmonitor(true))
 	c := ctx(t)
 	mon, err := tunnel.Dial(c, addr, tunnel.WithLayer(knxnetip.TunnelBusmonitor))
 	if err != nil {
@@ -167,5 +167,32 @@ func TestBusmonitor(t *testing.T) {
 	}
 	if g, _ := ld.Group(); g != knx.MustParseGroupAddress("3/4/5") || !bytes.Equal(ld.TPDU, []byte{0x00, 0x81}) {
 		t.Fatalf("monitored %s", ld)
+	}
+}
+
+// By default busmonitor and link layer tunnelling exclude each other.
+func TestBusmonitorExclusive(t *testing.T) {
+	_, addr := startServer(t)
+	c := ctx(t)
+	mon, err := tunnel.Dial(c, addr, tunnel.WithLayer(knxnetip.TunnelBusmonitor))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tunnel.Dial(c, addr); !errors.Is(err, knx.ErrBusy) {
+		t.Fatalf("link layer tunnel during busmonitor: %v", err)
+	}
+	mon2, err := tunnel.Dial(c, addr, tunnel.WithLayer(knxnetip.TunnelBusmonitor))
+	if err != nil {
+		t.Fatalf("second busmonitor: %v", err)
+	}
+	mon2.Close()
+	mon.Close()
+	link, err := tunnel.Dial(c, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer link.Close()
+	if _, err := tunnel.Dial(c, addr, tunnel.WithLayer(knxnetip.TunnelBusmonitor)); !errors.Is(err, knx.ErrBusy) {
+		t.Fatalf("busmonitor during a link layer tunnel: %v", err)
 	}
 }

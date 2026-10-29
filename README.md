@@ -31,11 +31,12 @@ tests against independent stacks live in
 | TPCI and APCI (all application services named; group values with small values) | ✅ |
 | Datapoint types: 1–14, 16–22, 26, 29, 232, 242, 251 (209 subtypes), ranges, units, text format/parse | ✅ |
 | Discovery: multicast and directed search, extended search with parameters, description | ✅ |
-| Tunnelling client (UDP): sequence handling, ACK and retransmission, L_Data.con, heartbeat, NAT, reconnect, tunnelling v2 address request | ✅ |
+| Tunnelling client over UDP (sequence handling, ACK and retransmission, L_Data.con, heartbeat, NAT, reconnect) and TCP (tunnelling v2), tunnelling v2 address request and feature services | ✅ |
+| Device management client (`devmgmt`: M_PropRead/M_PropWrite of interface object properties) | ✅ |
+| Busmonitor tunnelling (L_Busmon.ind; TP1 frame encode/decode with check octet) | ✅ |
 | Routing: indications, ROUTING_BUSY flow control, rate limit, echo suppression | ✅ |
 | Group communication: write, read (first or all responses), respond, subscriptions, callbacks | ✅ |
-| KNXnet/IP server: discovery, description, tunnelling (multiple clients, channel limits), routing, virtual group objects with flags | ✅ |
-| KNXnet/IP over TCP, tunnelling feature services, device management connections, busmonitor | ⏳ frames only |
+| KNXnet/IP server: discovery, description, tunnelling over UDP and TCP (multiple clients, channel limits, feature services), busmonitor, device management (device, router and KNXnet/IP parameter objects), routing, virtual group objects with flags | ✅ |
 | KNX IP Secure, KNX Data Secure | ⏳ frames only; see [status](docs/IMPLEMENTATION-STATUS.md) |
 | KNX TP/RF media, ETS project import, KNX IoT | ❌ out of scope |
 
@@ -140,7 +141,8 @@ More in [examples/](examples) and the package documentation.
 | `apdu` | TPCI and APCI |
 | `dpt` | Datapoint types |
 | `discovery` | Search and description |
-| `tunnel` | Tunnelling client |
+| `tunnel` | Tunnelling client (UDP, TCP, busmonitor, feature services) |
+| `devmgmt` | Device management client (interface object properties) |
 | `routing` | Routing |
 | `client` | Group communication over a tunnel or routing |
 | `server` | KNXnet/IP server |

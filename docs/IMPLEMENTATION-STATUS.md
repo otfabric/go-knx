@@ -15,6 +15,7 @@ the implementation versions. Nothing here is a conformance claim
 | 3 Working server | done | Calimero tools, xknx, KNXUltimate and knxd clients → go-knx server: discover, describe, connect, write, read (matrix; interop/ through NAT) |
 | 4 Interoperability expansion | done | knx-interop matrix, 4 independent stacks + probe, JSON/Markdown reports |
 | 5 Routing and advanced DPT | done for plain routing | routing between go-knx, xknx, KNXUltimate, Calimero tools and knxd, all directions; DPT matrix of 12 vectors across every implementation |
+| 5b TCP, feature services, device management, busmonitor | done (v0.2.0) | see Features |
 | 6 Security (KNX IP Secure, KNX Data Secure) | **not started** | blocked on a decision: see "Blockers" |
 | 7 Release readiness | prepared, not released | docs, CI, coverage; RELEASE.md sections planned as v0.1.0 |
 
@@ -29,13 +30,13 @@ the implementation versions. Nothing here is a conformance claim
 | Datapoint types (209 subtypes) | dpt | complete for the listed families | 99 %, exhaustive DPT 9, xknx vectors | 12 vectors × every implementation |
 | Discovery: search, extended search, description | discovery | complete | 92 % | Calimero, knxd, go-knx servers; Calimero tools, xknx, KNXUltimate clients find go-knx |
 | Tunnelling client (UDP, v1, NAT, reconnect, v2 address request) | tunnel | complete | 96 % | Calimero 3.0-M1, knxd 0.14.73 |
-| Tunnelling over TCP (v2), feature services | — | frames only | — | — |
+| Tunnelling over TCP (v2), feature services | tunnel, server | complete (client and server) | e2e, unit | go-knx client → Calimero server (connect, feature get, write, read); Calimero tools → go-knx server (write, read, describe over TCP) |
 | Routing (indication, busy, lost message) | routing | complete | 97 % | xknx, KNXUltimate, Calimero tools, knxd, both directions |
 | Group communication | client | complete | 99 % | as above |
 | KNXnet/IP server (discovery, description, tunnelling, routing) | server | complete | 96 % | Calimero tools, xknx, KNXUltimate, knxd clients; probe negative suite all pass |
 | Virtual devices (group objects, CRWTUI flags) | device | complete (application layer only) | 99 % | reads answered to every client |
-| Device management connection (M_PropRead...) | — | not implemented (refused with E_CONNECTION_TYPE) | — | Calimero tools try it and log an error |
-| Busmonitor tunnelling | — | not implemented (refused with E_TUNNELLING_LAYER) | — | — |
+| Device management connection (M_PropRead, M_PropWrite) | devmgmt, server | complete; server properties read only | e2e, unit | go-knx client → Calimero server (UDP, TCP); Calimero tools `get --local` → go-knx server |
+| Busmonitor tunnelling | tunnel, cemi, server | complete (standard frames) | e2e, unit, fuzzed TP1 decoder | go-knx client → knxd server (TP1 frame and check octet decoded); Calimero tools `monitor` → go-knx server (frames and FCS decoded) |
 | KNX IP Secure | — | frames only | — | — |
 | KNX Data Secure | — | APCI only | — | — |
 | ETS project / keyring import | — | not implemented | — | — |
@@ -92,8 +93,5 @@ restart; both are fixed in the knx-interop harness.
    tunnelling v2 feature services (prerequisite of secure tunnelling),
    secure sessions, secure routing with timer synchronisation, keyring
    import, Data Secure group communication; secure scenarios in knx-interop.
-2. Device management connection (M_PropRead of the device object) for ETS
-   and Calimero tools.
-3. Busmonitor tunnelling in client and server.
-4. Merge the three feature branches, then release v0.1.0 of go-knx,
-   knx-interop and knxctl (with the maintainers' approval).
+2. knx-interop contract 1.1: TCP, device management and busmonitor
+   scenarios across all stacks.

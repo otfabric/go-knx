@@ -5,7 +5,6 @@ package server
 import (
 	"encoding/binary"
 	"net/netip"
-	"sync"
 
 	"github.com/otfabric/go-knx/cemi"
 )
@@ -69,8 +68,7 @@ type property struct {
 // M_PropWrite.req, M_Reset.req) for the server's interface objects. All
 // properties are read only.
 type propStore struct {
-	s  *Server
-	mu sync.Mutex
+	s *Server
 }
 
 func u16(v uint16) []byte { return binary.BigEndian.AppendUint16(nil, v) }
@@ -162,6 +160,8 @@ func (p *propStore) handle(f cemi.Frame) cemi.Frame {
 		case cemi.MPropWriteReq:
 			return &cemi.Property{MsgCode: cemi.MPropWriteCon, ObjectType: f.ObjectType, Instance: f.Instance,
 				PropertyID: f.PropertyID, Start: f.Start, Data: []byte{errReadOnly}}
+		default:
+			// Confirmations and indications are not requests.
 		}
 	case *cemi.FunctionProperty:
 		if f.MsgCode == cemi.MFuncPropCommandReq || f.MsgCode == cemi.MFuncPropStateReadReq {

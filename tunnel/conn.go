@@ -506,6 +506,8 @@ func (c *Conn) dispatch(from netip.AddrPort, m knxnetip.Message) {
 		switch m.Type {
 		case knxnetip.TunnellingFeatureResponseType, knxnetip.TunnellingFeatureInfoType:
 			offer(c.featCh, m)
+		default:
+			// A client does not answer GET or SET.
 		}
 	case *knxnetip.TunnellingAck:
 		offer(c.ackCh, m)

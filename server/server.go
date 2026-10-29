@@ -701,6 +701,26 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 			used[c.addr] = true
 		}
 	}
+	// Busmonitor and link layer tunnelling exclude each other on a
+	// subnetwork (as Calimero cites the standard), unless the server is a
+	// simulator that monitors its own clients (WithConcurrentBusmonitor).
+	if !s.o.concurrentBusmon {
+		monitors, links := 0, 0
+		for _, c := range s.conns {
+			switch c.kind {
+			case kindBusmonitor:
+				monitors++
+			case kindTunnel:
+				links++
+			case kindDevMgmt:
+			}
+		}
+		if (kind == kindBusmonitor && links > 0) || (kind == kindTunnel && monitors > 0) {
+			s.mu.Unlock()
+			refuse(knxnetip.StatusNoMoreConnections)
+			return
+		}
+	}
 	var addr knx.IndividualAddress
 	if kind == kindDevMgmt {
 		if devmgmt >= maxDevMgmt {
@@ -900,6 +920,8 @@ func (s *Server) distribute(t Telegram, origin *tconn) {
 			if busmon != nil {
 				c.enqueue(out{cemi: busmon})
 			}
+		case kindDevMgmt:
+			// Device management connections carry no telegrams.
 		}
 	}
 	if s.o.routing && t.Origin != FromRouting && ind.HopCount() > 0 {

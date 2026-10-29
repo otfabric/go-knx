@@ -29,25 +29,26 @@ const (
 type Option func(*options) error
 
 type options struct {
-	listen      string
-	iface       string
-	name        string
-	address     knx.IndividualAddress
-	tunnels     []knx.IndividualAddress
-	serial      [6]byte
-	mac         [6]byte
-	discovery   bool
-	tcp         bool
-	routing     bool
-	group       string
-	aliveTime   time.Duration
-	reqTimeout  time.Duration
-	queueSize   int
-	routingRate int
-	logger      knx.Logger
-	metrics     knx.Metrics
-	progMode    bool
-	ttl         int
+	listen           string
+	iface            string
+	name             string
+	address          knx.IndividualAddress
+	tunnels          []knx.IndividualAddress
+	serial           [6]byte
+	mac              [6]byte
+	discovery        bool
+	tcp              bool
+	concurrentBusmon bool
+	routing          bool
+	group            string
+	aliveTime        time.Duration
+	reqTimeout       time.Duration
+	queueSize        int
+	routingRate      int
+	logger           knx.Logger
+	metrics          knx.Metrics
+	progMode         bool
+	ttl              int
 }
 
 func defaultOptions() options {
@@ -137,6 +138,16 @@ func WithDiscovery(on bool) Option { return func(o *options) error { o.discovery
 // same port (default true): core v2 and tunnelling v2 with the
 // tunnelling feature services.
 func WithTCP(on bool) Option { return func(o *options) error { o.tcp = on; return nil } }
+
+// WithConcurrentBusmonitor lets busmonitor connections coexist with link
+// layer tunnelling connections. By default they exclude each other, as on
+// a KNX interface: while a busmonitor connection is open, tunnelling
+// connections are refused (E_NO_MORE_CONNECTIONS), and the other way
+// round. Several busmonitor connections are always allowed. A simulator
+// that monitors the telegrams of its own clients needs this option.
+func WithConcurrentBusmonitor(on bool) Option {
+	return func(o *options) error { o.concurrentBusmon = on; return nil }
+}
 
 // WithRouting enables KNXnet/IP routing: telegrams of tunnelling clients
 // and devices are sent as ROUTING_INDICATIONs to the multicast group, and
