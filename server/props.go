@@ -37,6 +37,7 @@ const (
 	pidMediumStatus              = 51 // router object
 	pidProgMode                  = 54 // device object
 	pidMaxAPDULength             = 56 // device object
+	pidIOList                    = 71 // device object: the interface object types
 	pidDeviceDescriptor          = 83
 	pidProjectInstallationID     = 51 // KNXnet/IP parameter object
 	pidKNXIndividualAddress      = 52
@@ -101,6 +102,9 @@ func (p *propStore) properties(t uint16) map[uint8]property {
 			pidProgMode:         {1, one([]byte{prog})},
 			pidMaxAPDULength:    {2, one(u16(MaxAPDU))},
 			pidDeviceDescriptor: {2, one(u16(DeviceDescriptor))},
+			// The interface objects, by index: tools such as Calimero's
+			// address objects by their index in this list.
+			pidIOList: {2, func() [][]byte { return [][]byte{u16(objDevice), u16(objRouter), u16(objKNXnetIP)} }},
 		}
 	case objRouter:
 		return map[uint8]property{

@@ -35,6 +35,7 @@ const (
 	PIDMediumStatus              uint8 = 51 // router object
 	PIDProgMode                  uint8 = 54 // device object
 	PIDMaxAPDULength             uint8 = 56 // device object
+	PIDIOList                    uint8 = 71 // device object
 	PIDDeviceDescriptor          uint8 = 83
 	PIDProjectInstallationID     uint8 = 51 // KNXnet/IP parameter object
 	PIDKNXIndividualAddress      uint8 = 52
