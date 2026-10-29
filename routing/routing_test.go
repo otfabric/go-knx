@@ -321,11 +321,12 @@ func TestEchoSuppression(t *testing.T) {
 	if got := receive(t, c); got.TPDU[len(got.TPDU)-1] != 2 {
 		t.Fatalf("got %v, want the marker (own echo delivered?)", got)
 	}
-	// Each sent datagram suppresses one copy: a second copy is a
-	// telegram of another router.
+	// Copies within 2 s are all suppressed (a system may loop a datagram
+	// back more than once).
 	p.SendRaw(local, echo)
-	if got := receive(t, c); got.TPDU[len(got.TPDU)-1] != 1 {
-		t.Fatalf("frame %v", got)
+	p.Send(local, &knxnetip.RoutingIndication{CEMI: encoded(t, frame(3))})
+	if got := receive(t, c); got.TPDU[len(got.TPDU)-1] != 3 {
+		t.Fatalf("got %v, want the second marker (second echo copy delivered?)", got)
 	}
 }
 
