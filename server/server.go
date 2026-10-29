@@ -379,8 +379,10 @@ func (s *Server) handle(from netip.AddrPort, m knxnetip.Message) {
 			s.write(reply(m.Control, from), &knxnetip.DisconnectResponse{Channel: m.Channel, Status: knxnetip.StatusConnectionID})
 			return
 		}
-		s.write(reply(m.Control, from), &knxnetip.DisconnectResponse{Channel: m.Channel, Status: knxnetip.StatusNoError})
+		// Remove the connection first: once the client has the response,
+		// the channel is gone.
 		s.disconnect(c, false, nil)
+		s.write(reply(m.Control, from), &knxnetip.DisconnectResponse{Channel: m.Channel, Status: knxnetip.StatusNoError})
 	case *knxnetip.DisconnectResponse:
 		// The answer to our own DISCONNECT_REQUEST; the connection is gone.
 	case *knxnetip.TunnellingRequest:
