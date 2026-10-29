@@ -23,7 +23,7 @@ jobs:
       run-codecov: false
       test-exclude-regex: "(/example(s)?($|/)|/interop($|/))"
       coverpkg: >-
-        github.com/otfabric/go-knx,github.com/otfabric/go-knx/apdu,github.com/otfabric/go-knx/cemi,github.com/otfabric/go-knx/client,github.com/otfabric/go-knx/device,github.com/otfabric/go-knx/devmgmt,github.com/otfabric/go-knx/discovery,github.com/otfabric/go-knx/dpt,github.com/otfabric/go-knx/internal/mcast,github.com/otfabric/go-knx/internal/ratelimit,github.com/otfabric/go-knx/internal/udp,github.com/otfabric/go-knx/knxnetip,github.com/otfabric/go-knx/routing,github.com/otfabric/go-knx/server,github.com/otfabric/go-knx/tunnel
+        github.com/otfabric/go-knx,github.com/otfabric/go-knx/apdu,github.com/otfabric/go-knx/cemi,github.com/otfabric/go-knx/client,github.com/otfabric/go-knx/datasecure,github.com/otfabric/go-knx/device,github.com/otfabric/go-knx/devmgmt,github.com/otfabric/go-knx/discovery,github.com/otfabric/go-knx/dpt,github.com/otfabric/go-knx/internal/ccm,github.com/otfabric/go-knx/internal/mcast,github.com/otfabric/go-knx/internal/pbkdf2,github.com/otfabric/go-knx/internal/ratelimit,github.com/otfabric/go-knx/internal/udp,github.com/otfabric/go-knx/keyring,github.com/otfabric/go-knx/knxnetip,github.com/otfabric/go-knx/routing,github.com/otfabric/go-knx/secure,github.com/otfabric/go-knx/server,github.com/otfabric/go-knx/tunnel
       go-versions: '["1.23", "1.24", "1.25", "1.26"]'
     secrets: inherit
 

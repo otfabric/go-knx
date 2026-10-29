@@ -8,6 +8,7 @@ import (
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/knxnetip"
+	"github.com/otfabric/go-knx/secure"
 )
 
 // Timing constants of KNXnet/IP tunnelling (KNX Standard 3/8/4).
@@ -43,6 +44,7 @@ type options struct {
 	local             string
 	nat               bool
 	tcp               bool
+	secure            *secure.Credentials
 	devmgmt           bool
 	layer             knxnetip.TunnelLayer
 	address           knx.IndividualAddress
@@ -124,6 +126,22 @@ func WithNAT(on bool) Option {
 // UDP: no TUNNELLING_ACKs, no NAT concerns, the connection ends when the
 // TCP connection does. Not combinable with WithReconnect.
 func WithTCP() Option { return func(o *options) error { o.tcp = true; return nil } }
+
+// WithSecure tunnels in a KNX IP Secure session (over TCP, implied) as
+// the user of the credentials: the client authenticates with the user's
+// password key and, when the credentials hold the device authentication
+// code, verifies the server. See secure.NewCredentials and the keyring
+// package for the credentials.
+func WithSecure(c secure.Credentials) Option {
+	return func(o *options) error {
+		if c.UserID == 0 || c.UserID > 127 {
+			return invalid("secure user %d (1..127)", c.UserID)
+		}
+		o.tcp = true
+		o.secure = &c
+		return nil
+	}
+}
 
 // WithDeviceManagement opens a device management connection instead of a
 // tunnel: Send carries local device management cEMI frames (M_PropRead.req,

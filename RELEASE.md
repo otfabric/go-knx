@@ -5,6 +5,51 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.3.0
+
+**Date:** 2026-10-30
+**Previous release:** v0.2.1
+
+## Summary
+
+KNX IP Secure and KNX Data Secure, implemented from public sources (xknx's
+MIT implementation and the KNX keyring article; the application notes
+were not available) and verified for interoperability with xknx 4.0.0 and
+Calimero 3.0-M1. This is not a claim of conformance or certification.
+
+## Added
+
+- `secure`: key derivations, AES-CCM sealing of SECURE_WRAPPER, session
+  handshake (X25519, SESSION_RESPONSE and SESSION_AUTHENTICATE MACs),
+  sessions with replay protection, TIMER_NOTIFY and the secure routing
+  timer (time keeper and follower).
+- `tunnel.WithSecure`: secure tunnelling over TCP, with keep alive and
+  verification of the server's device authentication code.
+- `server.WithSecure`: a secure KNXnet/IP server — secure sessions, users
+  bound to tunnelling addresses, device management for user 1, plain
+  connections refused, Security family and secured services DIB.
+- `routing.WithSecure`: secure routing with the backbone key.
+- `datasecure`: S-A_Data for group communication and the security tables;
+  `client.WithDataSecure` and `Telegram.Secure`.
+- `keyring`: ETS keyrings — signature check, decryption, lookups,
+  credentials, Data Secure tables, writing test keyrings.
+
+## Not included
+
+- Data Secure S-A_Sync and point to point security; secure sessions over
+  UDP; secure routing in the server.
+
+## Interoperability
+
+Verified by hand (INTEROPERABILITY.md): secure tunnelling with xknx and
+Calimero tools as clients and Calimero server as server, secure device
+management with Calimero, secure routing both ways with xknx and
+Calimero tools, Data Secure both ways with xknx and from go-knx to
+Calimero tools. Calimero tools cannot yet send Data Secure telegrams to
+go-knx (they need S-A_Sync).
+
+---
+
 ## v0.2.1
 
 **Date:** 2026-10-29

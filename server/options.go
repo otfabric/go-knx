@@ -8,6 +8,7 @@ import (
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/knxnetip"
+	"github.com/otfabric/go-knx/secure"
 )
 
 // Defaults.
@@ -38,6 +39,7 @@ type options struct {
 	mac              [6]byte
 	discovery        bool
 	tcp              bool
+	secure           *secureOptions
 	concurrentBusmon bool
 	routing          bool
 	group            string
@@ -119,6 +121,44 @@ func WithTunnelAddresses(addrs ...knx.IndividualAddress) Option {
 			seen[a] = true
 		}
 		o.tunnels = append([]knx.IndividualAddress(nil), addrs...)
+		return nil
+	}
+}
+
+// SecureUser is a user of KNX IP Secure tunnelling.
+type SecureUser struct {
+	// Key is the user's password key (secure.UserPasswordKey).
+	Key secure.Key
+	// Address binds the user's tunnel to a tunnelling address of the
+	// server; 0 allows any free one.
+	Address knx.IndividualAddress
+}
+
+type secureOptions struct {
+	device secure.Key
+	users  map[uint8]SecureUser
+}
+
+// WithSecure makes the server a KNX IP Secure interface: tunnelling and
+// device management connections need a secure session over TCP (KNXnet/IP
+// Secure, SESSION_REQUEST...) authenticated as one of the users (IDs
+// 1..127); plain connection requests are refused with E_CONNECTION_TYPE.
+// device is the device authentication code (secure.DeviceAuthenticationCode).
+// Device management connections are for user 1, the management user.
+// Search and description stay plain. WithTCP must stay on.
+func WithSecure(device secure.Key, users map[uint8]SecureUser) Option {
+	return func(o *options) error {
+		if len(users) == 0 {
+			return invalid("secure server without users")
+		}
+		u := map[uint8]SecureUser{}
+		for id, user := range users {
+			if id == 0 || id > 127 {
+				return invalid("secure user %d (1..127)", id)
+			}
+			u[id] = user
+		}
+		o.secure = &secureOptions{device: device, users: u}
 		return nil
 	}
 }

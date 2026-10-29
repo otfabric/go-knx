@@ -66,13 +66,18 @@ go-knx therefore:
   HMAC-SHA256, salt "1.keyring.ets.knx.org") is described in a KNX support
   article — <https://support.knx.org/hc/en-us/articles/18968368409874-Keyring-File-Format>.
 
-## Unresolved, to settle before the secure work
+## Open questions
 
 1. The terms shown on the MyKNX download of the public set.
 2. Whether Application Notes 158 (Data Secure) and 159 (IP Secure) are in
-   the public v3.0.0 set or members-only. **This decides whether KNX IP
-   Secure and Data Secure can be implemented from authoritative sources
-   without membership.**
+   the public v3.0.0 set or members-only. **Decided 2026-10-29 by the
+   maintainers: KNX IP Secure and Data Secure are implemented from public
+   sources** — the MIT-licensed xknx implementation (algorithms, and the
+   AN158/AN159 example vectors its tests cite) and the KNX keyring support
+   article — and verified for interoperability against xknx and Calimero
+   (the GPL Calimero code is not read; it is a black-box peer). This
+   establishes interoperability with those stacks, not conformance to the
+   KNX specification; see SPECIFICATIONS.md, "KNX Secure sources".
 3. The licence of the ETS project XSD and its description.
 4. A written KNX Association position on open-source implementations and
    the word mark (support@knx.org).

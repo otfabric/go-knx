@@ -42,13 +42,35 @@ A KNXnet/IP network is part of a building's control system.
 
 ## KNX IP Secure and KNX Data Secure
 
-**Not implemented.** go-knx decodes the frame structures (SECURE_WRAPPER,
-SESSION_*, TIMER_NOTIFY) so that monitors can show them, but it does not
-establish secure sessions, does not encrypt or authenticate, and does not
-read ETS keyrings. A client never silently falls back from a secure to a
-plain connection because it has no secure connection at all; the secured
-service families a server announces are shown by discovery. Status and
-blockers: [docs/IMPLEMENTATION-STATUS.md](docs/IMPLEMENTATION-STATUS.md).
+Implemented from public sources (xknx's MIT implementation and the KNX
+keyring article; the KNX application notes 158/159 were not available) and
+verified for interoperability with xknx 4.0.0 and Calimero 3.0-M1 — **not**
+verified for conformance, and not certified
+([SPECIFICATIONS](docs/standards/SPECIFICATIONS.md#knx-secure-sources)).
+
+| Feature | Covered | Not covered |
+|---|---|---|
+| Secure tunnelling (`tunnel.WithSecure`, `server.WithSecure`) | X25519 session, user authentication, device authentication (client verifies when given the code), SECURE_WRAPPER with replay protection, keep alive, close; server binds users to tunnelling addresses, device management for user 1 only | secure sessions over UDP; secure device management by remote tools beyond property access |
+| Secure routing (`routing.WithSecure`) | backbone key, timer synchronisation as keeper or follower, latency tolerance | the server's own routing (`server.WithRouting`) stays plain |
+| Data Secure (`datasecure`, `client.WithDataSecure`) | S-A_Data with authentication and confidentiality (or authentication only) for group communication, per sender sequence numbers | S-A_Sync (a peer that asks go-knx for its sequence number gets no answer), point to point security, tool keys |
+| Keyrings (`keyring`) | signature check, decryption, lookups, writing test keyrings | — |
+
+Behaviour that matters for security:
+
+- A client configured for security never falls back to a plain
+  connection: a failed handshake is an error (`knx.ErrSecurity`).
+- A secure server refuses plain connection requests (E_CONNECTION_TYPE);
+  search and description stay plain, as the standard requires.
+- Frames that fail authentication, replay an old sequence number or carry
+  an outdated routing timer are dropped and counted
+  (`Metrics.OnDecodeError` / `OnDropped`), never delivered.
+- A client with Data Secure drops plain telegrams to secured groups.
+- The secure session's frames are sealed with AES-128-CCM; the key
+  agreement is X25519 (`crypto/ecdh`); comparisons of MACs are constant
+  time.
+- A Data Secure table starts its sending sequence number at the
+  milliseconds since 2018-01-05 when none is given; persist
+  `Table.Sequence()` if the clock may go backwards.
 
 ## Recommendations
 
@@ -58,16 +80,18 @@ blockers: [docs/IMPLEMENTATION-STATUS.md](docs/IMPLEMENTATION-STATUS.md).
   firewall, switch ACLs); block multicast 224.0.23.12 from other segments.
 - Prefer discovery and passive monitoring for diagnostics; send telegrams
   only to installations you are responsible for.
-- Where devices support it, use KNX IP Secure and Data Secure with a tool
-  that implements them, until go-knx does.
+- Where devices support it, use KNX IP Secure and Data Secure.
 - Run go-knx servers with the fewest tunnelling addresses you need.
 
 ## Credential handling
 
-go-knx handles no credentials today. When KNX Secure is implemented, keys
-and passwords will never be logged, never appear in error messages, and
-will be accepted from files or environment variables in the tools, not
-from command-line arguments.
+Keys and passwords are never logged and never appear in error messages
+(errors name users and addresses only). The library takes derived keys
+(`secure.Key`) or passwords and derives them once (PBKDF2-HMAC-SHA256,
+65536 iterations); it keeps them in memory for the life of the connection.
+knxctl reads secrets from environment variables or the keyring by default
+(`KNXCTL_KEYRING_PASSWORD`, `KNXCTL_USER_PASSWORD`, ...); command-line
+flags exist for tests and should be avoided on shared hosts.
 
 ## Known limitations
 
