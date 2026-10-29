@@ -640,10 +640,12 @@ func (s *Server) disconnect(c *tconn, notify bool, cause error) {
 	delete(s.conns, c.channel)
 	s.mu.Unlock()
 	c.closeOnce.Do(func() { close(c.done) })
+	// Record the disconnection before telling the client, so that
+	// metrics never lag behind what the client sees.
+	s.o.metrics.OnDisconnect(net.UDPAddrFromAddrPort(c.ctrl), c.channel, cause)
 	if notify {
 		s.write(c.ctrl, &knxnetip.DisconnectRequest{Channel: c.channel, Control: s.endpoint(c.ctrl)})
 	}
-	s.o.metrics.OnDisconnect(net.UDPAddrFromAddrPort(c.ctrl), c.channel, cause)
 	s.o.logger.Infof("server: channel %d disconnected (%v)", c.channel, cause)
 }
 
