@@ -5,6 +5,19 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.1.1
+
+**Date:** 2026-10-29
+**Previous release:** v0.1.0
+
+## Changes
+
+- The interop suite pins knx-interop v0.1.0: the xknx and KNXUltimate
+  images by digest from GHCR; the Calimero and knxd images (GPL binaries,
+  never published) built from the v0.1.0 tag. No library changes.
+
+---
+
 ## v0.1.0
 
 **Date:** 2026-10-29

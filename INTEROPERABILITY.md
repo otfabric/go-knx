@@ -31,7 +31,7 @@ docs/INTEROPERABILITY.md.
 ## Running
 
 ```bash
-make interop-images INTEROP_REF=feat/adapters   # build the adapter images (Docker)
+make interop-images   # build the Calimero and knxd images from knx-interop v0.1.0 (Docker)
 make interop                                    # writes bin/interop-report.json
 ```
 
