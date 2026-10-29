@@ -129,8 +129,8 @@ func ParseBody(t ServiceType, p []byte) (Message, error) {
 		if err != nil {
 			return nil, err
 		}
-		if len(rest) < 2 {
-			return nil, malformed("%s: cEMI of %d octets", t, len(rest))
+		if len(rest) < 1 {
+			return nil, malformed("%s: no cEMI frame", t)
 		}
 		if t == DeviceConfigurationRequestType {
 			return &DeviceConfigurationRequest{Channel: ch, Seq: seq, CEMI: clone(rest)}, nil
@@ -162,8 +162,8 @@ func ParseBody(t ServiceType, p []byte) (Message, error) {
 		}
 		return f, nil
 	case RoutingIndicationType, RoutingSystemBroadcastType:
-		if len(p) < 2 {
-			return nil, malformed("%s: cEMI of %d octets", t, len(p))
+		if len(p) < 1 {
+			return nil, malformed("%s: no cEMI frame", t)
 		}
 		return &RoutingIndication{SystemBroadcast: t == RoutingSystemBroadcastType, CEMI: clone(p)}, nil
 	case RoutingLostMessageType:

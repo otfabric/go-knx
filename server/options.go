@@ -4,7 +4,6 @@ package server
 
 import (
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/otfabric/go-knx"
@@ -30,25 +29,24 @@ const (
 type Option func(*options) error
 
 type options struct {
-	listen       string
-	iface        string
-	name         string
-	address      knx.IndividualAddress
-	tunnels      []knx.IndividualAddress
-	serial       [6]byte
-	mac          [6]byte
-	discovery    bool
-	routing      bool
-	group        string
-	aliveTime    time.Duration
-	reqTimeout   time.Duration
-	queueSize    int
-	routingRate  int
-	logger       knx.Logger
-	metrics      knx.Metrics
-	progMode     bool
-	ttl          int
-	multicastIfi *net.Interface
+	listen      string
+	iface       string
+	name        string
+	address     knx.IndividualAddress
+	tunnels     []knx.IndividualAddress
+	serial      [6]byte
+	mac         [6]byte
+	discovery   bool
+	routing     bool
+	group       string
+	aliveTime   time.Duration
+	reqTimeout  time.Duration
+	queueSize   int
+	routingRate int
+	logger      knx.Logger
+	metrics     knx.Metrics
+	progMode    bool
+	ttl         int
 }
 
 func defaultOptions() options {

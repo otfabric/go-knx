@@ -20,7 +20,7 @@ BIN_DIR := bin
 TEST_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/interop')
 # Packages whose coverage counts (TESTING.md): not the examples, the
 # end-to-end and interop suites or the test helpers.
-COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e' | grep -v '/interop' | grep -v '/internal/testutil' | paste -sd, -)
+COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e' | grep -v '/interop' | grep -v '/internal/fakeknx' | grep -v '/internal/leak' | paste -sd, -)
 COVER_MIN := 85
 
 all: build ## Build the examples
@@ -111,7 +111,7 @@ INTEROP_REF ?= main
 interop-images: ## Build the knx-interop images from source as :dev (needs Docker)
 	@rm -rf $(BIN_DIR)/knx-interop && mkdir -p $(BIN_DIR)
 	@git clone -q --depth 1 --branch $(INTEROP_REF) https://github.com/otfabric/knx-interop.git $(BIN_DIR)/knx-interop
-	@$(MAKE) -C $(BIN_DIR)/knx-interop images VERSION=dev
+	@$(MAKE) -C $(BIN_DIR)/knx-interop images VERSION=dev ADAPTERS="xknx knxultimate knxd calimero-server calimero-tools"
 
 interop: ## Run the interop suite against the knx-interop images (Docker; writes bin/interop-report.json)
 	@mkdir -p $(BIN_DIR)

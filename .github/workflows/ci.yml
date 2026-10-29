@@ -1,0 +1,106 @@
+name: CI
+run-name: "CI (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # Lint, vet, module checks and the test matrix on every supported Go
+  # version. Multicast does not reach every hosted runner's loopback the
+  # same way, so coverage is measured and uploaded by the multicast job
+  # (run-codecov: false here).
+  ci:
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v2
+    with:
+      codecov-name: go-knx
+      run-codecov: false
+      test-exclude-regex: "(/example(s)?($|/)|/interop($|/))"
+      coverpkg: >-
+        github.com/otfabric/go-knx,github.com/otfabric/go-knx/apdu,github.com/otfabric/go-knx/cemi,github.com/otfabric/go-knx/client,github.com/otfabric/go-knx/device,github.com/otfabric/go-knx/discovery,github.com/otfabric/go-knx/dpt,github.com/otfabric/go-knx/internal/mcast,github.com/otfabric/go-knx/internal/ratelimit,github.com/otfabric/go-knx/internal/udp,github.com/otfabric/go-knx/knxnetip,github.com/otfabric/go-knx/routing,github.com/otfabric/go-knx/server,github.com/otfabric/go-knx/tunnel
+      go-versions: '["1.23", "1.24", "1.25", "1.26"]'
+    secrets: inherit
+
+  # The whole suite on Linux, natively on amd64 and arm64, with
+  # KNX_REQUIRE_MULTICAST=1: the discovery and routing tests must run, not
+  # skip. Coverage is gated at 85 % and uploaded to Codecov.
+  linux:
+    name: Linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Tests with the race detector
+        run: make test-multicast
+      - name: Coverage (minimum 85 %)
+        env:
+          KNX_REQUIRE_MULTICAST: "1"
+        run: make coverage-check
+      - name: Upload to Codecov
+        if: matrix.arch == 'amd64'
+        uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          files: coverage.out
+          name: go-knx
+          fail_ci_if_error: false
+
+  # The tests on macOS and Windows; multicast tests skip where the runner
+  # does not loop multicast back.
+  portable:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 ./...
+        env:
+          GOWORK: "off"
+
+  checks:
+    name: Examples, cross builds, coverpkg
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.23.x"
+      - run: make build examples cross coverpkg-check
+
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.23.x"
+      - run: make fuzz FUZZTIME=15s
+      - name: Upload the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-failures
+          path: "**/testdata/fuzz/"
+          if-no-files-found: warn

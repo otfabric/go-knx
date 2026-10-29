@@ -237,6 +237,7 @@ func ParseGroupValue(tpdu []byte) (APCI, GroupValue, error) {
 			return p.APCI, GroupValue{Data: []byte{p.Short}, Small: true}, nil
 		}
 		return p.APCI, GroupValue{Data: p.Data}, nil
+	default:
+		return 0, GroupValue{}, fmt.Errorf("%w: apdu: %s is not a group value service", knx.ErrUnsupported, p.APCI)
 	}
-	return 0, GroupValue{}, fmt.Errorf("%w: apdu: %s is not a group value service", knx.ErrUnsupported, p.APCI)
 }

@@ -155,40 +155,56 @@ func (s *Server) Start(ctx context.Context) error {
 	needGroup := s.o.routing || s.o.discovery
 	sameSocket := needGroup && (listen.Addr().IsUnspecified() && listen.Port() == s.group.Port() &&
 		(!s.o.discovery || !s.o.routing || s.group.Port() == knxnetip.Port))
+	// The sockets are published under s.mu, so that Addr and Close may
+	// run concurrently with Start (Serve in another goroutine).
+	var main, disc *net.UDPConn
 	if sameSocket {
 		join := s.group
 		if !s.o.routing {
 			join = discGroup
 		}
-		if s.main, err = mcast.Listen(ifi, join, false, s.o.ttl); err != nil {
+		if main, err = mcast.Listen(ifi, join, false, s.o.ttl); err != nil {
 			return fmt.Errorf("server: %w", err)
 		}
 		if s.ifIP.IsValid() {
 			ip := s.ifIP
-			_ = mcast.Configure(s.main, &ip, false, s.o.ttl)
+			_ = mcast.Configure(main, &ip, false, s.o.ttl)
 		}
 	} else {
-		if s.main, err = net.ListenUDP("udp4", net.UDPAddrFromAddrPort(listen)); err != nil {
+		if main, err = net.ListenUDP("udp4", net.UDPAddrFromAddrPort(listen)); err != nil {
 			return fmt.Errorf("server: listen %s: %w", listen, err)
 		}
 		if s.o.routing {
-			s.main.Close()
+			_ = main.Close()
 			return invalid("routing needs the listen port to be the multicast group's port %d", s.group.Port())
 		}
 		if s.o.discovery {
-			if s.disc, err = mcast.Listen(ifi, discGroup, false, 1); err != nil {
+			if disc, err = mcast.Listen(ifi, discGroup, false, 1); err != nil {
 				s.o.logger.Warnf("server: discovery disabled: %v", err)
-				s.disc = nil
+				disc = nil
 			}
 		}
 	}
-	s.o.logger.Infof("server: listening on %s (discovery %t, routing %t)", s.main.LocalAddr(), s.o.discovery, s.o.routing)
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		_ = main.Close()
+		if disc != nil {
+			_ = disc.Close()
+		}
+		return knx.ErrClosed
+	}
+	s.main, s.disc = main, disc
 	s.wg.Add(2)
-	go s.readLoop(s.main)
-	go s.janitor()
-	if s.disc != nil {
+	if disc != nil {
 		s.wg.Add(1)
-		go s.readLoop(s.disc)
+	}
+	s.mu.Unlock()
+	s.o.logger.Infof("server: listening on %s (discovery %t, routing %t)", main.LocalAddr(), s.o.discovery, s.o.routing)
+	go s.readLoop(main)
+	go s.janitor()
+	if disc != nil {
+		go s.readLoop(disc)
 	}
 	return nil
 }
@@ -207,10 +223,13 @@ func (s *Server) Serve(ctx context.Context) error {
 
 // Addr returns the local endpoint of the server's socket.
 func (s *Server) Addr() netip.AddrPort {
-	if s.main == nil {
+	s.mu.Lock()
+	main := s.main
+	s.mu.Unlock()
+	if main == nil {
 		return netip.AddrPort{}
 	}
-	return udp.AddrPortOf(s.main.LocalAddr())
+	return udp.AddrPortOf(main.LocalAddr())
 }
 
 // Connections returns the open tunnelling connections.
@@ -239,16 +258,17 @@ func (s *Server) Close() error {
 	for _, c := range s.conns {
 		conns = append(conns, c)
 	}
+	main, disc := s.main, s.disc
 	s.mu.Unlock()
 	for _, c := range conns {
 		s.disconnect(c, true, nil)
 	}
 	close(s.closing)
-	if s.main != nil {
-		s.main.Close()
+	if main != nil {
+		_ = main.Close()
 	}
-	if s.disc != nil {
-		s.disc.Close()
+	if disc != nil {
+		_ = disc.Close()
 	}
 	s.wg.Wait()
 	return nil
@@ -260,6 +280,9 @@ func (s *Server) write(to netip.AddrPort, m knxnetip.Message) {
 		s.o.logger.Errorf("server: encode %s: %v", m.Service(), err)
 		return
 	}
+	// A write deadline: a multicast send the system blocks must not stall
+	// the reader and the distribution.
+	_ = s.main.SetWriteDeadline(time.Now().Add(time.Second))
 	if _, err := s.main.WriteToUDPAddrPort(b, to); err != nil {
 		s.o.logger.Debugf("server: write %s to %s: %v", m.Service(), to, err)
 		return
@@ -278,6 +301,18 @@ func (s *Server) endpoint(peer netip.AddrPort) knxnetip.HPAI {
 		}
 	}
 	return knxnetip.NewHPAI(netip.AddrPortFrom(ip, s.Addr().Port()))
+}
+
+// dataEndpoint is the data endpoint announced in a CONNECT_RESPONSE. A
+// client that asked for route back (NAT) gets the route back endpoint
+// 0.0.0.0:0 too: behind NAT the server's own address is not the one the
+// client reaches it by, and the client keeps sending to where it sent the
+// CONNECT_REQUEST.
+func (s *Server) dataEndpoint(m *knxnetip.ConnectRequest, from netip.AddrPort) knxnetip.HPAI {
+	if m.Control.IsRouteBack() || m.Data.IsRouteBack() {
+		return knxnetip.RouteBackHPAI()
+	}
+	return s.endpoint(from)
 }
 
 func (s *Server) readLoop(c *net.UDPConn) {
@@ -425,6 +460,9 @@ func (s *Server) dibs(types []knxnetip.DIBType, extended bool) knxnetip.DIBs {
 			ds = append(ds, knxnetip.KNXAddresses{Addresses: append([]knx.IndividualAddress{s.o.address}, s.o.tunnels...)})
 		case knxnetip.DIBTunnellingInfo:
 			ds = append(ds, s.tunnellingInfo())
+		default:
+			// Not offered by this server: IP configuration, secured
+			// services, manufacturer data.
 		}
 	}
 	return ds
@@ -532,7 +570,7 @@ func (s *Server) onConnect(from netip.AddrPort, m *knxnetip.ConnectRequest) {
 	for _, c := range s.conns {
 		if c.ctrl == ctrl && c.data == data {
 			s.mu.Unlock()
-			s.write(ctrl, &knxnetip.ConnectResponse{Channel: c.channel, Data: s.endpoint(from), CRD: knxnetip.CRD{Type: knxnetip.TunnelConnection, Address: c.addr}})
+			s.write(ctrl, &knxnetip.ConnectResponse{Channel: c.channel, Data: s.dataEndpoint(m, from), CRD: knxnetip.CRD{Type: knxnetip.TunnelConnection, Address: c.addr}})
 			return
 		}
 	}
@@ -584,7 +622,7 @@ func (s *Server) onConnect(from netip.AddrPort, m *knxnetip.ConnectRequest) {
 	s.conns[ch] = c
 	s.mu.Unlock()
 
-	s.write(ctrl, &knxnetip.ConnectResponse{Channel: ch, Data: s.endpoint(from), CRD: knxnetip.CRD{Type: knxnetip.TunnelConnection, Address: addr}})
+	s.write(ctrl, &knxnetip.ConnectResponse{Channel: ch, Data: s.dataEndpoint(m, from), CRD: knxnetip.CRD{Type: knxnetip.TunnelConnection, Address: addr}})
 	s.o.metrics.OnConnect(net.UDPAddrFromAddrPort(ctrl), ch)
 	s.o.logger.Infof("server: channel %d connected from %s as %s", ch, ctrl, addr)
 	s.wg.Add(1)
@@ -615,6 +653,9 @@ func (s *Server) janitor() {
 	tick := s.o.aliveTime / 10
 	if tick > time.Second {
 		tick = time.Second
+	}
+	if tick < time.Millisecond {
+		tick = time.Millisecond // NewTicker panics on 0
 	}
 	t := time.NewTicker(tick)
 	defer t.Stop()

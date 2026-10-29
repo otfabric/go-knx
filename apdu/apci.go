@@ -129,6 +129,7 @@ func (a APCI) Has6BitData() bool {
 		return true
 	case ADCResponseService:
 		return a&0x3F < 0x08
+	default:
+		return false
 	}
-	return false
 }

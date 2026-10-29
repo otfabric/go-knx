@@ -1,0 +1,63 @@
+name: Interop
+run-name: "Interop (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
+
+# Runs go-knx against the independent implementations of otfabric/knx-interop
+# (Calimero, knxd, xknx, KNXUltimate): go-knx's tunnelling client against
+# Calimero's and knxd's servers, and their clients against go-knx's server.
+# The adapter images are built from knx-interop's source at INTEROP_REF.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+    inputs:
+      interop-ref:
+        description: knx-interop ref to build the adapters from
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  interop:
+    name: Interop (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build the knx-interop adapter images
+        run: make interop-images INTEROP_REF=${{ inputs.interop-ref || 'main' }}
+      - name: Interop suite
+        run: make interop
+      - name: Summary
+        if: always()
+        run: |
+          [ -f bin/interop-report.json ] || exit 0
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, collections
+          d = json.load(open("bin/interop-report.json"))
+          c = collections.Counter(r["result"] for r in d["results"])
+          print("## Interop results\n")
+          print(", ".join(f"{k}: {v}" for k, v in sorted(c.items())) + "\n")
+          print("| Peer | Version | Scenario | Result | Detail |\n|---|---|---|---|---|")
+          for r in d["results"]:
+              print(f"| {r['peer']} | {r.get('peerVersion','')} | {r['scenario']} | {r['result']} | {r.get('detail','')[:120]} |")
+          PY
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: interop-report-${{ matrix.arch }}
+          path: bin/interop-report.json
+          if-no-files-found: warn

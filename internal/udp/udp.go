@@ -49,7 +49,7 @@ func LocalIPFor(remote netip.AddrPort) (netip.Addr, error) {
 	if err != nil {
 		return netip.Addr{}, err
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	ap := c.LocalAddr().(*net.UDPAddr).AddrPort()
 	return ap.Addr().Unmap(), nil
 }

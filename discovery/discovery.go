@@ -169,13 +169,13 @@ func open(ctx context.Context, o options, remote netip.AddrPort) (*socket, error
 		if ifIP.IsValid() {
 			ip = ifIP
 		} else if ip, err = udp.LocalIPFor(remote); err != nil {
-			c.Close()
+			_ = c.Close()
 			return nil, fmt.Errorf("discovery: no route to %s: %w", remote, err)
 		}
 	}
 	if remote.Addr().IsMulticast() {
 		if err := mcast.Configure(c, &ip, true, 1); err != nil {
-			c.Close()
+			_ = c.Close()
 			return nil, err
 		}
 	}
@@ -210,7 +210,7 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer s.conn.Close()
+	defer func() { _ = s.conn.Close() }()
 
 	var req knxnetip.Message = &knxnetip.SearchRequest{Discovery: s.hpai}
 	if o.extended {
@@ -220,10 +220,9 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// ctx ends the search through AfterFunc below, so that its expiry
+	// always reports ctx.Err().
 	deadline := time.Now().Add(o.timeout)
-	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
-		deadline = d
-	}
 	stop := context.AfterFunc(ctx, func() { _ = s.conn.SetReadDeadline(time.Now()) })
 	defer stop()
 
@@ -309,7 +308,7 @@ func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, 
 	if err != nil {
 		return nil, err
 	}
-	defer s.conn.Close()
+	defer func() { _ = s.conn.Close() }()
 	b, err := knxnetip.Marshal(&knxnetip.DescriptionRequest{Control: s.hpai})
 	if err != nil {
 		return nil, err
@@ -340,7 +339,8 @@ func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, 
 			}
 			m, err := knxnetip.Parse(buf[:n])
 			if err != nil {
-				return nil, err
+				o.logger.Debugf("discovery: drop datagram from %s: %v", from, err)
+				continue
 			}
 			if r, ok := m.(*knxnetip.DescriptionResponse); ok {
 				return r.DIBs, nil

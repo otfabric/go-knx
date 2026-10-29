@@ -291,6 +291,7 @@ func (d *Device) Handle(f *cemi.LData) []*cemi.LData {
 				val, _ := o.Type.Decode(raw)
 				cb(Event{Object: o, Service: svc, Source: f.Source, Group: g, Value: val, Raw: append([]byte(nil), raw...)})
 			}
+		default:
 		}
 	}
 	return out

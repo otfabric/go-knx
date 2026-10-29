@@ -33,13 +33,13 @@ func ExampleType_Parse() {
 	t := dpt.MustLookup("DPST-1-1")
 	v, _ := t.Parse("on")
 	b, _ := t.Encode(v)
-	fmt.Println(t.Name, v, b, t.Small())
+	fmt.Printf("%s %v % X %v\n", t.Name, v, b, t.Small())
 
 	hvac := dpt.MustLookup("20.102")
 	b, _ = hvac.Encode("economy")
 	m, _ := hvac.Decode(b)
-	fmt.Println(b, m)
+	fmt.Printf("% X %v\n", b, m)
 	// Output:
-	// DPT_Switch true [1] true
-	// [3] economy
+	// DPT_Switch true 01 true
+	// 03 economy
 }

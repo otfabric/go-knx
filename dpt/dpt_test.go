@@ -299,7 +299,7 @@ func TestExhaustiveSmallTypes(t *testing.T) {
 			}
 			ok++
 			out, err := ty.Encode(v)
-			if err != nil && !(ty.HasRange && ty.Kind == KindUnsigned) {
+			if err != nil && (!ty.HasRange || ty.Kind != KindUnsigned) {
 				t.Fatalf("%s: % X → %#v: %v", ty, b, v, err)
 			}
 			if err == nil && !bytes.Equal(out, b) {

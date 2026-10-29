@@ -163,8 +163,7 @@ func (c *Client) Close() error {
 type WriteOption func(*wopts) error
 
 type wopts struct {
-	t      *dpt.Type
-	window time.Duration
+	t *dpt.Type
 }
 
 // WithDPT sets the datapoint type of the value ("9.001").

@@ -51,6 +51,9 @@ type Conn struct {
 	txSeq   uint8
 	err     error
 	gen     uint64 // incremented on every (re)connection
+	// remoteClosed is set when the server disconnected the channel of
+	// generation gen: there is nothing left to disconnect.
+	remoteClosed bool
 
 	sendMu sync.Mutex
 	ackCh  chan *knxnetip.TunnellingAck
@@ -122,7 +125,7 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		ip := bound.Addr()
 		if !ip.IsValid() || ip.IsUnspecified() {
 			if ip, err = udp.LocalIPFor(server); err != nil {
-				sock.Close()
+				_ = sock.Close()
 				return nil, fmt.Errorf("tunnel: no route to %s: %w", server, err)
 			}
 		}
@@ -232,6 +235,7 @@ func (c *Conn) connect(ctx context.Context) error {
 		c.channel, c.dataEP, c.addr = resp.Channel, data, resp.CRD.Address
 		c.rxSeq, c.txSeq = 0, 0
 		c.gen++
+		c.remoteClosed = false
 		c.mu.Unlock()
 		c.setState(knx.StateConnected, nil)
 		c.o.metrics.OnConnect(net.UDPAddrFromAddrPort(c.server), resp.Channel)
@@ -462,6 +466,11 @@ func (c *Conn) dispatch(from netip.AddrPort, m knxnetip.Message) {
 			to = m.Control.Addr
 		}
 		_ = c.write(to, &knxnetip.DisconnectResponse{Channel: ch, Status: knxnetip.StatusNoError})
+		c.mu.Lock()
+		if c.gen == gen {
+			c.remoteClosed = true
+		}
+		c.mu.Unlock()
 		c.signalLost(gen, fmt.Errorf("%w: tunnel: the server disconnected channel %d", knx.ErrConnectionLost, ch))
 	default:
 		c.o.logger.Debugf("tunnel: ignore %s from %s", m.Service(), from)
@@ -603,7 +612,7 @@ func (c *Conn) supervise() {
 		}
 		c.mu.Lock()
 		stale := ev.gen != c.gen
-		ch := c.channel
+		ch, remoteClosed := c.channel, c.remoteClosed
 		c.mu.Unlock()
 		if stale {
 			continue
@@ -615,7 +624,9 @@ func (c *Conn) supervise() {
 			return
 		}
 		// Tell the server, in case it still holds the channel.
-		_ = c.write(c.server, &knxnetip.DisconnectRequest{Channel: ch, Control: c.hpai})
+		if !remoteClosed {
+			_ = c.write(c.server, &knxnetip.DisconnectRequest{Channel: ch, Control: c.hpai})
+		}
 		c.setState(knx.StateReconnecting, ev.err)
 		backoff := c.o.reconnectMin
 		for {
@@ -660,12 +671,12 @@ func (c *Conn) Close() error {
 func (c *Conn) shutdown(cause error) {
 	c.closeMu.Do(func() {
 		c.mu.Lock()
-		state, ch := c.state, c.channel
+		state, ch, remoteClosed := c.state, c.channel, c.remoteClosed
 		if cause != nil {
 			c.err = cause
 		}
 		c.mu.Unlock()
-		if state == knx.StateConnected {
+		if state == knx.StateConnected && !remoteClosed {
 			drain(c.discCh)
 			if err := c.write(c.server, &knxnetip.DisconnectRequest{Channel: ch, Control: c.hpai}); err == nil {
 				t := time.NewTimer(time.Second)

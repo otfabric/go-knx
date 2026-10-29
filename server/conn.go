@@ -144,7 +144,9 @@ func (c *tconn) sender() {
 			for {
 				select {
 				case a := <-c.ackCh:
-					if a.seq != seq {
+					if a.seq != seq || a.status != knxnetip.StatusNoError {
+						// A late ACK, or one with an error status: the
+						// request counts as not acknowledged.
 						continue
 					}
 					acked = true

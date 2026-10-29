@@ -234,6 +234,11 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 		}
 		c.mu.Unlock()
 	}
+	wd := time.Now().Add(time.Second)
+	if d, ok := ctx.Deadline(); ok && d.Before(wd) {
+		wd = d
+	}
+	_ = c.sock.SetWriteDeadline(wd)
 	if _, err := c.sock.WriteToUDPAddrPort(frame, c.group); err != nil {
 		return fmt.Errorf("routing: send: %w", err)
 	}

@@ -22,7 +22,7 @@ func Listen(ifi *net.Interface, group netip.AddrPort, loopback bool, ttl int) (*
 		return nil, fmt.Errorf("join %s: %w", group, err)
 	}
 	if err := Configure(c, nil, loopback, ttl); err != nil {
-		c.Close()
+		_ = c.Close()
 		return nil, err
 	}
 	return c, nil
