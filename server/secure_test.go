@@ -181,6 +181,13 @@ func TestSecureSession(t *testing.T) {
 	w, _ := r.sess.Wrap([]byte{6, 0x10, 2, 5, 0, 6})
 	r.write(w)
 	r.writeWrapped(&knxnetip.SessionStatus{Status: knxnetip.SessionKeepAlive})
+	// Device management is for user 1 only.
+	dm := connectReq()
+	dm.CRI = knxnetip.CRI{Type: knxnetip.DeviceManagementConnection}
+	r.writeWrapped(dm)
+	if cr, ok := r.mustRead().(*knxnetip.ConnectResponse); !ok || cr.Status != knxnetip.StatusConnectionType {
+		t.Fatalf("device management as user 2: %+v", cr)
+	}
 	r.writeWrapped(connectReq())
 	cr, ok := r.mustRead().(*knxnetip.ConnectResponse)
 	if !ok || cr.Status != knxnetip.StatusNoError || cr.CRD.Address != knx.MustParseIndividualAddress("1.1.10") {
