@@ -67,6 +67,14 @@ Recorded in knx-interop `tests/known-differences.tsv`:
 
 None of these were reported upstream yet.
 
+## Open interoperability failures
+
+Two of 344 matrix results fail, both between third-party implementations:
+knxd as client through the Calimero server for DPT 5.010 (reproducible,
+not analysed yet), and one intermittent probe heartbeat check on the
+Calimero server right after its outage. Details: knx-interop
+docs/INTEROPERABILITY.md.
+
 ## Blockers
 
 1. **KNX IP Secure and Data Secure** need Application Notes 158/159 or the
