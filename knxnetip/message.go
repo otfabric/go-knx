@@ -216,15 +216,17 @@ func (*SearchRequest) Service() ServiceType { return SearchRequestType }
 func (m *SearchRequest) AppendBody(b []byte) []byte { return m.Discovery.AppendTo(b) }
 
 // SearchParamType is the type of a search request parameter (SRP).
+// The codes agree with Calimero and xknx (an earlier go-knx used codes one
+// higher, found by the knx-interop matrix).
 type SearchParamType uint8
 
 // Search request parameter types.
 const (
-	SRPInvalid         SearchParamType = 0x01
-	SRPProgrammingMode SearchParamType = 0x02
-	SRPMACAddress      SearchParamType = 0x03
-	SRPService         SearchParamType = 0x04
-	SRPRequestDIBs     SearchParamType = 0x05
+	SRPInvalid         SearchParamType = 0x00
+	SRPProgrammingMode SearchParamType = 0x01
+	SRPMACAddress      SearchParamType = 0x02
+	SRPService         SearchParamType = 0x03
+	SRPRequestDIBs     SearchParamType = 0x04
 )
 
 // SearchParam is a search request parameter of SEARCH_REQUEST_EXTENDED.

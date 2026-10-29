@@ -37,6 +37,13 @@ busmonitor, in the client and in the server.
 
 ## Fixes
 
+- **Search request parameter types** of SEARCH_REQUEST_EXTENDED were one
+  too high (`knxnetip.SRPProgrammingMode` was 0x02 and so on). They are now
+  0x00 invalid, 0x01 programming mode, 0x02 MAC address, 0x03 service,
+  0x04 request DIBs, as Calimero and xknx define them. Found because xknx's
+  describe, once the server announced core v2, sends an extended search
+  with "request DIBs" (0x04), which the server took for "select by
+  service" and did not answer.
 - Feature frames of the server consume the client's receive sequence
   number (found with the new feature services).
 
