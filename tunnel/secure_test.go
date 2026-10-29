@@ -4,6 +4,7 @@ package tunnel
 
 import (
 	"errors"
+	"io"
 	"net"
 	"net/netip"
 	"testing"
@@ -59,11 +60,19 @@ func (s *scripted) respond(device secure.Key) {
 
 func secureDial(t *testing.T, cred secure.Credentials, script func(s *scripted)) (*secureTransport, error) {
 	t.Helper()
+	st, done, err := secureDialAsync(t, cred, script)
+	<-done
+	return st, err
+}
+
+// secureDialAsync returns before the script ends.
+func secureDialAsync(t *testing.T, cred secure.Credentials, script func(s *scripted)) (*secureTransport, <-chan struct{}, error) {
+	t.Helper()
 	ln, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	t.Cleanup(func() { ln.Close() })
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -82,8 +91,7 @@ func secureDial(t *testing.T, cred secure.Credentials, script func(s *scripted))
 	if err != nil {
 		_ = c.Close()
 	}
-	<-done
-	return st, err
+	return st, done, err
 }
 
 func TestHandshakeErrors(t *testing.T) {
@@ -132,7 +140,7 @@ func TestSecureTransport(t *testing.T) {
 	dev, _ := secure.DeviceAuthenticationCode("dev")
 	cred, _ := secure.NewCredentials(2, "pw", "dev")
 	got := make(chan knxnetip.Message, 8)
-	st, err := secureDial(t, cred, func(s *scripted) {
+	st, done, err := secureDialAsync(t, cred, func(s *scripted) {
 		s.respond(dev)
 		auth := s.read().(*knxnetip.SecureWrapper)
 		if _, err := s.sess.Unwrap(auth); err != nil {
@@ -157,7 +165,10 @@ func TestSecureTransport(t *testing.T) {
 		s.write(bad)
 		s.writeWrapped(&knxnetip.ConnectionStateResponse{Channel: 1})
 		s.writeWrapped(&knxnetip.SessionStatus{Status: knxnetip.SessionClose})
-		time.Sleep(100 * time.Millisecond)
+		// Read until the client closes: closing with unread data would
+		// reset the connection (Windows drops what the client has not
+		// read yet).
+		_, _ = io.Copy(io.Discard, s.c)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -184,10 +195,8 @@ func TestSecureTransport(t *testing.T) {
 	default:
 		t.Error("no keep alive")
 	}
-	if _, _, err := st.readFrom(buf); !errors.Is(err, errStreamClosed) {
-		t.Errorf("after the server closed: %v", err)
-	}
 	_ = st.close()
+	<-done
 	_ = st.close()
 	st.sendKeepAlive() // closed: nothing sent
 	if _, _, err := st.readFrom(buf); !errors.Is(err, net.ErrClosed) {
