@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -583,8 +584,12 @@ func TestIntegerBoundaries(t *testing.T) {
 	// A uint64 beyond int64 is not a DPT 29 value.
 	_, err := MustLookup("29.010").Encode(uint64(math.MaxInt64) + 1)
 	wantInvalid(t, "29.010 2^63", err)
-	_, err = MustLookup("29.010").Encode(uint(math.MaxInt64) + 1)
-	wantInvalid(t, "29.010 uint 2^63", err)
+	if strconv.IntSize == 64 {
+		// uint has 64 bits here: one above the int64 range.
+		big := ^uint(0)
+		_, err = MustLookup("29.010").Encode(big)
+		wantInvalid(t, "29.010 uint max", err)
+	}
 }
 
 func fmtInt(v any) int64 {

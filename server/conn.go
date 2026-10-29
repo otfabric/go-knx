@@ -19,28 +19,78 @@ type ack struct {
 	status knxnetip.Status
 }
 
-// tconn is a tunnelling connection.
+// connKind is the kind of a connection.
+type connKind int
+
+const (
+	kindTunnel     connKind = iota // tunnelling, link layer
+	kindBusmonitor                 // tunnelling, busmonitor layer
+	kindDevMgmt                    // device management
+)
+
+func (k connKind) String() string {
+	switch k {
+	case kindBusmonitor:
+		return "busmonitor"
+	case kindDevMgmt:
+		return "device management"
+	default:
+		return "tunnel"
+	}
+}
+
+// peer is the sender of a frame: a UDP endpoint, or a TCP connection.
+type peer struct {
+	addr netip.AddrPort
+	tcp  *tcpConn
+}
+
+// out is an item of a connection's send queue: a cEMI frame, or a
+// tunnelling feature frame.
+type out struct {
+	cemi    []byte
+	feature *knxnetip.TunnellingFeature
+}
+
+// tconn is a KNXnet/IP connection: tunnelling (link layer or
+// busmonitor) or device management, over UDP or TCP.
 type tconn struct {
 	s       *Server
+	kind    connKind
 	channel uint8
 	addr    knx.IndividualAddress
 	ctrl    netip.AddrPort
 	data    netip.AddrPort
+	tcp     *tcpConn // nil over UDP
 
 	mu       sync.Mutex
 	rxSeq    uint8
 	txSeq    uint8
 	lastSeen time.Time
+	infoOn   bool // tunnelling v2 interface feature info service
 
-	queue     chan []byte
+	queue     chan out
 	ackCh     chan ack
 	done      chan struct{}
 	closeOnce sync.Once
 }
 
-// from accepts datagrams from the client's address.
-func (c *tconn) from(a netip.AddrPort) bool {
-	return a.Addr() == c.ctrl.Addr() || a.Addr() == c.data.Addr()
+// from accepts frames from the client: its TCP connection, or over UDP
+// its address.
+func (c *tconn) from(p peer) bool {
+	if c.tcp != nil || p.tcp != nil {
+		return c.tcp == p.tcp
+	}
+	return p.addr.Addr() == c.ctrl.Addr() || p.addr.Addr() == c.data.Addr()
+}
+
+// send writes a frame to the client's data endpoint.
+func (c *tconn) send(m knxnetip.Message) {
+	if c.tcp != nil {
+		c.tcp.write(m)
+		return
+	}
+	c.s.write(c.data, m)
 }
 
 func offerSeq(ch chan ack, v ack) {
@@ -58,42 +108,66 @@ func offerSeq(ch chan ack, v ack) {
 	}
 }
 
-func (c *tconn) enqueue(b []byte) {
+func (c *tconn) enqueue(o out) {
 	select {
 	case <-c.done:
-	case c.queue <- b:
+	case c.queue <- o:
 	default:
 		c.s.o.metrics.OnDropped(net.UDPAddrFromAddrPort(c.data), "queue_full")
 	}
 }
 
-// onRequest handles a TUNNELLING_REQUEST from the client.
-func (c *tconn) onRequest(from netip.AddrPort, m *knxnetip.TunnellingRequest) {
+// accept implements the receiver side of the sequence counter for a
+// request of the client and acknowledges it (over UDP). It reports
+// whether the request is new.
+func (c *tconn) accept(p peer, seq uint8, ackType knxnetip.ServiceType) bool {
 	c.mu.Lock()
 	expected := c.rxSeq
 	deliver, ackIt := false, false
-	switch m.Seq {
-	case expected:
+	switch {
+	case c.tcp != nil:
+		// TCP delivers in order, without repetitions and without ACKs.
+		c.rxSeq = seq + 1
+		deliver = true
+	case seq == expected:
 		c.rxSeq++
 		deliver, ackIt = true, true
-	case expected - 1:
+	case seq == expected-1:
 		ackIt = true
 	}
 	c.lastSeen = time.Now()
 	c.mu.Unlock()
-	fa := net.UDPAddrFromAddrPort(from)
-	if !ackIt {
+	fa := net.UDPAddrFromAddrPort(p.addr)
+	if !deliver && !ackIt {
 		c.s.o.metrics.OnDropped(fa, "sequence")
-		return
+		return false
 	}
-	c.s.write(c.data, &knxnetip.TunnellingAck{Channel: c.channel, Seq: m.Seq, Status: knxnetip.StatusNoError})
+	if ackIt {
+		if ackType == knxnetip.DeviceConfigurationAckType {
+			c.send(&knxnetip.DeviceConfigurationAck{Channel: c.channel, Seq: seq, Status: knxnetip.StatusNoError})
+		} else {
+			c.send(&knxnetip.TunnellingAck{Channel: c.channel, Seq: seq, Status: knxnetip.StatusNoError})
+		}
+	}
 	if !deliver {
 		c.s.o.metrics.OnDropped(fa, "duplicate")
+	}
+	return deliver
+}
+
+// onRequest handles a TUNNELLING_REQUEST from the client.
+func (c *tconn) onRequest(p peer, m *knxnetip.TunnellingRequest) {
+	if !c.accept(p, m.Seq, knxnetip.TunnellingAckType) {
+		return
+	}
+	if c.kind != kindTunnel {
+		// A busmonitor connection is receive only.
+		c.s.o.logger.Debugf("server: channel %d (%s): ignore a tunnelling request", c.channel, c.kind)
 		return
 	}
 	f, err := cemi.Parse(m.CEMI)
 	if err != nil {
-		c.s.o.metrics.OnDecodeError(fa, err)
+		c.s.o.metrics.OnDecodeError(net.UDPAddrFromAddrPort(p.addr), err)
 		return
 	}
 	ld, ok := f.(*cemi.LData)
@@ -112,34 +186,130 @@ func (c *tconn) onRequest(from netip.AddrPort, m *knxnetip.TunnellingRequest) {
 	con.MsgCode = cemi.LDataCon
 	con.Ctrl1 &^= cemi.Ctrl1ConfirmError
 	if b, err := cemi.Marshal(con); err == nil {
-		c.enqueue(b)
+		c.enqueue(out{cemi: b})
 	}
 }
 
-// sender sends the queued cEMI frames as TUNNELLING_REQUESTs, one at a
-// time, repeating once without ACK; a second failure ends the
-// connection.
+// onDeviceConfiguration handles a DEVICE_CONFIGURATION_REQUEST: a local
+// device management request (M_PropRead.req...) to the server.
+func (c *tconn) onDeviceConfiguration(p peer, m *knxnetip.DeviceConfigurationRequest) {
+	if !c.accept(p, m.Seq, knxnetip.DeviceConfigurationAckType) {
+		return
+	}
+	f, err := cemi.Parse(m.CEMI)
+	if err != nil {
+		c.s.o.metrics.OnDecodeError(net.UDPAddrFromAddrPort(p.addr), err)
+		return
+	}
+	if resp := c.s.props.handle(f); resp != nil {
+		if b, err := cemi.Marshal(resp); err == nil {
+			c.enqueue(out{cemi: b})
+		}
+	}
+}
+
+// onFeature handles TUNNELLING_FEATURE_GET and _SET (tunnelling v2).
+func (c *tconn) onFeature(p peer, m *knxnetip.TunnellingFeature) {
+	if m.Type != knxnetip.TunnellingFeatureGetType && m.Type != knxnetip.TunnellingFeatureSetType {
+		return
+	}
+	if !c.accept(p, m.Seq, knxnetip.TunnellingAckType) {
+		return
+	}
+	value, code := c.feature(m.Type == knxnetip.TunnellingFeatureSetType, m.Feature, m.Value)
+	c.enqueue(out{feature: &knxnetip.TunnellingFeature{Type: knxnetip.TunnellingFeatureResponseType, Channel: c.channel,
+		Feature: m.Feature, ReturnCode: code, Value: value}})
+}
+
+// Return codes of TUNNELLING_FEATURE_RESPONSE.
+const (
+	featureOK          = 0x00
+	featureUnsupported = 0x01 // the feature is not supported
+	featureReadOnly    = 0x02 // the feature cannot be written
+	featureBadValue    = 0x03 // the value is not valid for the feature
+)
+
+func (c *tconn) feature(set bool, f knxnetip.FeatureID, v []byte) ([]byte, uint8) {
+	switch f {
+	case knxnetip.FeatureInfoServiceEnable:
+		if set {
+			if len(v) != 1 || v[0] > 1 {
+				return nil, featureBadValue
+			}
+			c.mu.Lock()
+			c.infoOn = v[0] == 1
+			c.mu.Unlock()
+			return v, featureOK
+		}
+		c.mu.Lock()
+		on := c.infoOn
+		c.mu.Unlock()
+		if on {
+			return []byte{1}, featureOK
+		}
+		return []byte{0}, featureOK
+	case knxnetip.FeatureSupportedEMIType, knxnetip.FeatureDeviceDescriptorType0, knxnetip.FeatureBusConnectionStatus,
+		knxnetip.FeatureManufacturerCode, knxnetip.FeatureActiveEMIType, knxnetip.FeatureIndividualAddress,
+		knxnetip.FeatureMaxAPDULength:
+		if set {
+			return nil, featureReadOnly
+		}
+	}
+	switch f {
+	case knxnetip.FeatureSupportedEMIType:
+		return []byte{0x00, 0x04}, featureOK // cEMI
+	case knxnetip.FeatureDeviceDescriptorType0:
+		return []byte{byte(DeviceDescriptor >> 8), byte(DeviceDescriptor & 0xFF)}, featureOK
+	case knxnetip.FeatureBusConnectionStatus:
+		return []byte{0x01}, featureOK // connected
+	case knxnetip.FeatureManufacturerCode:
+		return []byte{c.s.o.serial[0], c.s.o.serial[1]}, featureOK
+	case knxnetip.FeatureActiveEMIType:
+		return []byte{0x03}, featureOK // cEMI
+	case knxnetip.FeatureIndividualAddress:
+		return []byte{byte(c.addr >> 8), byte(c.addr)}, featureOK
+	case knxnetip.FeatureMaxAPDULength:
+		return []byte{0x00, byte(MaxAPDU)}, featureOK
+	default:
+		return nil, featureUnsupported
+	}
+}
+
+// sender sends the queued frames, one at a time. Over UDP each waits for
+// its ACK and is repeated once; a second failure ends the connection.
 func (c *tconn) sender() {
 	defer c.s.wg.Done()
 	for {
-		var b []byte
+		var o out
 		select {
 		case <-c.done:
 			return
 		case <-c.s.closing:
 			return
-		case b = <-c.queue:
+		case o = <-c.queue:
 		}
 		c.mu.Lock()
 		seq := c.txSeq
 		c.mu.Unlock()
-		req := &knxnetip.TunnellingRequest{Channel: c.channel, Seq: seq, CEMI: b}
-		acked := false
+		var req knxnetip.Message
+		switch {
+		case o.feature != nil:
+			o.feature.Seq = seq
+			req = o.feature
+		case c.kind == kindDevMgmt:
+			req = &knxnetip.DeviceConfigurationRequest{Channel: c.channel, Seq: seq, CEMI: o.cemi}
+		default:
+			req = &knxnetip.TunnellingRequest{Channel: c.channel, Seq: seq, CEMI: o.cemi}
+		}
+		acked := c.tcp != nil
+		if acked {
+			c.send(req)
+		}
 		for attempt := 0; attempt < 2 && !acked; attempt++ {
 			if attempt > 0 {
 				c.s.o.metrics.OnRetransmit(net.UDPAddrFromAddrPort(c.data), c.channel)
 			}
-			c.s.write(c.data, req)
+			c.send(req)
 			t := time.NewTimer(c.s.o.reqTimeout)
 		wait:
 			for {
@@ -162,7 +332,7 @@ func (c *tconn) sender() {
 			t.Stop()
 		}
 		if !acked {
-			c.s.disconnect(c, true, fmt.Errorf("%w: no TUNNELLING_ACK for sequence %d", knx.ErrConnectionLost, seq))
+			c.s.disconnect(c, true, fmt.Errorf("%w: no acknowledgement for sequence %d", knx.ErrConnectionLost, seq))
 			return
 		}
 		c.mu.Lock()

@@ -5,6 +5,58 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.2.0
+
+**Date:** 2026-10-29
+**Previous release:** v0.1.1
+
+## Summary
+
+KNXnet/IP over TCP, tunnelling feature services, device management and
+busmonitor, in the client and in the server.
+
+## Additions
+
+- **TCP** (KNXnet/IP core v2): `tunnel.WithTCP()`; the server accepts TCP
+  on its port (`server.WithTCP`, default on) and announces core v2 and
+  tunnelling v2. No TUNNELLING_ACKs over TCP; connections end with their
+  TCP connection.
+- **Tunnelling feature services** (v2): `Conn.FeatureGet`,
+  `Conn.FeatureSet`; the server answers supported and active EMI type,
+  device descriptor, bus connection status, manufacturer code, individual
+  address, maximum APDU length and the info service switch.
+- **Device management**: package `devmgmt` (`PropRead`, `PropElements`,
+  `PropWrite`, `PropertyError`), `tunnel.WithDeviceManagement`; the server
+  answers M_PropRead.req for its device, router and KNXnet/IP parameter
+  objects, including the interface object list tools address objects by.
+- **Busmonitor**: `tunnel.WithLayer(knxnetip.TunnelBusmonitor)` receives
+  L_Busmon.ind; `cemi.TP1Frame` and `cemi.ParseTP1` (fuzzed) encode and
+  decode TP1 standard frames with the check octet. The server sends
+  L_Busmon.ind to busmonitor connections; busmonitor and link layer
+  tunnelling exclude each other unless `server.WithConcurrentBusmonitor`.
+
+## Fixes
+
+- **Search request parameter types** of SEARCH_REQUEST_EXTENDED were one
+  too high (`knxnetip.SRPProgrammingMode` was 0x02 and so on). They are now
+  0x00 invalid, 0x01 programming mode, 0x02 MAC address, 0x03 service,
+  0x04 request DIBs, as Calimero and xknx define them. Found because xknx's
+  describe, once the server announced core v2, sends an extended search
+  with "request DIBs" (0x04), which the server took for "select by
+  service" and did not answer.
+- Feature frames of the server consume the client's receive sequence
+  number (found with the new feature services).
+
+## Verification
+
+go-knx's interop suite against knx-interop v0.1.0 images: TCP tunnel and
+feature services, device management (UDP, TCP) against calimero-server
+3.0-M1; busmonitor against knxd 0.14.73 (TP1 frames and check octets of
+knxd decoded). By hand: Calimero tools over TCP, `get --local` and
+`monitor` against the go-knx server.
+
+---
+
 ## v0.1.1
 
 **Date:** 2026-10-29

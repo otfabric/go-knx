@@ -38,7 +38,7 @@ import (
 // Conn is a KNXnet/IP tunnelling connection.
 type Conn struct {
 	o      options
-	sock   *net.UDPConn
+	tr     transport
 	server netip.AddrPort // control endpoint
 	hpai   knxnetip.HPAI
 
@@ -57,6 +57,7 @@ type Conn struct {
 
 	sendMu sync.Mutex
 	ackCh  chan *knxnetip.TunnellingAck
+	featCh chan *knxnetip.TunnellingFeature
 	connCh chan *knxnetip.ConnectResponse
 	csCh   chan *knxnetip.ConnectionStateResponse
 	discCh chan *knxnetip.DisconnectResponse
@@ -103,12 +104,30 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 			return nil, err
 		}
 	}
-	sock, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(local))
-	if err != nil {
-		return nil, fmt.Errorf("tunnel: listen %s: %w", local, err)
+	if o.tcp && o.reconnect {
+		return nil, invalid("WithTCP and WithReconnect: reconnect over TCP is not implemented")
+	}
+	var tr transport
+	if o.tcp {
+		d := net.Dialer{Timeout: o.connectTimeout}
+		if o.local != "" {
+			d.LocalAddr = net.TCPAddrFromAddrPort(local)
+		}
+		tc, err := d.DialContext(ctx, "tcp4", server.String())
+		if err != nil {
+			return nil, fmt.Errorf("tunnel: dial tcp %s: %w", server, err)
+		}
+		tr = &tcpTransport{c: tc, server: server}
+	} else {
+		sock, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(local))
+		if err != nil {
+			return nil, fmt.Errorf("tunnel: listen %s: %w", local, err)
+		}
+		tr = udpTransport{c: sock}
 	}
 	c := &Conn{
-		o: o, sock: sock, server: server,
+		o: o, tr: tr, server: server,
+		featCh:  make(chan *knxnetip.TunnellingFeature, 4),
 		ackCh:   make(chan *knxnetip.TunnellingAck, 1),
 		connCh:  make(chan *knxnetip.ConnectResponse, 1),
 		csCh:    make(chan *knxnetip.ConnectionStateResponse, 1),
@@ -118,14 +137,17 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		closing: make(chan struct{}),
 		done:    make(chan struct{}),
 	}
-	if o.nat {
+	switch {
+	case o.tcp:
+		c.hpai = knxnetip.TCPHPAI()
+	case o.nat:
 		c.hpai = knxnetip.RouteBackHPAI()
-	} else {
-		bound := udp.AddrPortOf(sock.LocalAddr())
+	default:
+		bound := udp.AddrPortOf(tr.localAddr())
 		ip := bound.Addr()
 		if !ip.IsValid() || ip.IsUnspecified() {
 			if ip, err = udp.LocalIPFor(server); err != nil {
-				_ = sock.Close()
+				_ = tr.close()
 				return nil, fmt.Errorf("tunnel: no route to %s: %w", server, err)
 			}
 		}
@@ -170,7 +192,10 @@ func (c *Conn) State() knx.State {
 func (c *Conn) Server() netip.AddrPort { return c.server }
 
 // LocalAddr returns the local endpoint of the socket.
-func (c *Conn) LocalAddr() net.Addr { return c.sock.LocalAddr() }
+func (c *Conn) LocalAddr() net.Addr { return c.tr.localAddr() }
+
+// TCP reports a connection over TCP (KNXnet/IP core v2).
+func (c *Conn) TCP() bool { return c.tr.stream() }
 
 // Done is closed when the Conn is closed, by Close or because the
 // connection was lost without reconnection.
@@ -199,7 +224,7 @@ func (c *Conn) write(to netip.AddrPort, m knxnetip.Message) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.sock.WriteToUDPAddrPort(b, to); err != nil {
+	if err := c.tr.writeTo(b, to); err != nil {
 		return fmt.Errorf("tunnel: write %s to %s: %w", m.Service(), to, err)
 	}
 	c.o.metrics.OnFrameSent(net.UDPAddrFromAddrPort(to), uint16(m.Service()), len(b))
@@ -210,6 +235,9 @@ func (c *Conn) write(to netip.AddrPort, m knxnetip.Message) error {
 func (c *Conn) connect(ctx context.Context) error {
 	drain(c.connCh)
 	cri := knxnetip.TunnelCRI(c.o.layer)
+	if c.o.devmgmt {
+		cri = knxnetip.CRI{Type: knxnetip.DeviceManagementConnection}
+	}
 	if c.o.hasAddress {
 		cri.HasAddress, cri.Address = true, c.o.address
 	}
@@ -224,11 +252,11 @@ func (c *Conn) connect(ctx context.Context) error {
 		if resp.Status != knxnetip.StatusNoError {
 			return &knxnetip.StatusError{Service: knxnetip.ConnectResponseType, Status: resp.Status}
 		}
-		if resp.CRD.Type != knxnetip.TunnelConnection {
+		if want := cri.Type; resp.CRD.Type != want {
 			return fmt.Errorf("%w: tunnel: CONNECT_RESPONSE with a %s CRD", knx.ErrMalformed, resp.CRD.Type)
 		}
 		data := resp.Data.Addr
-		if c.o.nat || resp.Data.IsRouteBack() {
+		if c.o.nat || c.o.tcp || resp.Data.IsRouteBack() {
 			data = c.server
 		}
 		c.mu.Lock()
@@ -300,8 +328,19 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	}
 
 	drain(c.ackCh)
-	req := &knxnetip.TunnellingRequest{Channel: ch, Seq: seq, CEMI: b}
+	var req knxnetip.Message = &knxnetip.TunnellingRequest{Channel: ch, Seq: seq, CEMI: b}
+	if c.o.devmgmt {
+		req = &knxnetip.DeviceConfigurationRequest{Channel: ch, Seq: seq, CEMI: b}
+	}
 	acked := false
+	if c.tr.stream() {
+		// TCP is reliable: tunnelling requests are not acknowledged.
+		if err := c.write(dataEP, req); err != nil {
+			c.signalLost(gen, fmt.Errorf("%w: %v", knx.ErrConnectionLost, err))
+			return err
+		}
+		acked = true
+	}
 	for attempt := 0; attempt < 2 && !acked; attempt++ {
 		if attempt > 0 {
 			c.o.metrics.OnRetransmit(net.UDPAddrFromAddrPort(dataEP), ch)
@@ -406,15 +445,27 @@ func (c *Conn) readLoop() {
 	defer c.wg.Done()
 	buf := make([]byte, knxnetip.MaxFrameLen+1)
 	for {
-		n, from, err := c.sock.ReadFromUDPAddrPort(buf)
+		n, from, err := c.tr.readFrom(buf)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			if c.tr.stream() {
+				// The TCP connection is gone (or carried garbage): the
+				// tunnel cannot continue on it.
+				select {
+				case <-c.closing:
+				default:
+					c.mu.Lock()
+					gen := c.gen
+					c.mu.Unlock()
+					c.signalLost(gen, fmt.Errorf("%w: %v", knx.ErrConnectionLost, err))
+				}
 				return
 			}
 			c.o.logger.Warnf("tunnel: read: %v", err)
 			continue
 		}
-		from = netip.AddrPortFrom(from.Addr().Unmap(), from.Port())
 		fromAddr := net.UDPAddrFromAddrPort(from)
 		m, err := knxnetip.Parse(buf[:n])
 		if err != nil {
@@ -434,7 +485,7 @@ func (c *Conn) readLoop() {
 // fromServer accepts datagrams from the server's address only. The port
 // may differ between control and data endpoints.
 func (c *Conn) fromServer(from netip.AddrPort) bool {
-	if from.Addr() == c.server.Addr() {
+	if c.tr.stream() || from.Addr() == c.server.Addr() {
 		return true
 	}
 	c.mu.Lock()
@@ -446,12 +497,30 @@ func (c *Conn) dispatch(from netip.AddrPort, m knxnetip.Message) {
 	switch m := m.(type) {
 	case *knxnetip.ConnectResponse:
 		offer(c.connCh, m)
+	case *knxnetip.TunnellingFeature:
+		// Feature frames of the server use the sequence counter of
+		// tunnelling requests (and, over UDP, their ACKs).
+		if !c.acceptSeq(from, m.Channel, m.Seq) {
+			return
+		}
+		switch m.Type {
+		case knxnetip.TunnellingFeatureResponseType, knxnetip.TunnellingFeatureInfoType:
+			offer(c.featCh, m)
+		default:
+			// A client does not answer GET or SET.
+		}
 	case *knxnetip.TunnellingAck:
 		offer(c.ackCh, m)
 	case *knxnetip.ConnectionStateResponse:
 		offer(c.csCh, m)
 	case *knxnetip.DisconnectResponse:
 		offer(c.discCh, m)
+	case *knxnetip.DeviceConfigurationAck:
+		offer(c.ackCh, &knxnetip.TunnellingAck{Channel: m.Channel, Seq: m.Seq, Status: m.Status})
+	case *knxnetip.DeviceConfigurationRequest:
+		if c.o.devmgmt {
+			c.onRequest(from, &knxnetip.TunnellingRequest{Channel: m.Channel, Seq: m.Seq, CEMI: m.CEMI})
+		}
 	case *knxnetip.TunnellingRequest:
 		c.onRequest(from, m)
 	case *knxnetip.DisconnectRequest:
@@ -493,6 +562,36 @@ func offer[T any](ch chan T, v T) {
 	}
 }
 
+// acceptSeq applies the receiver side of the sequence counter to a frame
+// of the server (acknowledging it over UDP) and reports whether it is new.
+func (c *Conn) acceptSeq(from netip.AddrPort, ch, seq uint8) bool {
+	c.mu.Lock()
+	cur, state, dataEP := c.channel, c.state, c.dataEP
+	expected := c.rxSeq
+	stream := c.tr.stream()
+	deliver, ack := false, false
+	switch {
+	case ch != cur || state != knx.StateConnected:
+	case stream:
+		c.rxSeq = seq + 1
+		deliver = true
+	case seq == expected:
+		c.rxSeq++
+		deliver, ack = true, true
+	case seq == expected-1:
+		ack = true
+	}
+	c.mu.Unlock()
+	if ack {
+		to := dataEP
+		if c.o.nat {
+			to = from
+		}
+		_ = c.write(to, &knxnetip.TunnellingAck{Channel: cur, Seq: seq, Status: knxnetip.StatusNoError})
+	}
+	return deliver
+}
+
 // onRequest implements the receiver side of the sequence counter: the
 // expected sequence number is acknowledged and delivered; the previous one
 // (a repetition whose ACK was lost) is acknowledged and dropped; any other
@@ -502,8 +601,13 @@ func (c *Conn) onRequest(from netip.AddrPort, m *knxnetip.TunnellingRequest) {
 	ch, state, dataEP := c.channel, c.state, c.dataEP
 	expected := c.rxSeq
 	deliver, ack := false, false
+	stream := c.tr.stream()
 	switch {
 	case m.Channel != ch || state != knx.StateConnected:
+	case stream:
+		// TCP delivers in order and without repetitions.
+		c.rxSeq = m.Seq + 1
+		deliver, ack = true, true
 	case m.Seq == expected:
 		c.rxSeq++
 		deliver, ack = true, true
@@ -521,7 +625,13 @@ func (c *Conn) onRequest(from netip.AddrPort, m *knxnetip.TunnellingRequest) {
 	if c.o.nat {
 		to = from
 	}
-	_ = c.write(to, &knxnetip.TunnellingAck{Channel: ch, Seq: m.Seq, Status: knxnetip.StatusNoError})
+	if !stream {
+		if c.o.devmgmt {
+			_ = c.write(to, &knxnetip.DeviceConfigurationAck{Channel: ch, Seq: m.Seq, Status: knxnetip.StatusNoError})
+		} else {
+			_ = c.write(to, &knxnetip.TunnellingAck{Channel: ch, Seq: m.Seq, Status: knxnetip.StatusNoError})
+		}
+	}
 	if !deliver {
 		c.o.metrics.OnDropped(fromAddr, "duplicate")
 		return
@@ -691,7 +801,7 @@ func (c *Conn) shutdown(cause error) {
 			}
 		}
 		close(c.closing)
-		_ = c.sock.Close()
+		_ = c.tr.close()
 		c.wg.Wait()
 		c.setState(knx.StateClosed, cause)
 		close(c.done)

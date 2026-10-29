@@ -239,7 +239,7 @@ func TestDirectedSearch(t *testing.T) {
 	if len(rs) != 1 || rs[0].Extended || rs[0].Endpoint() != s.Addr() || rs[0].Device().Name != "directed" {
 		t.Fatalf("results %+v", rs)
 	}
-	if v, ok := rs[0].Services().Version(knxnetip.FamilyTunnelling); !ok || v != 1 {
+	if v, ok := rs[0].Services().Version(knxnetip.FamilyTunnelling); !ok || v != 2 {
 		t.Fatalf("services %+v", rs[0].Services())
 	}
 	// Extended, with parameters.

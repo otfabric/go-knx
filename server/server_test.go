@@ -39,7 +39,10 @@ func TestSearchAndDescribe(t *testing.T) {
 		t.Fatalf("device info %+v", d)
 	}
 	fam, _ := resp.DIBs.SupportedServices()
-	if v, ok := fam.Version(knxnetip.FamilyTunnelling); !ok || v != 1 {
+	if v, ok := fam.Version(knxnetip.FamilyTunnelling); !ok || v != 2 {
+		t.Fatalf("families %+v", fam)
+	}
+	if v, ok := fam.Version(knxnetip.FamilyDeviceManagement); !ok || v != 1 {
 		t.Fatalf("families %+v", fam)
 	}
 	if _, ok := fam.Version(knxnetip.FamilyRouting); ok {
@@ -98,7 +101,7 @@ func TestSearchExtended(t *testing.T) {
 		"mac mismatch":        {params: []knxnetip.SearchParam{{Type: knxnetip.SRPMACAddress, Data: []byte{2, 0, 0, 0, 0, 8}}}},
 		"mac short":           {params: []knxnetip.SearchParam{{Type: knxnetip.SRPMACAddress, Data: mac[:5]}}},
 		"service ok":          {params: []knxnetip.SearchParam{{Type: knxnetip.SRPService, Data: []byte{byte(knxnetip.FamilyTunnelling), 1}}}, answer: true},
-		"service version":     {params: []knxnetip.SearchParam{{Type: knxnetip.SRPService, Data: []byte{byte(knxnetip.FamilyTunnelling), 2}}}},
+		"service version":     {params: []knxnetip.SearchParam{{Type: knxnetip.SRPService, Data: []byte{byte(knxnetip.FamilyTunnelling), 3}}}},
 		"service missing":     {params: []knxnetip.SearchParam{{Type: knxnetip.SRPService, Data: []byte{byte(knxnetip.FamilyRouting), 1}}}},
 		"service bad length":  {params: []knxnetip.SearchParam{{Type: knxnetip.SRPService, Data: []byte{4}}}},
 		"unknown mandatory":   {params: []knxnetip.SearchParam{{Type: 0x33, Mandatory: true}}},
@@ -191,8 +194,7 @@ func TestConnectRefusals(t *testing.T) {
 		want       knxnetip.Status
 	}{
 		"TCP data":        {udp, knxnetip.TCPHPAI(), link, knxnetip.StatusHostProtocolType},
-		"device mgmt":     {udp, udp, knxnetip.CRI{Type: knxnetip.DeviceManagementConnection}, knxnetip.StatusConnectionType},
-		"busmonitor":      {udp, udp, knxnetip.TunnelCRI(knxnetip.TunnelBusmonitor), knxnetip.StatusTunnellingLayer},
+		"remote config":   {udp, udp, knxnetip.CRI{Type: knxnetip.RemoteConfigConnection}, knxnetip.StatusConnectionType},
 		"raw":             {udp, udp, knxnetip.TunnelCRI(knxnetip.TunnelRaw), knxnetip.StatusTunnellingLayer},
 		"unknown address": {udp, udp, withAddr(knx.MustParseIndividualAddress("9.9.9")), knxnetip.StatusNoTunnellingAddress},
 	} {

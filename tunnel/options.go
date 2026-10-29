@@ -42,6 +42,8 @@ type options struct {
 	metrics           knx.Metrics
 	local             string
 	nat               bool
+	tcp               bool
+	devmgmt           bool
 	layer             knxnetip.TunnelLayer
 	address           knx.IndividualAddress
 	hasAddress        bool
@@ -117,6 +119,18 @@ func WithLocalAddr(addr string) Option {
 func WithNAT(on bool) Option {
 	return func(o *options) error { o.nat = on; return nil }
 }
+
+// WithTCP connects over TCP (KNXnet/IP core v2, tunnelling v2) instead of
+// UDP: no TUNNELLING_ACKs, no NAT concerns, the connection ends when the
+// TCP connection does. Not combinable with WithReconnect.
+func WithTCP() Option { return func(o *options) error { o.tcp = true; return nil } }
+
+// WithDeviceManagement opens a device management connection instead of a
+// tunnel: Send carries local device management cEMI frames (M_PropRead.req,
+// M_PropWrite.req, M_Reset.req) in DEVICE_CONFIGURATION_REQUESTs, and
+// Receive returns the server's confirmations. Package devmgmt builds on
+// it.
+func WithDeviceManagement() Option { return func(o *options) error { o.devmgmt = true; return nil } }
 
 // WithLayer selects the tunnelling layer: link layer (default) or
 // busmonitor. Raw tunnelling is not supported.

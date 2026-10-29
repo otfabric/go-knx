@@ -30,7 +30,10 @@
   octets, so that each layer can be used and tested alone and unknown
   content passes through unchanged.
 - **Transports** (`tunnel`, `routing`) move cEMI frames. Both implement
-  `client.Link` (Send, Receive, Close).
+  `client.Link` (Send, Receive, Close). A `tunnel.Conn` runs over UDP or
+  TCP (KNXnet/IP core v2: no TUNNELLING_ACKs, the TCP connection carries
+  one client), on the link layer or as a busmonitor, or as a device
+  management connection (`WithDeviceManagement`, used by `devmgmt`).
 - **Application** (`client`) turns group telegrams into calls and events;
   it does not know whether it runs over a tunnel or routing.
 - **Server** (`server`, `device`) is the other side: a KNXnet/IP server
@@ -85,6 +88,19 @@ waits for its L_Data.con (3 s) unless `WithConfirm(false)`.
   not acknowledge a request twice is disconnected.
 - NAT: a client that sends route back HPAIs gets route back endpoints in
   the CONNECT_RESPONSE, and answers go to the datagrams' sources.
+- TCP: the same port accepts KNXnet/IP over TCP; a TCP connection carries
+  the frames of one client, its tunnelling or device management
+  connections end when it closes, and at most (tunnelling addresses + 4)
+  TCP connections are open at a time.
+- Busmonitor connections receive L_Busmon.ind (TP1 frame, status,
+  timestamp) of every standard frame. Busmonitor and link layer
+  tunnelling exclude each other (E_NO_MORE_CONNECTIONS), as the standard
+  asks of an interface, unless `WithConcurrentBusmonitor`.
+- Device management connections answer M_PropRead.req for the device
+  object (serial number, manufacturer, device descriptor, programming
+  mode, interface object list), the router object (medium status) and the
+  KNXnet/IP parameter object (addresses, IP configuration, friendly
+  name). All properties are read only.
 
 ## Decisions
 
