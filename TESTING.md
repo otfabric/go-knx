@@ -15,7 +15,7 @@
 
 `make coverage-check` measures every library package with `-coverpkg`
 (excluding examples, e2e, interop and the test helpers internal/fakeknx and
-internal/leak) and fails below 85 %. The codec packages are expected to
+internal/leak) and fails below 90 %. The codec packages are expected to
 stay at or above 90 %. At the time of writing: total 97.7 %; root,
 knxnetip, cemi, apdu 100 %; dpt 99 %; tunnel 96 %; server 96 %; client
 99 %; device 99 %; discovery 92 %; routing 97 %.
