@@ -189,6 +189,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// The sockets are published under s.mu, so that Addr and Close may
 	// run concurrently with Start (Serve in another goroutine).
 	var main, disc *net.UDPConn
+	var preTCP *net.TCPListener // bound with an ephemeral UDP port
 	if sameSocket {
 		join := s.group
 		if !s.o.routing {
@@ -202,7 +203,7 @@ func (s *Server) Start(ctx context.Context) error {
 			_ = mcast.Configure(main, &ip, false, s.o.ttl)
 		}
 	} else {
-		if main, err = net.ListenUDP("udp4", net.UDPAddrFromAddrPort(listen)); err != nil {
+		if main, preTCP, err = listenUDPTCP(listen, s.o.tcp); err != nil {
 			return fmt.Errorf("server: listen %s: %w", listen, err)
 		}
 		if s.o.routing {
@@ -223,11 +224,16 @@ func (s *Server) Start(ctx context.Context) error {
 		if disc != nil {
 			_ = disc.Close()
 		}
+		if preTCP != nil {
+			_ = preTCP.Close()
+		}
 		return knx.ErrClosed
 	}
 	s.main, s.disc = main, disc
 	// TCP (core v2) on the same address and port as UDP.
-	if s.o.tcp {
+	if s.o.tcp && preTCP != nil {
+		s.tcpLn = preTCP
+	} else if s.o.tcp {
 		la := udp.AddrPortOf(main.LocalAddr())
 		ln, err := net.ListenTCP("tcp4", net.TCPAddrFromAddrPort(la))
 		if err != nil {
@@ -261,6 +267,31 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.acceptLoop(s.tcpLn)
 	}
 	return nil
+}
+
+// listenUDPTCP opens the UDP socket and, with tcp, the TCP listener on the
+// same port. With port 0 it tries ephemeral ports until both are free (a
+// free UDP port may be taken for TCP). With a fixed port the TCP listener
+// is opened later by Start.
+func listenUDPTCP(listen netip.AddrPort, tcp bool) (*net.UDPConn, *net.TCPListener, error) {
+	if listen.Port() != 0 || !tcp {
+		c, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(listen))
+		return c, nil, err
+	}
+	var last error
+	for i := 0; i < 20; i++ {
+		c, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(listen))
+		if err != nil {
+			return nil, nil, err
+		}
+		ln, err := net.ListenTCP("tcp4", net.TCPAddrFromAddrPort(udp.AddrPortOf(c.LocalAddr())))
+		if err == nil {
+			return c, ln, nil
+		}
+		last = err
+		_ = c.Close()
+	}
+	return nil, nil, fmt.Errorf("no port free for UDP and TCP: %w", last)
 }
 
 // busmonitorFrame returns the L_Busmon.ind of a telegram for busmonitor
