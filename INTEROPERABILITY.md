@@ -25,12 +25,13 @@ go-knx is tested against independent KNX implementations in two places:
 The matrix, the known differences of the other stacks and the reports
 filed upstream are in knx-interop's docs/INTEROPERABILITY.md.
 
-## KNX Secure (2026-10-30, manual)
+## KNX Secure (2026-10-30)
 
-Verified by hand with xknx 4.0.0 and Calimero 3.0-M1 (the knx-interop
-images) and knxctl built from this version, in one Docker network for
-routing and through published ports for tunnelling. The automated
-scenarios follow with knx-interop's container contract 1.2.
+First verified by hand, now automated: knx-interop's `secure` suite
+(container contract 1.2, all secure scenarios of the matrix, 0 failures)
+and this repository's `interop/secure_test.go` (xknx and Calimero tools
+against go-knx's secure server, go-knx's secure client against Calimero's
+secure server, with the knx-interop test profile).
 
 | Scenario | xknx 4.0.0 | Calimero 3.0-M1 |
 |---|---|---|
@@ -48,7 +49,7 @@ it does not show conformance to the KNX specification.
 ## Running
 
 ```bash
-make interop-images   # build the Calimero and knxd images from knx-interop v0.2.0 (Docker)
+make interop-images   # build the Calimero and knxd images from knx-interop v0.3.0 (Docker)
 make interop                                    # writes bin/interop-report.json
 ```
 

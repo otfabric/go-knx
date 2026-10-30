@@ -31,16 +31,16 @@ import (
 	"time"
 )
 
-// images are the knx-interop v0.2.0 adapter images. The MIT ones are
+// images are the knx-interop v0.3.0 adapter images. The MIT ones are
 // published and pinned by digest; the ones with GPL binaries (Calimero,
 // knxd) are never published: make interop-images builds them from the
-// knx-interop v0.2.0 tag as :dev.
+// knx-interop v0.3.0 tag as :dev.
 var images = map[string]string{
 	"calimero-server": "ghcr.io/otfabric/knx-interop-calimero-server:dev",
 	"calimero-tools":  "ghcr.io/otfabric/knx-interop-calimero-tools:dev",
 	"knxd":            "ghcr.io/otfabric/knx-interop-knxd:dev",
-	"xknx":            "ghcr.io/otfabric/knx-interop-xknx:0.2.0@sha256:28876ab31f930d41c2715c3ced338e0413e2fe0188e0b1b049e667a8d82141e2",
-	"knxultimate":     "ghcr.io/otfabric/knx-interop-knxultimate:0.2.0@sha256:afcfe145a2bb7e9f9c774a12f143f06a0b45ede9e4738cd87b15c25a5a4956da",
+	"xknx":            "ghcr.io/otfabric/knx-interop-xknx:0.3.0@sha256:d1a939e96c7fdf719027363be95ea5def6a81fcf12d0cc8d4762636428965247",
+	"knxultimate":     "ghcr.io/otfabric/knx-interop-knxultimate:0.3.0@sha256:9f76d73914fdee7fcefae3c57e3adea300186a7df5e823c51a46653f7148d3f4",
 }
 
 func image(adapter string) string {
