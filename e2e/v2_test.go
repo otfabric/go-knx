@@ -128,8 +128,16 @@ func TestDeviceManagement(t *testing.T) {
 			if !errors.As(err, &pe) || pe.Code != 0x07 {
 				t.Fatalf("unknown property: %v", err)
 			}
-			if err := d.PropWrite(c, devmgmt.ObjectKNXnetIPParameter, 1, devmgmt.PIDFriendlyName, 1, 1, []byte{'x'}); !errors.Is(err, knx.ErrRejected) {
-				t.Fatalf("write: %v", err)
+			// The friendly name is writable; the other properties are not.
+			if err := d.PropWrite(c, devmgmt.ObjectKNXnetIPParameter, 1, devmgmt.PIDFriendlyName, 1, 1, []byte{'x'}); err != nil {
+				t.Fatalf("write name: %v", err)
+			}
+			if b, err := d.PropRead(c, devmgmt.ObjectKNXnetIPParameter, 1, devmgmt.PIDFriendlyName, 1, 1); err != nil || string(b) != "x" {
+				t.Fatalf("name after write %q %v", b, err)
+			}
+			err = d.PropWrite(c, devmgmt.ObjectDevice, 1, devmgmt.PIDSerialNumber, 1, 1, make([]byte, 6))
+			if !errors.As(err, &pe) || pe.Code != 0x05 || !errors.Is(err, knx.ErrRejected) {
+				t.Fatalf("write read only: %v", err)
 			}
 		})
 	}

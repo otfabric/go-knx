@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 // Command node is go-knx's adapter for the knx-interop matrix: it
-// implements the knx-interop container contract (version 1.3) directly on
+// implements the knx-interop container contract (version 1.4) directly on
 // the go-knx library, built from this repository's sources. `make
 // interop-matrix` builds it into an image and runs knx-interop's matrix
 // with it (--adapter goknx=IMAGE), so go-knx is tested in the Docker
@@ -9,11 +9,12 @@
 // knx-interop itself does not depend on go-knx.
 //
 //	node capabilities
-//	node server [--routing] [--name NAME] [--secure]
+//	node server [--routing] [--name NAME] [--secure] [--tool-access]
 //	node client OP [--target H] [--port P] [--nat] [--routing] [--tcp]
 //	               [--secure] [--user N] [--udp] [--object T] [--pid P]
 //	               [--group G] [--dpt D] [--value V] [--data HEX]
-//	               [--count N] [--timeout SECONDS]
+//	               [--count N] [--timeout SECONDS] [--device IA]
+//	               [--start N] [--connected] [--tool-access]
 //
 // Each client operation prints one result document as the last line of
 // stdout and exits 0 (pass), 1 (fail) or 3 (unsupported).
@@ -38,6 +39,7 @@ import (
 	"github.com/otfabric/go-knx/apdu"
 	"github.com/otfabric/go-knx/cemi"
 	"github.com/otfabric/go-knx/client"
+	"github.com/otfabric/go-knx/datasecure"
 	"github.com/otfabric/go-knx/device"
 	"github.com/otfabric/go-knx/devmgmt"
 	"github.com/otfabric/go-knx/discovery"
@@ -110,7 +112,9 @@ func capabilities() {
 			"discover": true, "describe": true, "tunnel": true, "routing": true, "nat": true, "answer": true,
 			"tcp": true, "property": true, "busmonitor": true,
 			"secure": true, "dataSecure": true, "secureUdp": true, "surrogate": true,
-			"server": map[string]bool{"tcp": true, "property": true, "busmonitor": true, "secure": true, "secureUdp": true, "secureRouting": true},
+			"remoteProperty": true, "toolAccess": true,
+			"server": map[string]bool{"tcp": true, "property": true, "busmonitor": true, "secure": true, "secureUdp": true, "secureRouting": true,
+				"remoteProperty": true, "toolAccess": true},
 		},
 		"notes": "go-knx's own adapter, built from its sources (go-knx/interop/node). The server is a simulator: busmonitor connections coexist with tunnels.",
 	}
@@ -125,6 +129,9 @@ type args struct {
 	timeout                           float64
 	nat, routing, tcp, secure, udp    bool
 	name                              string
+	device                            string
+	start                             int
+	connected, toolAccess             bool
 }
 
 func parse(fs *flag.FlagSet, a *args, argv []string) error {
@@ -145,6 +152,10 @@ func parse(fs *flag.FlagSet, a *args, argv []string) error {
 	fs.IntVar(&a.count, "count", 1, "")
 	fs.Float64Var(&a.timeout, "timeout", 5, "")
 	fs.StringVar(&a.name, "name", "knx-interop", "")
+	fs.StringVar(&a.device, "device", serverIA, "")
+	fs.IntVar(&a.start, "start", 1, "")
+	fs.BoolVar(&a.connected, "connected", false, "")
+	fs.BoolVar(&a.toolAccess, "tool-access", false, "")
 	return fs.Parse(argv)
 }
 
@@ -209,6 +220,20 @@ func runServer(argv []string) int {
 		server.WithConcurrentBusmonitor(true), server.WithInterface(ifaceName)}
 	if a.routing {
 		opts = append(opts, server.WithRouting(true))
+	}
+	if a.toolAccess {
+		// The server's device management, secured with its tool key.
+		p, err := loadProfile()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "profile:", err)
+			return 1
+		}
+		d := p.kr.Device(knx.MustParseIndividualAddress(serverIA))
+		if d == nil || !d.HasToolKey {
+			fmt.Fprintln(os.Stderr, "profile: no tool key of", serverIA)
+			return 1
+		}
+		opts = append(opts, server.WithToolKey(datasecure.Key(d.ToolKey)))
 	}
 	if a.secure {
 		p, err := loadProfile()
@@ -375,7 +400,7 @@ func runClient(op string, argv []string) int {
 		return r.finish("fail", nil, err)
 	}
 	var p *profile
-	if a.secure {
+	if a.secure || a.toolAccess {
 		var err error
 		if p, err = loadProfile(); err != nil {
 			return r.finish("fail", nil, fmt.Errorf("profile: %w", err))
@@ -456,6 +481,8 @@ func do(ctx context.Context, op string, a *args, p *profile) (map[string]any, er
 		return map[string]any{"data": strings.ToUpper(hex.EncodeToString(b))}, nil
 	case "busmonitor":
 		return busmonitor(ctx, a, p)
+	case "remote-property":
+		return remoteProperty(ctx, a, p)
 	}
 	return nil, fmt.Errorf("%w: operation %q", errUnsupported, op)
 }
@@ -633,4 +660,85 @@ func busmonitor(ctx context.Context, a *args, p *profile) (map[string]any, error
 		return data, fmt.Errorf("received %d of %d frames", len(frames), a.count)
 	}
 	return data, nil
+}
+
+// remoteProperty reads (or with --data writes) a property of a device
+// through a tunnel to the target, with the remote property services:
+// --object is the interface object type, resolved to its index through
+// the device's interface object list; --connected uses a transport
+// connection; --tool-access secures the access with the device's tool
+// key from the profile.
+func remoteProperty(ctx context.Context, a *args, p *profile) (map[string]any, error) {
+	dev, err := knx.ParseIndividualAddress(a.device)
+	if err != nil {
+		return nil, err
+	}
+	topts, err := a.tunnelOptions(p)
+	if err != nil {
+		return nil, err
+	}
+	// No Data Secure table: the access is secured only with --tool-access.
+	c, err := client.DialTunnel(ctx, a.endpoint(), topts)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = c.Close() }()
+	var dopts []client.DeviceOption
+	if a.connected {
+		dopts = append(dopts, client.Connected())
+	}
+	if a.toolAccess {
+		d := p.kr.Device(dev)
+		if d == nil || !d.HasToolKey {
+			return nil, fmt.Errorf("no tool key of %s in the profile", dev)
+		}
+		dopts = append(dopts, client.WithToolKey(datasecure.Key(d.ToolKey)))
+	}
+	d := c.Device(dev, dopts...)
+	defer func() { _ = d.Close() }()
+	rctx, cancel := context.WithTimeout(ctx, a.wait()+5*time.Second)
+	defer cancel()
+	index, err := objectIndex(rctx, d, uint16(a.object))
+	if err != nil {
+		return nil, err
+	}
+	var b []byte
+	if a.data != "" {
+		v, err := hex.DecodeString(a.data)
+		if err != nil {
+			return nil, err
+		}
+		b, err = d.PropertyWrite(rctx, index, uint8(a.pid), uint16(a.start), uint8(a.count), v)
+		if err != nil {
+			return nil, err
+		}
+	} else if b, err = d.PropertyRead(rctx, index, uint8(a.pid), uint16(a.start), uint8(a.count)); err != nil {
+		return nil, err
+	}
+	return map[string]any{"data": strings.ToUpper(hex.EncodeToString(b)), "object": index}, nil
+}
+
+// objectIndex finds the index of an interface object type in the
+// device's interface object list (device object, PID 71).
+func objectIndex(ctx context.Context, d *client.Device, objType uint16) (uint8, error) {
+	if objType == 0 {
+		return 0, nil
+	}
+	n, err := d.PropertyElements(ctx, 0, 71)
+	if err != nil {
+		return 0, fmt.Errorf("interface object list: %w", err)
+	}
+	for start := 1; start <= n; start += 15 {
+		count := min(15, n-start+1)
+		b, err := d.PropertyRead(ctx, 0, 71, uint16(start), uint8(count))
+		if err != nil {
+			return 0, fmt.Errorf("interface object list: %w", err)
+		}
+		for i := 0; i+1 < len(b); i += 2 {
+			if uint16(b[i])<<8|uint16(b[i+1]) == objType {
+				return uint8(start - 1 + i/2), nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("no interface object of type %d on %s", objType, d.Address())
 }

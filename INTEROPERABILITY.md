@@ -51,6 +51,30 @@ secure server, with the knx-interop test profile).
 | Secure routing of the go-knx server: in from the peer, out to the peer through a tunnel | pass | tools → server: pass (Calimero synchronises with the server's timer) |
 | Keyring written by go-knx loaded by the peer | pass (signature verified) | pass |
 
+## Remote device management and tool access (2026-10-30)
+
+Automated in knx-interop's `management` suite (container contract 1.4,
+since v0.6.0): the remote property services of a server's device, through
+a tunnel; with tool access, secured with the device's tool key.
+
+| Scenario | Calimero 3.0-M1 | xknx 4.0.0 |
+|---|---|---|
+| Peer tool → go-knx's device: property read, read in a transport connection, write | tools: pass | read and write in a connection: pass (no connectionless management) |
+| Peer tool → go-knx's device with tool access (S-A_Sync, S-A_Data): read, read in a connection, write | tools: pass | — (no tool key access) |
+| Plain access refused by go-knx's secured device | tools: pass | pass |
+| go-knx tool → peer's device: property read, read in a connection, write | server: pass | — (no server) |
+| go-knx tool → peer's device with tool access | — (Calimero server has no tool key access) | — |
+
+go-knx's tool access as a tool therefore has no third-party device to run
+against: it is verified against go-knx's own device only, which Calimero
+tools does verify as a device.
+
+Calimero tools needs its tunnel address (`-k`) for tool access: it computes
+the MAC over the source it sends, 0.0.0 otherwise, and a device refuses the
+frames once the tunnelling server has replaced that source. Calimero's
+device information tool also works with tool access, up to its A/D
+converter read, which the server does not answer.
+
 Passing these shows that go-knx and those stacks agree with each other;
 it does not show conformance to the KNX specification.
 

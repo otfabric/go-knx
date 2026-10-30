@@ -52,7 +52,8 @@ verified for conformance, and not certified
 |---|---|---|
 | Secure tunnelling (`tunnel.WithSecure`, `server.WithSecure`) | X25519 session over TCP or UDP (`tunnel.WithUDP`), user authentication, device authentication (client verifies when given the code), SECURE_WRAPPER with replay protection, keep alive, close; server binds users to tunnelling addresses, device management for user 1 only, ends idle UDP sessions | secure device management by remote tools beyond property access |
 | Secure routing (`routing.WithSecure`, `server.WithSecureRouting`) | backbone key, timer synchronisation as keeper or follower, latency tolerance; plain routing frames dropped | — |
-| Data Secure (`datasecure`, `client.WithDataSecure`) | S-A_Data with authentication and confidentiality (or authentication only) for group communication, per sender sequence numbers; S-A_Sync request and response; answering S-A_Sync and group object diagnostics with the device's tool key (the surrogate a tool such as Calimero uses to send secured group telegrams) | point to point security beyond the surrogate service; asking peers by S-A_Sync automatically |
+| Data Secure (`datasecure`, `client.WithDataSecure`) | S-A_Data with authentication and confidentiality (or authentication only) for group communication, per sender sequence numbers; S-A_Sync request and response; answering S-A_Sync and group object diagnostics with the device's tool key (the surrogate a tool such as Calimero uses to send secured group telegrams) | asking group peers by S-A_Sync automatically |
+| Data Secure tool access (`client.Device`, `client.WithToolKey`, `server.WithToolKey`, `mgmt.Responder`) | remote device management secured with the device's tool key: S-A_Sync, then S-A_Data with tool access, connectionless and in transport connections, as tool and as device; a secured device ignores plain management | device-to-device link keys (P2P key table), secure commissioning with the factory key (FDSK), setting the security mode by function property |
 | Keyrings (`keyring`) | signature check, decryption, lookups, writing test keyrings | — |
 
 Behaviour that matters for security:
@@ -70,9 +71,14 @@ Behaviour that matters for security:
   time.
 - As a surrogate, a client sends a group telegram for a tool only after
   the tool authenticated with the client's own tool key (S-A_Sync, then a
-  tool access S-A_Data); requests from senders the keyring does not know
-  are refused. The layout of the group object diagnostics request comes
+  tool access S-A_Data). The tool key is the tool's credential: any
+  sender that has it may synchronise, and its tool access sequence
+  numbers are tracked apart from the group senders'. The layout of the group object diagnostics request comes
   from observing Calimero, not from the specification.
+- A device with a tool key (`server.WithToolKey`) answers no plain
+  management request; with a tool key, `client.Device` never falls back
+  to plain access, and answers that fail authentication or replay an old
+  sequence number are dropped.
 - A Data Secure table starts its sending sequence number at the
   milliseconds since 2018-01-05 when none is given; persist
   `Table.Sequence()` if the clock may go backwards.

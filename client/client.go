@@ -81,6 +81,7 @@ type Client struct {
 	hooks   map[int]func(Telegram)
 	hookID  int
 	err     error
+	devices map[knx.IndividualAddress]*Device
 
 	done   chan struct{}
 	cancel context.CancelFunc
@@ -603,7 +604,9 @@ func (c *Client) readLoop(ctx context.Context) {
 		}
 		g, ok := ld.Group()
 		if !ok {
-			c.individual(ctx, ld)
+			if !c.deliverDevice(ld) {
+				c.individual(ctx, ld)
+			}
 			continue
 		}
 		secured := false

@@ -35,12 +35,14 @@ tests against independent stacks live in
 | Discovery: multicast and directed search, extended search with parameters, description | ✅ |
 | Tunnelling client over UDP (sequence handling, ACK and retransmission, L_Data.con, heartbeat, NAT, reconnect) and TCP (tunnelling v2), tunnelling v2 address request and feature services | ✅ |
 | Device management client (`devmgmt`: M_PropRead/M_PropWrite of interface object properties) | ✅ |
+| Remote device management over the KNX network (`mgmt`, `client.Device`: A_PropertyValue_Read/_Write, A_PropertyDescription_Read, A_DeviceDescriptor_Read; connectionless and in transport connections; the server's own device answers them) | ✅ |
 | Busmonitor tunnelling (L_Busmon.ind; TP1 frame encode/decode with check octet) | ✅ |
 | Routing: indications, ROUTING_BUSY flow control, rate limit, echo suppression | ✅ |
 | Group communication: write, read (first or all responses), respond, subscriptions, callbacks | ✅ |
 | KNXnet/IP server: discovery, description, tunnelling over UDP and TCP (multiple clients, channel limits, feature services), busmonitor, device management (device, router and KNXnet/IP parameter objects), routing, virtual group objects with flags | ✅ |
 | KNX IP Secure: secure tunnelling sessions (client and server, over TCP and UDP), secure routing with timer synchronisation in the client and the server (`secure`, `tunnel.WithSecure`, `server.WithSecure`, `routing.WithSecure`, `server.WithSecureRouting`) | ✅ from public sources, verified against xknx and Calimero ([why not "conformant"](docs/standards/SPECIFICATIONS.md#knx-secure-sources)) |
-| KNX Data Secure for group communication (S-A_Data, security tables, S-A_Sync, the surrogate role for tools such as Calimero; `datasecure`, `client.WithDataSecure`) | ✅ same sources; general point to point security not implemented |
+| KNX Data Secure for group communication (S-A_Data, security tables, S-A_Sync, the surrogate role for tools such as Calimero; `datasecure`, `client.WithDataSecure`) | ✅ same sources |
+| KNX Data Secure point to point with tool access: secured remote device management with a device's tool key, as tool (`client.WithToolKey`) and as device (`server.WithToolKey`) | ✅ same sources, verified with Calimero tools; device-to-device link keys and secure commissioning (FDSK) not implemented |
 | ETS keyrings (.knxkeys): verify, decrypt, write test keyrings (`keyring`) | ✅ |
 | KNX TP/RF media, ETS project import, KNX IoT | ❌ out of scope |
 
@@ -147,6 +149,7 @@ More in [examples/](examples) and the package documentation.
 | `discovery` | Search and description |
 | `tunnel` | Tunnelling client (UDP, TCP, busmonitor, feature services) |
 | `devmgmt` | Device management client (interface object properties) |
+| `mgmt` | Remote device management services, device side responder |
 | `routing` | Routing |
 | `client` | Group communication over a tunnel or routing |
 | `server` | KNXnet/IP server |

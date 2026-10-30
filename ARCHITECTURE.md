@@ -36,6 +36,11 @@
   management connection (`WithDeviceManagement`, used by `devmgmt`).
 - **Application** (`client`) turns group telegrams into calls and events;
   it does not know whether it runs over a tunnel or routing.
+  `client.Device` is remote device management of one device over the same
+  link (the `mgmt` services, connectionless or in a transport
+  connection); the client's read loop hands it the frames of that device.
+  `mgmt.Responder` is the device side, which the server runs for its own
+  individual address.
 - **Server** (`server`, `device`) is the other side: a KNXnet/IP server
   with a virtual network behind it.
 - **Security** (`secure`, `datasecure`, `keyring`) is layered in, not

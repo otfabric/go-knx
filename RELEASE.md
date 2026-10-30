@@ -5,6 +5,71 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.5.0
+
+**Date:** 2026-10-30
+**Previous release:** v0.4.2
+
+## Summary
+
+Remote device management over the KNX network, and KNX Data Secure point
+to point with tool access: a tool reads and writes a device's properties
+secured with the device's tool key, and go-knx's server is such a device.
+Implemented from public descriptions and xknx (MIT), verified for
+interoperability with Calimero tools and xknx, not for conformance.
+
+## Added
+
+- `mgmt`: the remote property services (A_PropertyValue_Read, _Write,
+  _Response; A_PropertyDescription_Read and _Response;
+  A_DeviceDescriptor_Read type 0) and `mgmt.Responder`, the device side:
+  connectionless and in one transport connection at a time (T_Connect,
+  numbered data with T_ACK, repetitions, T_Disconnect), secured with
+  `Security` (the device's tool key): only S-A_Sync and S-A_Data with tool
+  access are answered.
+- `client.Device`: remote management of one device through the client's
+  link (`PropertyRead`, `PropertyElements`, `PropertyWrite`,
+  `DescriptorRead`); `client.Connected()` for a transport connection
+  (acknowledgements, repetitions, reconnect after the device's idle
+  timeout); `client.WithToolKey`, or the tool key in the client's Data
+  Secure table, secures it (S-A_Sync, then S-A_Data with tool access).
+- `datasecure.Table`, tool side: `SyncRequest`, `OpenSyncResponse`,
+  `SealToolRequest`, `OpenToolResponse`, `ToolKey`; device side
+  `RespondTPCI` (the S-A_Sync_Res numbered in a transport connection).
+- `server`: the server's own device answers remote device management at
+  its individual address (the device, router and KNXnet/IP parameter
+  objects, with property descriptions); `server.WithToolKey` secures it
+  and adds a security object (type 17, security mode on). The friendly
+  name is writable, locally (M_PropWrite) and remotely.
+- `interop/node`: container contract 1.4 (`remote-property`, `server
+  --tool-access`).
+
+## Changes
+
+- Tool access is authenticated by the tool key alone: any tool that has
+  it may synchronise with a device, and tool access sequence numbers are
+  kept per peer apart from the group senders (before, an S-A_Sync_Req from
+  a sender missing from the table was refused).
+- The interop suite pins knx-interop v0.6.0 (contract 1.4).
+
+## Interoperability
+
+knx-interop v0.6.0 matrix with go-knx's node: 448 pass, 7 known
+differences, 0 fail.
+
+- Calimero tools 3.0-M1 → go-knx's device: property read (connectionless
+  and in a connection), write, description, device information, plain and
+  with tool access; plain access to the secured device is refused.
+- xknx 4.0.0 → go-knx's device: read and write in a transport connection.
+- go-knx → Calimero server 3.0-M1's device: read (connectionless and in a
+  connection) and write. Calimero server has no tool key access, so the
+  secured tool side of go-knx is verified against go-knx only.
+- Calimero tools computes the Data Secure MAC over the source address it
+  sends (0.0.0 unless given its address with `-k`), which a tunnelling
+  server replaces; go-knx sets the tunnel address.
+
+---
+
 ## v0.4.2
 
 **Date:** 2026-10-30
