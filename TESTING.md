@@ -8,7 +8,7 @@
 | Fuzz tests | `FuzzXxx` in knxnetip, cemi, apdu, dpt and the root package | `make fuzz FUZZTIME=30s` |
 | End-to-end over loopback sockets | `e2e/` | `make e2e` |
 | Multicast (discovery, routing) | tests gated on a working multicast loopback; `KNX_REQUIRE_MULTICAST=1` turns the skip into a failure (Linux CI) | `make test-multicast` |
-| Interoperability | `interop/` (build tag `interop`), knx-interop matrix | `make interop` |
+| Interoperability | `interop/` (build tag `interop`); knx-interop's matrix with `interop/node` | `make interop`, `make interop-matrix` |
 | Benchmarks | `bench_test.go` files, server benchmarks | `make bench` |
 
 ## Coverage

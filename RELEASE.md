@@ -5,6 +5,25 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.4.2
+
+**Date:** 2026-10-30
+**Previous release:** v0.4.1
+
+## Changes
+
+- go-knx now owns its interop adapter: `interop/node` implements the
+  knx-interop container contract 1.3 on the library itself (server and
+  client roles, KNX IP Secure, Data Secure, the surrogate role, secure
+  routing). knx-interop v0.5.0 tests third-party stacks only and takes a
+  system under test as an external adapter.
+- `make interop-matrix` runs the knx-interop v0.5.0 matrix with go-knx's
+  node as an external adapter (gate: go-knx); the Interop workflow runs it
+  and publishes the report.
+- The interop suite pins knx-interop v0.5.0.
+
+---
+
 ## v0.4.1
 
 **Date:** 2026-10-30

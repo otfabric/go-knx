@@ -3,10 +3,14 @@
 go-knx is tested against independent KNX implementations in two places:
 
 1. **The knx-interop matrix** ([otfabric/knx-interop](https://github.com/otfabric/knx-interop),
-   docs/INTEROPERABILITY.md): every client against every server and every
-   routing peer against every other, inside one Docker network, including
-   multicast discovery and routing, 12 DPT vectors and a negative suite.
-   go-knx takes part through knxctl.
+   docs/INTEROPERABILITY.md) with go-knx's own adapter (`make
+   interop-matrix`): every client against every server and every routing
+   peer against every other, inside one Docker network, including
+   multicast discovery and routing, 12 DPT vectors, a negative suite and
+   KNX Secure. go-knx takes part through `interop/node`, a command built
+   from this repository's sources that implements knx-interop's container
+   contract on the library; knx-interop holds third-party stacks only and
+   does not depend on go-knx.
 2. **This repository's `interop/` suite** (`make interop-images interop`):
    go-knx used as a library from the host, against the knx-interop images,
    through published UDP ports with route back (NAT) endpoints.
@@ -53,8 +57,9 @@ it does not show conformance to the KNX specification.
 ## Running
 
 ```bash
-make interop-images   # build the Calimero and knxd images from knx-interop v0.4.0 (Docker)
-make interop                                    # writes bin/interop-report.json
+make interop-images   # build the Calimero and knxd images from knx-interop INTEROP_REF (Docker)
+make interop          # the host-based suite; writes bin/interop-report.json
+make interop-matrix   # knx-interop's matrix with go-knx's node; writes bin/interop-matrix.{json,md}
 ```
 
 `KNX_INTEROP_IMAGE_<ADAPTER>` overrides an image (for example
