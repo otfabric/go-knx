@@ -157,7 +157,7 @@ More in [examples/](examples) and the package documentation.
 
 Design: [ARCHITECTURE.md](ARCHITECTURE.md). Errors: [ERRORS.md](ERRORS.md).
 Observability: [OBSERVABILITY.md](OBSERVABILITY.md). Tests:
-[TESTING.md](TESTING.md).
+[TESTING.md](TESTING.md). Limitations: [LIMITATIONS.md](LIMITATIONS.md).
 
 ## Security
 
