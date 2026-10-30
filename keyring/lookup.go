@@ -78,7 +78,16 @@ func (k *Keyring) DataSecure(seq uint64) (*datasecure.Table, error) {
 	for g, key := range k.GroupKeys {
 		keys[g] = datasecure.Key(key)
 	}
-	return datasecure.NewTable(keys, k.Senders(), seq)
+	t, err := datasecure.NewTable(keys, k.Senders(), seq)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range k.Devices {
+		if d.HasToolKey {
+			t.SetToolKey(d.IndividualAddress, datasecure.Key(d.ToolKey))
+		}
+	}
+	return t, nil
 }
 
 // BackboneKey returns the secure routing backbone key and latency.

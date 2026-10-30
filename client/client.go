@@ -271,9 +271,7 @@ func (c *Client) send(ctx context.Context, g knx.GroupAddress, tpdu []byte) erro
 	f := cemi.NewGroupFrame(code, c.source, g, c.prio, tpdu)
 	if c.secure != nil && c.secure.Secured(g) {
 		if f.Source == 0 {
-			if a, ok := c.link.(interface{ IndividualAddress() knx.IndividualAddress }); ok {
-				f.Source = a.IndividualAddress()
-			}
+			f.Source = c.ownAddress()
 		}
 		var err error
 		if f, err = c.secure.Outgoing(f); err != nil {
@@ -467,6 +465,110 @@ func (s *Subscription) deliver(t Telegram) {
 	}
 }
 
+// individual handles an individually addressed frame: with Data Secure,
+// an S-A_Sync_Req to the client is answered.
+func (c *Client) individual(ctx context.Context, ld *cemi.LData) {
+	if c.secure == nil || !datasecure.IsSecure(ld) {
+		return
+	}
+	code := cemi.LDataReq
+	if _, routed := c.link.(*routing.Conn); routed {
+		code = cemi.LDataInd
+	}
+	own := c.ownAddress()
+	res, err := c.secure.Respond(ld, own, code)
+	if err != nil {
+		c.logger.Debugf("client: S-A_Sync from %s: %v", ld.Source, err)
+		return
+	}
+	if res == nil {
+		plain, err := c.secure.OpenTool(ld, own)
+		if err != nil {
+			c.logger.Debugf("client: tool access from %s: %v", ld.Source, err)
+			return
+		}
+		if plain == nil {
+			return
+		}
+		res = c.toolRequest(ctx, plain, code)
+		if res == nil {
+			return
+		}
+		if res, err = c.secure.SealTool(res); err != nil {
+			c.logger.Debugf("client: tool response to %s: %v", ld.Source, err)
+			return
+		}
+	}
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := c.link.Send(sctx, res); err != nil {
+			c.logger.Debugf("client: S-A_Sync_Res to %s: %v", ld.Source, err)
+		}
+	}()
+}
+
+// Group object diagnostics (interface object type 9, PID 66), the
+// surrogate service a tool such as Calimero uses to have a device send a
+// secured group telegram: the command data observed from Calimero tools
+// 3.0-M1 is reserved(1) | command(1, 01 write) | mode(1) | group(2) |
+// value; the client answers with return code 0 and the first two octets.
+// The layout comes from observation, not from the specification.
+const (
+	objectGroupObjectTable = 9
+	pidGODiagnostics       = 66
+	goDiagWrite            = 0x01
+	returnSuccess          = 0x00
+	returnCommandInvalid   = 0xF2
+)
+
+// toolRequest answers a decrypted tool request (A_FunctionPropertyExt
+// _Command for group object diagnostics); nil for other requests.
+func (c *Client) toolRequest(ctx context.Context, plain *cemi.LData, code cemi.MessageCode) *cemi.LData {
+	t, err := apdu.Parse(plain.TPDU)
+	if err != nil || t.APCI != apdu.FunctionPropertyExtCommandService || len(t.Data) < 5 {
+		c.logger.Debugf("client: tool request from %s not served: % X", plain.Source, plain.TPDU)
+		return nil
+	}
+	objType := uint16(t.Data[0])<<8 | uint16(t.Data[1])
+	pid := uint16(t.Data[3]&0x0F)<<8 | uint16(t.Data[4])
+	in := t.Data[5:]
+	ret := byte(returnCommandInvalid)
+	var out []byte
+	if objType == objectGroupObjectTable && pid == pidGODiagnostics && len(in) >= 6 && in[1] == goDiagWrite {
+		g := knx.GroupAddress(uint16(in[3])<<8 | uint16(in[4]))
+		v := apdu.GroupValue{Data: append([]byte(nil), in[5:]...)}
+		c.logger.Debugf("client: group object diagnostics from %s: write % X to %s", plain.Source, v.Data, g)
+		tpdu, err := apdu.GroupValueWrite(v)
+		if err == nil {
+			err = c.send(ctx, g, tpdu)
+		}
+		if err == nil {
+			ret = returnSuccess
+		} else {
+			c.logger.Debugf("client: group object diagnostics write: %v", err)
+		}
+		out = in[:2]
+	}
+	resp := append([]byte{byte(apdu.FunctionPropertyExtStateResponseService >> 8), byte(apdu.FunctionPropertyExtStateResponseService & 0xFF)}, t.Data[:5]...)
+	resp = append(append(resp, ret), out...)
+	return cemi.NewIndividualFrame(code, knx.IndividualAddress(plain.Destination), plain.Source, knx.PrioritySystem, resp)
+}
+
+// ownAddress is the source of the client's telegrams: WithSource, else
+// the link's individual address.
+func (c *Client) ownAddress() knx.IndividualAddress {
+	if c.source != 0 {
+		return c.source
+	}
+	if a, ok := c.link.(interface{ IndividualAddress() knx.IndividualAddress }); ok {
+		return a.IndividualAddress()
+	}
+	return 0
+}
+
 func (c *Client) readLoop(ctx context.Context) {
 	defer c.wg.Done()
 	defer func() {
@@ -495,6 +597,7 @@ func (c *Client) readLoop(ctx context.Context) {
 		}
 		g, ok := ld.Group()
 		if !ok {
+			c.individual(ctx, ld)
 			continue
 		}
 		secured := false
