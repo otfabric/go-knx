@@ -295,13 +295,18 @@ func listenUDPTCP(listen netip.AddrPort, tcp bool) (*net.UDPConn, *net.TCPListen
 		c, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(listen))
 		return c, nil, err
 	}
+	return ephemeralUDPTCP(listen, net.ListenUDP)
+}
+
+// ephemeralUDPTCP is the port 0 case of listenUDPTCP.
+func ephemeralUDPTCP(listen netip.AddrPort, listenUDP func(string, *net.UDPAddr) (*net.UDPConn, error)) (*net.UDPConn, *net.TCPListener, error) {
 	var last error
 	for i := 0; i < 20; i++ {
 		ln, err := net.ListenTCP("tcp4", net.TCPAddrFromAddrPort(listen))
 		if err != nil {
 			return nil, nil, err
 		}
-		c, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(ln.Addr().(*net.TCPAddr).AddrPort()))
+		c, err := listenUDP("udp4", net.UDPAddrFromAddrPort(ln.Addr().(*net.TCPAddr).AddrPort()))
 		if err == nil {
 			return c, ln, nil
 		}
