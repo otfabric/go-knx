@@ -87,7 +87,8 @@ func secureDialAsync(t *testing.T, cred secure.Credentials, script func(s *scrip
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := handshake(&tcpTransport{c: c, server: netip.MustParseAddrPort(ln.Addr().String())}, cred, 2*time.Second)
+	srv := netip.MustParseAddrPort(ln.Addr().String())
+	st, err := handshake(&tcpTransport{c: c, server: srv}, srv, knxnetip.TCPHPAI(), cred, 2*time.Second)
 	if err != nil {
 		_ = c.Close()
 	}

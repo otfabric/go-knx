@@ -45,6 +45,7 @@ type options struct {
 	nat               bool
 	tcp               bool
 	secure            *secure.Credentials
+	udp               bool
 	devmgmt           bool
 	layer             knxnetip.TunnelLayer
 	address           knx.IndividualAddress
@@ -127,7 +128,8 @@ func WithNAT(on bool) Option {
 // TCP connection does. Not combinable with WithReconnect.
 func WithTCP() Option { return func(o *options) error { o.tcp = true; return nil } }
 
-// WithSecure tunnels in a KNX IP Secure session (over TCP, implied) as
+// WithSecure tunnels in a KNX IP Secure session (over TCP, or UDP with
+// WithUDP) as
 // the user of the credentials: the client authenticates with the user's
 // password key and, when the credentials hold the device authentication
 // code, verifies the server. See secure.NewCredentials and the keyring
@@ -137,11 +139,14 @@ func WithSecure(c secure.Credentials) Option {
 		if c.UserID == 0 || c.UserID > 127 {
 			return invalid("secure user %d (1..127)", c.UserID)
 		}
-		o.tcp = true
 		o.secure = &c
 		return nil
 	}
 }
+
+// WithUDP tunnels over UDP: with WithSecure, the secure session runs over
+// UDP (KNXnet/IP Secure unicast sessions) instead of TCP.
+func WithUDP() Option { return func(o *options) error { o.udp = true; return nil } }
 
 // WithDeviceManagement opens a device management connection instead of a
 // tunnel: Send carries local device management cEMI frames (M_PropRead.req,

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/otfabric/go-knx/knxnetip"
-	"github.com/otfabric/go-knx/secure"
 )
 
 // tcpConn is a KNXnet/IP connection over TCP (core v2). It carries the
@@ -23,16 +22,9 @@ type tcpConn struct {
 	wmu    sync.Mutex
 	once   sync.Once
 
-	// The KNX IP Secure session, when the client opened one: set by
-	// SESSION_REQUEST (its frames are wrapped from then on), authenticated
-	// by SESSION_AUTHENTICATE. Only serveTCP's goroutine writes them
-	// after the session starts; smu guards them for writers.
-	smu       sync.Mutex
-	sess      *secure.Session
-	clientPub [32]byte
-	serverPub [32]byte
-	user      uint8
-	authed    bool
+	// ss is the KNX IP Secure session, when the client opened one: its
+	// frames are wrapped from SESSION_REQUEST on.
+	ss sessionState
 }
 
 // secured reports whether the client authenticated a secure session, and
@@ -41,15 +33,11 @@ func (t *tcpConn) secured() (uint8, bool) {
 	if t == nil {
 		return 0, false
 	}
-	t.smu.Lock()
-	defer t.smu.Unlock()
-	return t.user, t.authed
+	return t.ss.secured()
 }
 
 func (t *tcpConn) write(m knxnetip.Message) {
-	t.smu.Lock()
-	sess := t.sess
-	t.smu.Unlock()
+	sess := t.ss.session()
 	var b []byte
 	var err error
 	if sess != nil && m.Service() != knxnetip.SessionResponseType {
