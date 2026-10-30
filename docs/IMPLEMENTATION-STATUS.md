@@ -17,7 +17,7 @@ the implementation versions. Nothing here is a conformance claim
 | 5 Routing and advanced DPT | done for plain routing | routing between go-knx, xknx, KNXUltimate, Calimero tools and knxd, all directions; DPT matrix of 12 vectors across every implementation |
 | 5b TCP, feature services, device management, busmonitor | done (v0.2.0) | see Features; go-knx server ↔ xknx and Calimero tools over TCP, Calimero tools property read and busmonitor (interop/, v0.2.1) |
 | 6 Security (KNX IP Secure, KNX Data Secure) | done from public sources (v0.3.0) | AN159/AN158 example vectors (via xknx's tests), keyring files exported by ETS (xknx's fixtures), go-knx ↔ xknx and Calimero by hand (INTEROPERABILITY.md); automated with knx-interop contract 1.2 |
-| 7 Release readiness | released | go-knx v0.3.1, knxctl v0.3.0, knx-interop v0.3.0 |
+| 7 Release readiness | released | go-knx v0.4.1, knxctl v0.4.0, knx-interop v0.4.0 |
 
 ## Features
 

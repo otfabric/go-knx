@@ -28,7 +28,9 @@ filed upstream are in knx-interop's docs/INTEROPERABILITY.md.
 ## KNX Secure (2026-10-30)
 
 First verified by hand, now automated: knx-interop's `secure` suite
-(container contract 1.2, all secure scenarios of the matrix, 0 failures)
+(container contract 1.3 since v0.4.0: also secure sessions over UDP, the
+servers' secure routing and Calimero tools' Data Secure through go-knx as
+the surrogate; 0 failures)
 and this repository's `interop/secure_test.go` (xknx and Calimero tools
 against go-knx's secure server, go-knx's secure client against Calimero's
 secure server, with the knx-interop test profile).
@@ -51,7 +53,7 @@ it does not show conformance to the KNX specification.
 ## Running
 
 ```bash
-make interop-images   # build the Calimero and knxd images from knx-interop v0.3.0 (Docker)
+make interop-images   # build the Calimero and knxd images from knx-interop v0.4.0 (Docker)
 make interop                                    # writes bin/interop-report.json
 ```
 

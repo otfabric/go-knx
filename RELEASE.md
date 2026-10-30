@@ -5,6 +5,23 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.4.1
+
+**Date:** 2026-10-30
+**Previous release:** v0.4.0
+
+## Changes
+
+- The interop suite pins knx-interop v0.4.0 (container contract 1.3: secure
+  sessions over UDP, the servers' secure routing, Calimero tools' Data
+  Secure through go-knx as the surrogate; full matrix 423 pass, 0 fail).
+- server: with listen port 0 and TCP on, the server now finds a port free
+  for both UDP and TCP; before, TCP was disabled (with a warning) when the
+  ephemeral UDP port was taken for TCP.
+- README badges as in the sibling libraries.
+
+---
+
 ## v0.4.0
 
 **Date:** 2026-10-30
