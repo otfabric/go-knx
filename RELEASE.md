@@ -5,6 +5,46 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.4.0
+
+**Date:** 2026-10-30
+**Previous release:** v0.3.1
+
+## Summary
+
+The KNX Secure gaps of v0.3.0 closed: S-A_Sync and the surrogate role,
+so that Calimero tools can send Data Secure telegrams to go-knx; secure
+sessions over UDP; secure routing in the server.
+
+## Added
+
+- `datasecure`: S-A_Sync request and response (`SyncRequest`,
+  `OpenSyncRequest`, `SyncResponse`, `OpenSyncResponse`), verified against
+  the Application Layer Annex C examples (as reproduced by xknx's open
+  work) and a Calimero capture; tool keys in the table (`SetToolKey`,
+  `Respond`, `OpenTool`, `SealTool`); `keyring.DataSecure` loads the
+  devices' tool keys.
+- `client`: with Data Secure, the client answers S-A_Sync and group object
+  diagnostics addressed to it as the surrogate of a secured group: it
+  sends the group telegram for the tool and delivers it to its own
+  subscribers too.
+- `tunnel.WithUDP`: KNX IP Secure sessions over UDP; `server.WithSecure`
+  serves them (sessions bound to the client's address, idle sessions end).
+- `server.WithSecureRouting`: the server's routing with the backbone key
+  (timer synchronisation, plain routing frames dropped, Security in the
+  secured services DIB).
+- `apdu`: A_FunctionPropertyExt_Command/_StateRead/_StateResponse.
+
+## Interoperability
+
+Verified by hand: Calimero tools → go-knx Data Secure through the
+surrogate over secure routing; secure sessions over UDP with Calimero
+tools and Calimero server (also device management); the server's secure
+routing with xknx and Calimero tools. Automated in knx-interop's next
+contract version.
+
+---
+
 ## v0.3.1
 
 **Date:** 2026-10-30

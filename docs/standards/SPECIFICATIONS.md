@@ -74,7 +74,9 @@ available to the project:
 | xknx 4.0.0 `xknx/secure`, `xknx/io/ip_secure.py`, `xknx/knxip/` | MIT | CCM construction (CBC-MAC block 0, counter 0), key derivations (PBKDF2 salts and iterations), session handshake MACs, SECURE_WRAPPER and TIMER_NOTIFY layout, routing timer synchronisation, S-A_Data layout, keyring decryption and signature |
 | AN159 v06 and AN158 v07 example frames, as cited by xknx's tests | facts quoted in MIT tests | golden vectors in `secure` and `datasecure` |
 | KNX keyring support article | public web page | keyring structure and key derivation |
-| Calimero 3.0 (GPL) | — | black-box interoperability peer only; its source was not read |
+| xknx pull request #1981 (open, MIT) | MIT | S-A_Sync request and response layouts and the Application Layer Annex C worked examples it reproduces |
+| bussard (MIT, Rust) pull requests #152/#153 | MIT | confirmation of the S-A_Sync layouts against ETS captures (description only) |
+| Calimero 3.0 (GPL) | — | black-box interoperability peer only; its source was not read. The group object diagnostics request of its surrogate service and its surrogate rules were observed on the wire |
 
 The code was written for go-knx, not translated line by line. Where the
 behaviour rests on xknx's reading of the specification rather than on a

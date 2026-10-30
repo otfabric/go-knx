@@ -40,7 +40,9 @@ secure server, with the knx-interop test profile).
 | Secure device management: go-knx → peer server (user 1, property read) | — | server: pass; other users refused with E_CONNECTION_TYPE, as go-knx does |
 | Secure routing, both directions, with timer synchronisation | pass | tools: pass (Calimero synchronises with go-knx's timer) |
 | Data Secure group write, go-knx → peer (keyring written by go-knx) | pass | tools: pass (decrypted) |
-| Data Secure group write, peer → go-knx | pass | **not working**: Calimero tools refuse to send without a "surrogate" with go-knx's keyring and, with an ETS keyring, first ask a device for its sequence number (S-A_Sync), which go-knx does not answer |
+| Data Secure group write, peer → go-knx | pass | tools: pass through go-knx as the surrogate (S-A_Sync, group object diagnostics with go-knx's tool key, go-knx sends the secured telegram) |
+| Secure sessions over UDP: peer client → go-knx server, go-knx client → peer server (also device management) | — (xknx: TCP only) | tools and server: pass |
+| Secure routing of the go-knx server: in from the peer, out to the peer through a tunnel | pass | tools → server: pass (Calimero synchronises with the server's timer) |
 | Keyring written by go-knx loaded by the peer | pass (signature verified) | pass |
 
 Passing these shows that go-knx and those stacks agree with each other;

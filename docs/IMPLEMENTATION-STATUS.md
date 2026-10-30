@@ -37,8 +37,8 @@ the implementation versions. Nothing here is a conformance claim
 | Virtual devices (group objects, CRWTUI flags) | device | complete (application layer only) | 99 % | reads answered to every client |
 | Device management connection (M_PropRead, M_PropWrite) | devmgmt, server | complete; server properties read only | e2e, unit | go-knx client → Calimero server (UDP, TCP); Calimero tools `get --local` → go-knx server |
 | Busmonitor tunnelling | tunnel, cemi, server | complete (standard frames) | e2e, unit, fuzzed TP1 decoder | go-knx client → knxd server (TP1 frame and check octet decoded); Calimero tools `monitor` → go-knx server (frames and FCS decoded) |
-| KNX IP Secure: tunnelling sessions (client, server), SECURE_WRAPPER, secure routing with timer synchronisation | secure, tunnel, server, routing | complete over TCP; no secure sessions over UDP; the server's routing stays plain | 96 %, AN159 vectors, xknx handshake vectors, e2e | xknx and Calimero tools → go-knx server; go-knx → Calimero server (tunnel, device management); routing both ways with xknx and Calimero tools (knx-interop secure suite, interop/secure_test.go) |
-| KNX Data Secure (group communication) | datasecure, client | S-A_Data (auth+conf, auth only), security tables; no S-A_Sync, no point to point security | 99 %, xknx vectors | both ways with xknx; go-knx → Calimero tools; Calimero → go-knx not working (S-A_Sync) |
+| KNX IP Secure: tunnelling sessions (client, server), SECURE_WRAPPER, secure routing with timer synchronisation | secure, tunnel, server, routing | complete: sessions over TCP and UDP, secure routing in routing and server | 96 %, AN159 vectors, xknx handshake vectors, e2e | xknx and Calimero tools → go-knx server; go-knx → Calimero server (tunnel, device management); routing both ways with xknx and Calimero tools (knx-interop secure suite, interop/secure_test.go) |
+| KNX Data Secure (group communication) | datasecure, client | S-A_Data (auth+conf, auth only), security tables, S-A_Sync, surrogate (group object diagnostics); no general point to point security | 99 %, xknx vectors, Annex C S-A_Sync vectors, a Calimero capture | both ways with xknx; go-knx → Calimero tools; Calimero tools → go-knx through go-knx as surrogate |
 | ETS keyring (.knxkeys) | keyring | read (signature, decryption), write test keyrings | 98 %, ETS-exported fixtures | xknx and Calimero load keyrings written by go-knx |
 | ETS project import | — | not implemented | — | — |
 
@@ -58,6 +58,8 @@ the implementation versions. Nothing here is a conformance claim
 | Secure device management | user 1 (management user) only | Calimero's secure server refuses other users |
 | Secure routing timer | starts at 0 when the process starts; adopts any newer timer | the synchronisation of xknx's reading of 3/8/9 §2.2.2.3; Calimero and xknx synchronise with it |
 | Wrapper serial number of a secure tunnelling client | 00FA followed by 4 random octets | not checked by xknx or Calimero; the server uses its own serial |
+| Data Secure surrogate | answers S-A_Sync_Req and group object diagnostics (A_FunctionPropertyExt_Command, object type 9, PID 66) addressed to the client, with its tool key; the first tool frame may reuse the request's sequence number once | Calimero tools send secured group telegrams only through a surrogate device; layout observed from Calimero 3.0-M1 (reserved, command 01 write, mode, group, value), return code 0 and the first two octets echoed |
+| Calimero's surrogate choice | every sender of the group (across all keyring interfaces) must be a keyring device with a tool key; Calimero picks one of them | observed; the knx-interop profile gives the surrogate group 1/3/3 a single sender |
 
 ## Known issues found in other implementations
 
@@ -92,7 +94,5 @@ restart; both are fixed in the knx-interop harness.
 
 ## Next steps
 
-1. Data Secure S-A_Sync (answer and ask for sequence numbers), so that
-   Calimero tools can send secured group telegrams to go-knx.
-2. Secure routing in the server (`server.WithRouting` with a backbone key)
-   and secure sessions over UDP.
+1. General point to point Data Secure (device management with the tool
+   key) and asking peers by S-A_Sync when a sequence number is unknown.
