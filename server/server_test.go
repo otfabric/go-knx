@@ -799,3 +799,15 @@ func TestTinyAliveTime(t *testing.T) {
 	r := dialRaw(t, s)
 	fakeknx.Expect[*knxnetip.DisconnectRequest](r.p, wait)
 }
+
+// An ephemeral port on an address the machine does not have fails at once.
+func TestStartAddressNotAvailable(t *testing.T) {
+	s, err := server.New(server.WithListenAddr("192.0.2.1:0"), server.WithDiscovery(false), server.WithTCP(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Start(context.Background()); err == nil {
+		_ = s.Close()
+		t.Fatal("Start succeeded on an address of TEST-NET-1")
+	}
+}
