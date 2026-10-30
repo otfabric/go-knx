@@ -35,6 +35,7 @@ import (
 	"github.com/otfabric/go-knx/internal/ratelimit"
 	"github.com/otfabric/go-knx/internal/udp"
 	"github.com/otfabric/go-knx/knxnetip"
+	"github.com/otfabric/go-knx/secure"
 )
 
 // Origin tells where a telegram came from.
@@ -93,6 +94,8 @@ type Server struct {
 	closed  bool
 
 	sessionID uint16 // last secure session identifier
+	usessions map[uint16]*udpSession
+	rtimer    *secure.RoutingTimer // secure routing
 	closing   chan struct{}
 	wg        sync.WaitGroup
 }
@@ -123,7 +126,10 @@ func New(opts ...Option) (*Server, error) {
 			}
 		}
 	}
-	s := &Server{o: o, conns: map[uint8]*tconn{}, tcpConns: map[*tcpConn]struct{}{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), routing: ratelimit.New(o.routingRate), startTime: time.Now()}
+	if o.secureRouting != nil && !o.routing {
+		return nil, invalid("WithSecureRouting needs WithRouting(true)")
+	}
+	s := &Server{o: o, usessions: map[uint16]*udpSession{}, conns: map[uint8]*tconn{}, tcpConns: map[*tcpConn]struct{}{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), routing: ratelimit.New(o.routingRate), startTime: time.Now()}
 	s.props = &propStore{s: s}
 	return s, nil
 }
@@ -240,7 +246,13 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	s.mu.Unlock()
 	s.o.logger.Infof("server: listening on %s (tcp %t, discovery %t, routing %t)", main.LocalAddr(), s.o.tcp, s.o.discovery, s.o.routing)
+	if s.o.routing && s.o.secureRouting != nil {
+		s.rtimer = secure.NewRoutingTimer(s.o.secureRouting.key, s.o.serial, s.o.secureRouting.latency, func(m *knxnetip.TimerNotify) { s.write(s.group, m) })
+	}
 	go s.readLoop(main)
+	if s.rtimer != nil {
+		go s.rtimer.Synchronize(ctx)
+	}
 	go s.janitor()
 	if disc != nil {
 		go s.readLoop(disc)
@@ -329,6 +341,9 @@ func (s *Server) Close() error {
 	for _, c := range conns {
 		s.disconnect(c, true, nil)
 	}
+	if s.rtimer != nil {
+		s.rtimer.Stop()
+	}
 	close(s.closing)
 	if ln != nil {
 		_ = ln.Close()
@@ -352,14 +367,19 @@ func (s *Server) write(to netip.AddrPort, m knxnetip.Message) {
 		s.o.logger.Errorf("server: encode %s: %v", m.Service(), err)
 		return
 	}
+	s.writeRaw(to, b, m.Service())
+}
+
+// writeRaw sends an encoded frame from the main socket.
+func (s *Server) writeRaw(to netip.AddrPort, b []byte, service knxnetip.ServiceType) {
 	// A write deadline: a multicast send the system blocks must not stall
 	// the reader and the distribution.
 	_ = s.main.SetWriteDeadline(time.Now().Add(time.Second))
 	if _, err := s.main.WriteToUDPAddrPort(b, to); err != nil {
-		s.o.logger.Debugf("server: write %s to %s: %v", m.Service(), to, err)
+		s.o.logger.Debugf("server: write %s to %s: %v", service, to, err)
 		return
 	}
-	s.o.metrics.OnFrameSent(net.UDPAddrFromAddrPort(to), uint16(m.Service()), len(b))
+	s.o.metrics.OnFrameSent(net.UDPAddrFromAddrPort(to), uint16(service), len(b))
 }
 
 // endpoint returns the server's endpoint as seen from peer.
@@ -407,6 +427,9 @@ func (s *Server) readLoop(c *net.UDPConn) {
 			continue
 		}
 		s.o.metrics.OnFrameReceived(fa, uint16(m.Service()), n)
+		if s.handleUDPSecure(from, m) {
+			continue
+		}
 		s.handle(peer{addr: from}, m)
 	}
 }
@@ -423,6 +446,10 @@ func reply(h knxnetip.HPAI, from netip.AddrPort) netip.AddrPort {
 func (s *Server) reply(p peer, h knxnetip.HPAI, m knxnetip.Message) {
 	if p.tcp != nil {
 		p.tcp.write(m)
+		return
+	}
+	if p.us != nil {
+		s.writeSession(p.us, reply(h, p.addr), m)
 		return
 	}
 	s.write(reply(h, p.addr), m)
@@ -530,7 +557,7 @@ func (s *Server) families() knxnetip.ServiceFamilies {
 	if s.o.routing {
 		f.Families = append(f.Families, knxnetip.ServiceFamily{ID: knxnetip.FamilyRouting, Version: 1})
 	}
-	if s.o.secure != nil {
+	if s.secured() {
 		f.Families = append(f.Families, knxnetip.ServiceFamily{ID: knxnetip.FamilySecurity, Version: 1})
 	}
 	return f
@@ -539,10 +566,20 @@ func (s *Server) families() knxnetip.ServiceFamilies {
 // securedFamilies is the SECURED_SERVICE_FAMILIES DIB: the services that
 // need KNX IP Secure.
 func (s *Server) securedFamilies() knxnetip.ServiceFamilies {
-	return knxnetip.ServiceFamilies{Secured: true, Families: []knxnetip.ServiceFamily{
-		{ID: knxnetip.FamilyDeviceManagement, Version: 1},
-		{ID: knxnetip.FamilyTunnelling, Version: 1},
-	}}
+	f := knxnetip.ServiceFamilies{Secured: true}
+	if s.o.secure != nil {
+		f.Families = append(f.Families, knxnetip.ServiceFamily{ID: knxnetip.FamilyDeviceManagement, Version: 1},
+			knxnetip.ServiceFamily{ID: knxnetip.FamilyTunnelling, Version: 1})
+	}
+	if s.o.routing && s.o.secureRouting != nil {
+		f.Families = append(f.Families, knxnetip.ServiceFamily{ID: knxnetip.FamilyRouting, Version: 1})
+	}
+	return f
+}
+
+// secured reports a server with any KNX IP Secure service.
+func (s *Server) secured() bool {
+	return s.o.secure != nil || (s.o.routing && s.o.secureRouting != nil)
 }
 
 func (s *Server) deviceInfo() knxnetip.DeviceInfo {
@@ -564,7 +601,7 @@ func (s *Server) dibs(types []knxnetip.DIBType, extended bool) knxnetip.DIBs {
 		if extended {
 			ds = append(ds, knxnetip.ExtendedDeviceInfo{MaxAPDU: 254})
 		}
-		if s.o.secure != nil {
+		if s.secured() {
 			ds = append(ds, s.securedFamilies())
 		}
 		return ds
@@ -583,7 +620,7 @@ func (s *Server) dibs(types []knxnetip.DIBType, extended bool) knxnetip.DIBs {
 		case knxnetip.DIBTunnellingInfo:
 			ds = append(ds, s.tunnellingInfo())
 		case knxnetip.DIBSecuredServices:
-			if s.o.secure != nil {
+			if s.secured() {
 				ds = append(ds, s.securedFamilies())
 			}
 		default:
@@ -685,7 +722,7 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 		refuse(knxnetip.StatusHostProtocolType)
 		return
 	}
-	user, authed := p.tcp.secured()
+	user, authed := p.secured()
 	if s.o.secure != nil && !authed {
 		refuse(knxnetip.StatusConnectionType)
 		return
@@ -734,7 +771,7 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 	// A repeated CONNECT_REQUEST of a client whose response was lost gets
 	// its existing channel.
 	for _, c := range s.conns {
-		if c.kind == kind && c.ctrl == ctrl && c.data == data && c.tcp == p.tcp {
+		if c.kind == kind && c.ctrl == ctrl && c.data == data && c.tcp == p.tcp && c.us == p.us {
 			s.mu.Unlock()
 			s.reply(p, m.Control, &knxnetip.ConnectResponse{Channel: c.channel, Data: dataHPAI, CRD: crd(c)})
 			return
@@ -829,7 +866,7 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 		}
 	}
 	s.next = ch
-	c := &tconn{s: s, kind: kind, channel: ch, addr: addr, ctrl: ctrl, data: data, tcp: p.tcp, lastSeen: time.Now(),
+	c := &tconn{s: s, kind: kind, channel: ch, addr: addr, ctrl: ctrl, data: data, tcp: p.tcp, us: p.us, lastSeen: time.Now(),
 		queue: make(chan out, s.o.queueSize), ackCh: make(chan ack, 1), done: make(chan struct{})}
 	s.conns[ch] = c
 	s.mu.Unlock()
@@ -909,6 +946,7 @@ func (s *Server) janitor() {
 		for _, c := range stale {
 			s.disconnect(c, true, fmt.Errorf("%w: no heartbeat for %v", knx.ErrConnectionLost, s.o.aliveTime))
 		}
+		s.expireSessions()
 	}
 }
 
@@ -996,7 +1034,7 @@ func (s *Server) distribute(t Telegram, origin *tconn) {
 	}
 	if s.o.routing && t.Origin != FromRouting && ind.HopCount() > 0 {
 		if s.routing.Allow() {
-			s.write(s.group, &knxnetip.RoutingIndication{CEMI: b})
+			s.writeRouting(&knxnetip.RoutingIndication{CEMI: b})
 		} else {
 			s.o.metrics.OnDropped(net.UDPAddrFromAddrPort(s.group), "routing_rate")
 		}

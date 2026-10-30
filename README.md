@@ -37,8 +37,8 @@ tests against independent stacks live in
 | Routing: indications, ROUTING_BUSY flow control, rate limit, echo suppression | ✅ |
 | Group communication: write, read (first or all responses), respond, subscriptions, callbacks | ✅ |
 | KNXnet/IP server: discovery, description, tunnelling over UDP and TCP (multiple clients, channel limits, feature services), busmonitor, device management (device, router and KNXnet/IP parameter objects), routing, virtual group objects with flags | ✅ |
-| KNX IP Secure: secure tunnelling sessions (client and server, over TCP), secure routing with timer synchronisation (`secure`, `tunnel.WithSecure`, `server.WithSecure`, `routing.WithSecure`) | ✅ from public sources, verified against xknx and Calimero ([why not "conformant"](docs/standards/SPECIFICATIONS.md#knx-secure-sources)) |
-| KNX Data Secure for group communication (S-A_Data, security tables; `datasecure`, `client.WithDataSecure`) | ✅ same sources; S-A_Sync and point to point security not implemented |
+| KNX IP Secure: secure tunnelling sessions (client and server, over TCP and UDP), secure routing with timer synchronisation in the client and the server (`secure`, `tunnel.WithSecure`, `server.WithSecure`, `routing.WithSecure`, `server.WithSecureRouting`) | ✅ from public sources, verified against xknx and Calimero ([why not "conformant"](docs/standards/SPECIFICATIONS.md#knx-secure-sources)) |
+| KNX Data Secure for group communication (S-A_Data, security tables, S-A_Sync, the surrogate role for tools such as Calimero; `datasecure`, `client.WithDataSecure`) | ✅ same sources; general point to point security not implemented |
 | ETS keyrings (.knxkeys): verify, decrypt, write test keyrings (`keyring`) | ✅ |
 | KNX TP/RF media, ETS project import, KNX IoT | ❌ out of scope |
 

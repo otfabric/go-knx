@@ -40,6 +40,7 @@ type options struct {
 	discovery        bool
 	tcp              bool
 	secure           *secureOptions
+	secureRouting    *secureRoutingOptions
 	concurrentBusmon bool
 	routing          bool
 	group            string
@@ -159,6 +160,25 @@ func WithSecure(device secure.Key, users map[uint8]SecureUser) Option {
 			u[id] = user
 		}
 		o.secure = &secureOptions{device: device, users: u}
+		return nil
+	}
+}
+
+type secureRoutingOptions struct {
+	key     secure.Key
+	latency time.Duration
+}
+
+// WithSecureRouting makes the server's routing (WithRouting) KNX IP
+// Secure routing with the backbone key and latency tolerance (0:
+// secure.DefaultLatency): routing frames are sent and accepted only in
+// SECURE_WRAPPERs, with the synchronised multicast timer.
+func WithSecureRouting(key secure.Key, latency time.Duration) Option {
+	return func(o *options) error {
+		if latency < 0 {
+			return invalid("secure routing latency %v", latency)
+		}
+		o.secureRouting = &secureRoutingOptions{key: key, latency: latency}
 		return nil
 	}
 }

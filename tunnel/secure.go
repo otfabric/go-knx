@@ -20,11 +20,14 @@ import (
 // SESSION_STATUS keep alive; servers end sessions idle for 60 s.
 var sessionKeepAlive = 45 * time.Second
 
-// secureTransport carries the frames of a TCP connection in a KNX IP
-// Secure session: every frame is sent and received in a SECURE_WRAPPER.
+// secureTransport carries the frames of a TCP connection or a UDP socket
+// in a KNX IP Secure session: every frame is sent and received in a
+// SECURE_WRAPPER. Over UDP, frames from other hosts are dropped.
 type secureTransport struct {
-	inner *tcpTransport
-	sess  *secure.Session
+	inner  transport
+	server netip.AddrPort // the server's control endpoint
+	sess   *secure.Session
+	buf    []byte
 
 	mu        sync.Mutex
 	idle      time.Duration // keep alive interval
@@ -35,24 +38,26 @@ type secureTransport struct {
 // errSessionClosed reports a session the server ended.
 var errSessionClosed = errors.New("tunnel: the server closed the secure session")
 
-// handshake establishes a secure session on a TCP connection: the key
-// exchange (SESSION_REQUEST, SESSION_RESPONSE), then the user's
-// authentication (SESSION_AUTHENTICATE, SESSION_STATUS).
-func handshake(t *tcpTransport, cred secure.Credentials, timeout time.Duration) (*secureTransport, error) {
+// handshake establishes a secure session with the server's control
+// endpoint: the key exchange (SESSION_REQUEST with the client's control
+// endpoint hpai, SESSION_RESPONSE), then the user's authentication
+// (SESSION_AUTHENTICATE, SESSION_STATUS).
+func handshake(t transport, server netip.AddrPort, hpai knxnetip.HPAI, cred secure.Credentials, timeout time.Duration) (*secureTransport, error) {
 	kp, err := secure.NewKeyPair()
 	if err != nil {
 		return nil, err
 	}
-	_ = t.c.SetDeadline(time.Now().Add(timeout))
-	defer func() { _ = t.c.SetDeadline(time.Time{}) }()
-	b, err := knxnetip.Marshal(&knxnetip.SessionRequest{Control: knxnetip.TCPHPAI(), PublicKey: kp.Public})
+	_ = t.setDeadline(time.Now().Add(timeout))
+	defer func() { _ = t.setDeadline(time.Time{}) }()
+	b, err := knxnetip.Marshal(&knxnetip.SessionRequest{Control: hpai, PublicKey: kp.Public})
 	if err != nil {
 		return nil, err
 	}
-	if err := t.writeTo(b, t.server); err != nil {
+	if err := t.writeTo(b, server); err != nil {
 		return nil, fmt.Errorf("tunnel: send SESSION_REQUEST: %w", err)
 	}
-	m, err := readMessage(t)
+	st := &secureTransport{inner: t, server: server, buf: make([]byte, knxnetip.MaxFrameLen+1)}
+	m, err := st.readMessage()
 	if err != nil {
 		return nil, err
 	}
@@ -75,13 +80,13 @@ func handshake(t *tcpTransport, cred secure.Credentials, timeout time.Duration) 
 	if _, err := rand.Read(serial[2:]); err != nil {
 		return nil, err
 	}
-	st := &secureTransport{inner: t, sess: secure.NewSession(resp.SessionID, key, serial)}
+	st.sess = secure.NewSession(resp.SessionID, key, serial)
 	auth := &knxnetip.SessionAuthenticate{UserID: cred.UserID, MAC: secure.AuthenticateMAC(cred.UserKey, cred.UserID, kp.Public, resp.PublicKey)}
 	if err := st.send(auth); err != nil {
 		return nil, fmt.Errorf("tunnel: send SESSION_AUTHENTICATE: %w", err)
 	}
 	for {
-		m, err := readMessage(t)
+		m, err := st.readMessage()
 		if err != nil {
 			return nil, err
 		}
@@ -108,12 +113,22 @@ func handshake(t *tcpTransport, cred secure.Credentials, timeout time.Duration) 
 	return st, nil
 }
 
-func readMessage(t *tcpTransport) (knxnetip.Message, error) {
-	f, err := knxnetip.ReadFrame(t.c)
-	if err != nil {
-		return nil, fmt.Errorf("%w: tunnel: secure session: %v", knx.ErrConnectionLost, err)
+// readMessage reads the next frame of the server during the handshake.
+func (t *secureTransport) readMessage() (knxnetip.Message, error) {
+	for {
+		n, from, err := t.inner.readFrom(t.buf)
+		if err != nil {
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				return nil, fmt.Errorf("%w: tunnel: secure session: no answer from %s", knx.ErrTimeout, t.server)
+			}
+			return nil, fmt.Errorf("%w: tunnel: secure session: %v", knx.ErrConnectionLost, err)
+		}
+		if !t.inner.stream() && from.Addr() != t.server.Addr() {
+			continue
+		}
+		return knxnetip.Parse(t.buf[:n])
 	}
-	return knxnetip.Parse(f)
 }
 
 // open unwraps a SECURE_WRAPPER of the session; other frames are refused.
@@ -130,7 +145,7 @@ func (t *secureTransport) send(m knxnetip.Message) error {
 	if err != nil {
 		return err
 	}
-	return t.writeTo(b, t.inner.server)
+	return t.writeTo(b, t.server)
 }
 
 func (t *secureTransport) writeTo(b []byte, to netip.AddrPort) error {
@@ -160,37 +175,39 @@ func (t *secureTransport) sendKeepAlive() {
 }
 
 // readFrom returns the next frame of the session. SESSION_STATUS keep
-// alives are consumed; a closing status ends the stream.
+// alives are consumed; a closing status ends the stream. Frames that fail
+// authentication, and over UDP frames from other hosts, are dropped.
 func (t *secureTransport) readFrom(buf []byte) (int, netip.AddrPort, error) {
 	for {
-		f, err := knxnetip.ReadFrame(t.inner.c)
+		n, from, err := t.inner.readFrom(t.buf)
 		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
-				return 0, t.inner.server, err
-			}
-			return 0, t.inner.server, errStreamClosed
+			return 0, from, err
 		}
-		m, err := knxnetip.Parse(f)
+		if !t.inner.stream() && from.Addr() != t.server.Addr() {
+			continue
+		}
+		m, err := knxnetip.Parse(t.buf[:n])
 		if err != nil {
-			return 0, t.inner.server, err
+			if t.inner.stream() {
+				return 0, from, err
+			}
+			continue
 		}
 		frame, err := t.open(m)
 		if err != nil {
-			// A frame that fails authentication is dropped; the stream
-			// itself is intact.
 			continue
 		}
 		if h, err := knxnetip.ParseHeader(frame); err == nil && h.Service == knxnetip.SessionStatusType {
 			if m, err := knxnetip.Parse(frame); err == nil {
 				switch m.(*knxnetip.SessionStatus).Status {
 				case knxnetip.SessionClose, knxnetip.SessionTimeout, knxnetip.SessionUnauthenticated:
-					return 0, t.inner.server, errSessionClosed
+					return 0, from, errSessionClosed
 				case knxnetip.SessionAuthSuccess, knxnetip.SessionAuthFailed, knxnetip.SessionKeepAlive:
 				}
 			}
 			continue
 		}
-		return copy(buf, frame), t.inner.server, nil
+		return copy(buf, frame), from, nil
 	}
 }
 
@@ -204,11 +221,12 @@ func (t *secureTransport) close() error {
 	}
 	t.mu.Unlock()
 	if !already {
-		_ = t.inner.c.SetWriteDeadline(time.Now().Add(time.Second))
+		_ = t.inner.setDeadline(time.Now().Add(time.Second))
 		_ = t.send(&knxnetip.SessionStatus{Status: knxnetip.SessionClose})
 	}
 	return t.inner.close()
 }
 
-func (t *secureTransport) localAddr() net.Addr { return t.inner.localAddr() }
-func (*secureTransport) stream() bool          { return true }
+func (t *secureTransport) localAddr() net.Addr           { return t.inner.localAddr() }
+func (t *secureTransport) stream() bool                  { return t.inner.stream() }
+func (t *secureTransport) setDeadline(d time.Time) error { return t.inner.setDeadline(d) }

@@ -104,6 +104,12 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 			return nil, err
 		}
 	}
+	if o.secure != nil && !o.udp {
+		o.tcp = true // KNX IP Secure tunnels over TCP unless WithUDP
+	}
+	if o.tcp && o.udp {
+		return nil, invalid("WithTCP and WithUDP exclude each other")
+	}
 	if o.tcp && o.reconnect {
 		return nil, invalid("WithTCP and WithReconnect: reconnect over TCP is not implemented")
 	}
@@ -117,16 +123,7 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		if err != nil {
 			return nil, fmt.Errorf("tunnel: dial tcp %s: %w", server, err)
 		}
-		tt := &tcpTransport{c: tc, server: server}
-		tr = tt
-		if o.secure != nil {
-			st, err := handshake(tt, *o.secure, o.connectTimeout)
-			if err != nil {
-				_ = tc.Close()
-				return nil, err
-			}
-			tr = st
-		}
+		tr = &tcpTransport{c: tc, server: server}
 	} else {
 		sock, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(local))
 		if err != nil {
@@ -134,23 +131,12 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		}
 		tr = udpTransport{c: sock}
 	}
-	c := &Conn{
-		o: o, tr: tr, server: server,
-		featCh:  make(chan *knxnetip.TunnellingFeature, 4),
-		ackCh:   make(chan *knxnetip.TunnellingAck, 1),
-		connCh:  make(chan *knxnetip.ConnectResponse, 1),
-		csCh:    make(chan *knxnetip.ConnectionStateResponse, 1),
-		discCh:  make(chan *knxnetip.DisconnectResponse, 1),
-		inbound: make(chan cemi.Frame, o.queueSize),
-		lost:    make(chan lostEvent, 1),
-		closing: make(chan struct{}),
-		done:    make(chan struct{}),
-	}
+	var hpai knxnetip.HPAI
 	switch {
 	case o.tcp:
-		c.hpai = knxnetip.TCPHPAI()
+		hpai = knxnetip.TCPHPAI()
 	case o.nat:
-		c.hpai = knxnetip.RouteBackHPAI()
+		hpai = knxnetip.RouteBackHPAI()
 	default:
 		bound := udp.AddrPortOf(tr.localAddr())
 		ip := bound.Addr()
@@ -160,7 +146,27 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 				return nil, fmt.Errorf("tunnel: no route to %s: %w", server, err)
 			}
 		}
-		c.hpai = knxnetip.NewHPAI(netip.AddrPortFrom(ip, bound.Port()))
+		hpai = knxnetip.NewHPAI(netip.AddrPortFrom(ip, bound.Port()))
+	}
+	if o.secure != nil {
+		st, err := handshake(tr, server, hpai, *o.secure, o.connectTimeout)
+		if err != nil {
+			_ = tr.close()
+			return nil, err
+		}
+		tr = st
+	}
+	c := &Conn{
+		o: o, tr: tr, server: server, hpai: hpai,
+		featCh:  make(chan *knxnetip.TunnellingFeature, 4),
+		ackCh:   make(chan *knxnetip.TunnellingAck, 1),
+		connCh:  make(chan *knxnetip.ConnectResponse, 1),
+		csCh:    make(chan *knxnetip.ConnectionStateResponse, 1),
+		discCh:  make(chan *knxnetip.DisconnectResponse, 1),
+		inbound: make(chan cemi.Frame, o.queueSize),
+		lost:    make(chan lostEvent, 1),
+		closing: make(chan struct{}),
+		done:    make(chan struct{}),
 	}
 	c.setState(knx.StateConnecting, nil)
 	c.wg.Add(1)

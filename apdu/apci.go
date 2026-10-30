@@ -22,6 +22,9 @@ const (
 	SystemNetworkParameterReadService            APCI = 0x1C8
 	SystemNetworkParameterResponseService        APCI = 0x1C9
 	SystemNetworkParameterWriteService           APCI = 0x1CA
+	FunctionPropertyExtCommandService            APCI = 0x1D4
+	FunctionPropertyExtStateReadService          APCI = 0x1D5
+	FunctionPropertyExtStateResponseService      APCI = 0x1D6
 	MemoryExtendedWriteService                   APCI = 0x1FB
 	MemoryExtendedWriteResponseService           APCI = 0x1FC
 	MemoryExtendedReadService                    APCI = 0x1FD
@@ -80,8 +83,11 @@ var apciNames = map[APCI]string{
 	IndividualAddressReadService: "A_IndividualAddress_Read", IndividualAddressResponseService: "A_IndividualAddress_Response",
 	ADCReadService: "A_ADC_Read", ADCResponseService: "A_ADC_Response",
 	SystemNetworkParameterReadService: "A_SystemNetworkParameter_Read", SystemNetworkParameterResponseService: "A_SystemNetworkParameter_Response",
-	SystemNetworkParameterWriteService: "A_SystemNetworkParameter_Write",
-	MemoryExtendedWriteService:         "A_MemoryExtended_Write", MemoryExtendedWriteResponseService: "A_MemoryExtended_WriteResponse",
+	SystemNetworkParameterWriteService:      "A_SystemNetworkParameter_Write",
+	FunctionPropertyExtCommandService:       "FunctionPropertyExtCommandService",
+	FunctionPropertyExtStateReadService:     "FunctionPropertyExtStateReadService",
+	FunctionPropertyExtStateResponseService: "FunctionPropertyExtStateResponseService",
+	MemoryExtendedWriteService:              "A_MemoryExtended_Write", MemoryExtendedWriteResponseService: "A_MemoryExtended_WriteResponse",
 	MemoryExtendedReadService: "A_MemoryExtended_Read", MemoryExtendedReadResponseService: "A_MemoryExtended_ReadResponse",
 	MemoryReadService: "A_Memory_Read", MemoryResponseService: "A_Memory_Response", MemoryWriteService: "A_Memory_Write",
 	UserMemoryReadService: "A_UserMemory_Read", UserMemoryResponseService: "A_UserMemory_Response", UserMemoryWriteService: "A_UserMemory_Write",

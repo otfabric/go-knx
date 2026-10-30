@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"time"
 
 	"github.com/otfabric/go-knx/knxnetip"
 )
@@ -22,6 +23,8 @@ type transport interface {
 	localAddr() net.Addr
 	// stream reports a TCP transport: no TUNNELLING_ACKs, one peer.
 	stream() bool
+	// setDeadline sets the read and write deadline.
+	setDeadline(t time.Time) error
 }
 
 type udpTransport struct{ c *net.UDPConn }
@@ -36,9 +39,10 @@ func (t udpTransport) readFrom(buf []byte) (int, netip.AddrPort, error) {
 	return n, netip.AddrPortFrom(from.Addr().Unmap(), from.Port()), err
 }
 
-func (t udpTransport) close() error        { return t.c.Close() }
-func (t udpTransport) localAddr() net.Addr { return t.c.LocalAddr() }
-func (udpTransport) stream() bool          { return false }
+func (t udpTransport) close() error                  { return t.c.Close() }
+func (t udpTransport) localAddr() net.Addr           { return t.c.LocalAddr() }
+func (udpTransport) stream() bool                    { return false }
+func (t udpTransport) setDeadline(d time.Time) error { return t.c.SetDeadline(d) }
 
 type tcpTransport struct {
 	c      net.Conn
@@ -64,9 +68,10 @@ func (t *tcpTransport) readFrom(buf []byte) (int, netip.AddrPort, error) {
 	return copy(buf, f), t.server, nil
 }
 
-func (t *tcpTransport) close() error        { return t.c.Close() }
-func (t *tcpTransport) localAddr() net.Addr { return t.c.LocalAddr() }
-func (*tcpTransport) stream() bool          { return true }
+func (t *tcpTransport) close() error                  { return t.c.Close() }
+func (t *tcpTransport) localAddr() net.Addr           { return t.c.LocalAddr() }
+func (*tcpTransport) stream() bool                    { return true }
+func (t *tcpTransport) setDeadline(d time.Time) error { return t.c.SetDeadline(d) }
 
 // errStreamClosed reports a TCP connection the server closed.
 var errStreamClosed = errors.New("tunnel: the server closed the TCP connection")

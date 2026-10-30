@@ -43,6 +43,7 @@ func (k connKind) String() string {
 type peer struct {
 	addr netip.AddrPort
 	tcp  *tcpConn
+	us   *udpSession // a secure session over UDP
 }
 
 // out is an item of a connection's send queue: a cEMI frame, or a
@@ -61,7 +62,8 @@ type tconn struct {
 	addr    knx.IndividualAddress
 	ctrl    netip.AddrPort
 	data    netip.AddrPort
-	tcp     *tcpConn // nil over UDP
+	tcp     *tcpConn    // nil over UDP
+	us      *udpSession // the secure session over UDP, if any
 
 	mu       sync.Mutex
 	rxSeq    uint8
@@ -81,6 +83,10 @@ func (c *tconn) from(p peer) bool {
 	if c.tcp != nil || p.tcp != nil {
 		return c.tcp == p.tcp
 	}
+	if c.us != p.us {
+		// A secure connection takes frames of its session only.
+		return false
+	}
 	return p.addr.Addr() == c.ctrl.Addr() || p.addr.Addr() == c.data.Addr()
 }
 
@@ -88,6 +94,10 @@ func (c *tconn) from(p peer) bool {
 func (c *tconn) send(m knxnetip.Message) {
 	if c.tcp != nil {
 		c.tcp.write(m)
+		return
+	}
+	if c.us != nil {
+		c.s.writeSession(c.us, c.data, m)
 		return
 	}
 	c.s.write(c.data, m)
