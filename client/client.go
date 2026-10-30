@@ -525,7 +525,9 @@ const (
 )
 
 // toolRequest answers a decrypted tool request (A_FunctionPropertyExt
-// _Command for group object diagnostics); nil for other requests.
+// _Command for group object diagnostics); nil for other requests. A group
+// telegram the client sends for a tool is also delivered to its own
+// subscribers.
 func (c *Client) toolRequest(ctx context.Context, plain *cemi.LData, code cemi.MessageCode) *cemi.LData {
 	t, err := apdu.Parse(plain.TPDU)
 	if err != nil || t.APCI != apdu.FunctionPropertyExtCommandService || len(t.Data) < 5 {
@@ -547,6 +549,10 @@ func (c *Client) toolRequest(ctx context.Context, plain *cemi.LData, code cemi.M
 		}
 		if err == nil {
 			ret = returnSuccess
+			// The telegram is on the bus: the client's own subscribers see
+			// it like any other (the link does not return own frames).
+			f := cemi.NewGroupFrame(cemi.LDataInd, c.ownAddress(), g, c.prio, tpdu)
+			c.deliver(Telegram{Time: time.Now(), Source: f.Source, Group: g, Service: apdu.GroupValueWriteService, Value: v, Frame: f, Secure: c.secure.Secured(g)})
 		} else {
 			c.logger.Debugf("client: group object diagnostics write: %v", err)
 		}
@@ -612,32 +618,37 @@ func (c *Client) readLoop(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		t := Telegram{Time: time.Now(), Source: ld.Source, Group: g, Service: svc, Value: v, Frame: ld, Secure: secured}
-		c.mu.Lock()
-		subs := make([]*Subscription, 0, len(c.subs))
-		for s := range c.subs {
-			subs = append(subs, s)
-		}
-		hooks := make([]func(Telegram), 0, len(c.hooks))
-		for _, h := range c.hooks {
-			hooks = append(hooks, h)
-		}
-		if svc == apdu.GroupValueResponseService {
-			for w := range c.waiters {
-				if w.g == g {
-					select {
-					case w.ch <- t:
-					default:
-					}
+		c.deliver(Telegram{Time: time.Now(), Source: ld.Source, Group: g, Service: svc, Value: v, Frame: ld, Secure: secured})
+	}
+}
+
+// deliver hands a group telegram to the subscriptions, hooks and pending
+// reads.
+func (c *Client) deliver(t Telegram) {
+	c.mu.Lock()
+	subs := make([]*Subscription, 0, len(c.subs))
+	for s := range c.subs {
+		subs = append(subs, s)
+	}
+	hooks := make([]func(Telegram), 0, len(c.hooks))
+	for _, h := range c.hooks {
+		hooks = append(hooks, h)
+	}
+	if t.Service == apdu.GroupValueResponseService {
+		for w := range c.waiters {
+			if w.g == t.Group {
+				select {
+				case w.ch <- t:
+				default:
 				}
 			}
 		}
-		c.mu.Unlock()
-		for _, s := range subs {
-			s.deliver(t)
-		}
-		for _, h := range hooks {
-			h(t)
-		}
+	}
+	c.mu.Unlock()
+	for _, s := range subs {
+		s.deliver(t)
+	}
+	for _, h := range hooks {
+		h(t)
 	}
 }

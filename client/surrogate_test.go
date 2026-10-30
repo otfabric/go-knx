@@ -24,6 +24,7 @@ func TestSurrogate(t *testing.T) {
 	l := newLink()
 	c := client.New(l, client.WithSource(own), client.WithDataSecure(tab))
 	defer c.Close()
+	sub := c.Subscribe(4, g)
 
 	challenge := [6]byte{9, 9, 9, 9, 9, 9}
 	req, _ := datasecure.SyncRequest(toolKey, cemi.LDataInd, tool, own, 0, 1, [6]byte{}, challenge)
@@ -50,6 +51,14 @@ func TestSurrogate(t *testing.T) {
 	}
 	if svc, v, _ := apdu.ParseGroupValue(plainW.TPDU); svc != apdu.GroupValueWriteService || string(v.Data) != "\x0c\x97" {
 		t.Errorf("group write %v % X", svc, v.Data)
+	}
+	select {
+	case tg := <-sub.C():
+		if tg.Source != own || !tg.Secure || string(tg.Value.Data) != "\x0c\x97" {
+			t.Errorf("local delivery %+v", tg)
+		}
+	case <-time.After(wait):
+		t.Error("the surrogate's write was not delivered locally")
 	}
 	plainA, _, scf, err := datasecure.Open(toolKey, answer)
 	if err != nil || !scf.ToolAccess || knx.IndividualAddress(answer.Destination) != tool {
