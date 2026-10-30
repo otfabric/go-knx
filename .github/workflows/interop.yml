@@ -2,11 +2,14 @@ name: Interop
 run-name: "Interop (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
 
 # Runs go-knx against the independent implementations of otfabric/knx-interop
-# (Calimero, knxd, xknx, KNXUltimate): go-knx's tunnelling client against
-# Calimero's and knxd's servers, and their clients against go-knx's server.
+# (Calimero, knxd, xknx, KNXUltimate): the host-based suite (go-knx's
+# tunnelling client against Calimero's and knxd's servers, their clients
+# against go-knx's server), then knx-interop's whole matrix inside one
+# Docker network with go-knx's own adapter (interop/node, built from this
+# commit) as the system under test.
 # Published knx-interop images are pinned by digest (interop/harness_test.go);
 # the Calimero and knxd images are built from knx-interop's source at
-# INTEROP_REF (default v0.4.0).
+# INTEROP_REF (default v0.5.0).
 
 on:
   push:
@@ -17,7 +20,7 @@ on:
     inputs:
       interop-ref:
         description: knx-interop ref to build the adapters from
-        default: v0.4.0
+        default: v0.5.0
 
 permissions:
   contents: read
@@ -26,7 +29,7 @@ jobs:
   interop:
     name: Interop (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
@@ -39,9 +42,14 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Build the knx-interop adapter images
-        run: make interop-images INTEROP_REF=${{ inputs.interop-ref || 'v0.4.0' }}
+        run: make interop-images INTEROP_REF=${{ inputs.interop-ref || 'v0.5.0' }}
       - name: Interop suite
         run: make interop
+      - name: knx-interop matrix with go-knx's node
+        run: make interop-matrix INTEROP_REF=${{ inputs.interop-ref || 'v0.5.0' }}
+      - name: Matrix summary
+        if: always()
+        run: '[ -f bin/interop-matrix.md ] && cat bin/interop-matrix.md >> "$GITHUB_STEP_SUMMARY" || true'
       - name: Summary
         if: always()
         run: |
@@ -61,5 +69,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: interop-report-${{ matrix.arch }}
-          path: bin/interop-report.json
+          path: |
+            bin/interop-report.json
+            bin/interop-matrix.json
+            bin/interop-matrix.md
           if-no-files-found: warn

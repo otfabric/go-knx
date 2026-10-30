@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-multicast coverage coverage-check cover bench fuzz check clean coverpkg-check cross e2e interop interop-images
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-multicast coverage coverage-check cover bench fuzz check clean coverpkg-check cross e2e interop interop-images interop-matrix
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -103,16 +103,31 @@ cross: ## Build every package for the release platforms
 	@for t in linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do \
 		echo "build $$t"; GOOS=$${t%/*} GOARCH=$${t#*/} CGO_ENABLED=0 go build ./... || exit 1; done
 
-# Independent implementations: otfabric/knx-interop v0.4.0. The published
+# Independent implementations: otfabric/knx-interop v0.5.0. The published
 # (MIT) images are pinned by digest in interop/harness_test.go; the images
 # with GPL binaries are never published, so interop-images builds them from
 # knx-interop's source at INTEROP_REF as :dev (KNX_INTEROP_IMAGE_<ADAPTER>
 # overrides any image).
-INTEROP_REF ?= v0.4.0
+INTEROP_REF ?= v0.5.0
 interop-images: ## Build the knx-interop images from source as :dev (needs Docker)
 	@rm -rf $(BIN_DIR)/knx-interop && mkdir -p $(BIN_DIR)
 	@git clone -q --depth 1 --branch $(INTEROP_REF) https://github.com/otfabric/knx-interop.git $(BIN_DIR)/knx-interop
 	@$(MAKE) -C $(BIN_DIR)/knx-interop images VERSION=dev ADAPTERS="knxd calimero-server calimero-tools"
+
+# The knx-interop matrix with go-knx: the node (interop/node, built from
+# this repository's sources) implements knx-interop's container contract
+# and joins the matrix as an external adapter; the run fails only on
+# failures that involve go-knx.
+NODE_IMAGE ?= knx-interop-goknx:local
+ARCH := $(shell docker version --format '{{.Server.Arch}}' 2>/dev/null || uname -m)
+interop-matrix: ## Run knx-interop's matrix with go-knx's node (Docker; writes bin/interop-matrix.{json,md})
+	@rm -rf $(BIN_DIR)/knx-interop $(BIN_DIR)/node && mkdir -p $(BIN_DIR)/node
+	@git clone -q --depth 1 --branch $(INTEROP_REF) https://github.com/otfabric/knx-interop.git $(BIN_DIR)/knx-interop
+	@$(MAKE) -C $(BIN_DIR)/knx-interop images VERSION=dev
+	@CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -o $(BIN_DIR)/node/node ./interop/node
+	@docker build -q -f interop/node/Dockerfile -t $(NODE_IMAGE) $(BIN_DIR)/node >/dev/null
+	@cd $(BIN_DIR)/knx-interop && python3 scripts/run-matrix.py --version dev --adapter goknx=$(NODE_IMAGE) --gate goknx --report goknx; \
+		rc=$$?; cp reports/goknx.json ../interop-matrix.json; cp reports/goknx.md ../interop-matrix.md; exit $$rc
 
 interop: ## Run the interop suite against the knx-interop images (Docker; writes bin/interop-report.json)
 	@mkdir -p $(BIN_DIR)
