@@ -26,6 +26,10 @@ type Table struct {
 	senders  map[knx.IndividualAddress]uint64
 	seq      uint64
 	toolKeys map[knx.IndividualAddress]Key
+	// tools holds the last valid tool access sequence number of each
+	// peer: of the tools that access this table's devices, and of the
+	// devices this table accesses as a tool.
+	tools map[knx.IndividualAddress]uint64
 	// synced holds the sequence number of each sender's last answered
 	// S-A_Sync_Req: its next tool access frame may reuse it once.
 	synced map[knx.IndividualAddress]uint64
@@ -42,7 +46,7 @@ func NewTable(keys map[knx.GroupAddress]Key, senders map[knx.IndividualAddress]u
 	if seq > MaxSequence {
 		return nil, fmt.Errorf("%w: datasecure: sequence %d exceeds 48 bits", knx.ErrInvalidValue, seq)
 	}
-	t := &Table{keys: map[knx.GroupAddress]Key{}, senders: map[knx.IndividualAddress]uint64{}, seq: seq, toolKeys: map[knx.IndividualAddress]Key{}, synced: map[knx.IndividualAddress]uint64{}}
+	t := &Table{keys: map[knx.GroupAddress]Key{}, senders: map[knx.IndividualAddress]uint64{}, seq: seq, toolKeys: map[knx.IndividualAddress]Key{}, tools: map[knx.IndividualAddress]uint64{}, synced: map[knx.IndividualAddress]uint64{}}
 	for g, k := range keys {
 		t.keys[g] = k
 	}
@@ -155,12 +159,24 @@ func (t *Table) SetToolKey(a knx.IndividualAddress, k Key) {
 // table: it returns the S-A_Sync_Res (message code code) with this
 // table's next sending sequence number and the next sequence number it
 // accepts from the requester. It returns nil, nil for frames that are not
-// such a request. A request that fails authentication, or comes from a
-// sender the table does not know, is refused with knx.ErrSecurity.
+// such a request. A request that fails authentication is refused with
+// knx.ErrSecurity. The tool key authenticates the requester: any tool
+// that has it may synchronise.
 //
 // A sender of a secured group (Calimero, for example) asks a receiver of
-// the group, its "surrogate", for the sequence numbers before it sends.
+// the group, its "surrogate", for the sequence numbers before it sends;
+// a tool synchronises before it accesses the device (see OpenTool).
 func (t *Table) Respond(f *cemi.LData, own knx.IndividualAddress, code cemi.MessageCode) (*cemi.LData, error) {
+	if len(f.TPDU) == 0 {
+		return nil, nil
+	}
+	return t.RespondTPCI(f, own, code, f.TPDU[0]&0xFC)
+}
+
+// RespondTPCI is Respond with the TPCI octet of the response: in a
+// transport connection the response is numbered with the responder's own
+// sequence number.
+func (t *Table) RespondTPCI(f *cemi.LData, own knx.IndividualAddress, code cemi.MessageCode, tpci byte) (*cemi.LData, error) {
 	if f.IsGroup() || knx.IndividualAddress(f.Destination) != own || !IsSecure(f) || len(f.TPDU) < 3 || ParseSCF(f.TPDU[2]).Service != SSyncReq {
 		return nil, nil
 	}
@@ -179,20 +195,15 @@ func (t *Table) Respond(f *cemi.LData, own knx.IndividualAddress, code cemi.Mess
 		return nil, err
 	}
 	t.mu.Lock()
-	last, known := t.senders[f.Source]
+	last := t.tools[f.Source]
 	remote := t.seq
-	t.mu.Unlock()
-	if !known {
-		return nil, fmt.Errorf("%w: datasecure: S-A_Sync_Req from unknown sender %s", knx.ErrSecurity, f.Source)
-	}
-	t.mu.Lock()
 	t.synced[f.Source] = req.Sequence
 	t.mu.Unlock()
-	return SyncResponse(key, code, own, f.Source, f.TPDU[0], req.Challenge, random, remote, last+1)
+	return SyncResponse(key, code, own, f.Source, tpci, req.Challenge, random, remote, last+1)
 }
 
 // OpenTool verifies and decrypts an S-A_Data with tool access addressed
-// to own: the sender must be known and its sequence number new. It
+// to own, with own's tool key: its sequence number must be new. It
 // returns nil, nil for frames that are not such a frame.
 func (t *Table) OpenTool(f *cemi.LData, own knx.IndividualAddress) (*cemi.LData, error) {
 	if f.IsGroup() || knx.IndividualAddress(f.Destination) != own || !IsSecure(f) || len(f.TPDU) < 3 {
@@ -214,10 +225,7 @@ func (t *Table) OpenTool(f *cemi.LData, own knx.IndividualAddress) (*cemi.LData,
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	last, known := t.senders[f.Source]
-	if !known {
-		return nil, fmt.Errorf("%w: datasecure: tool access from unknown sender %s", knx.ErrSecurity, f.Source)
-	}
+	last := t.tools[f.Source]
 	// A new sequence number, or once the one of the sender's answered
 	// S-A_Sync_Req (Calimero sends its first frame with it).
 	s, pending := t.synced[f.Source]
@@ -229,7 +237,7 @@ func (t *Table) OpenTool(f *cemi.LData, own knx.IndividualAddress) (*cemi.LData,
 	}
 	delete(t.synced, f.Source)
 	if seq > last {
-		t.senders[f.Source] = seq
+		t.tools[f.Source] = seq
 	}
 	return plain, nil
 }
@@ -248,4 +256,109 @@ func (t *Table) SealTool(f *cemi.LData) (*cemi.LData, error) {
 		return nil, fmt.Errorf("%w: datasecure: no tool key of %s", knx.ErrSecurity, f.Source)
 	}
 	return Seal(key, f, seq, SCF{ToolAccess: true, Algorithm: AuthConf, Service: SData})
+}
+
+// ToolKey returns the tool key of a device.
+func (t *Table) ToolKey(a knx.IndividualAddress) (Key, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	k, ok := t.toolKeys[a]
+	return k, ok
+}
+
+// SyncRequest returns an S-A_Sync_Req from src, a tool, to dst, a device
+// whose tool key the table has, with the table's next sending sequence
+// number, and the challenge to pass to OpenSyncResponse. tpci is the TPCI
+// octet (0 connectionless). The serial number field is zero, as Calimero
+// sends it.
+func (t *Table) SyncRequest(code cemi.MessageCode, src, dst knx.IndividualAddress, tpci byte) (*cemi.LData, [6]byte, error) {
+	var challenge [6]byte
+	t.mu.Lock()
+	key, ok := t.toolKeys[dst]
+	seq := t.seq
+	t.mu.Unlock()
+	if !ok {
+		return nil, challenge, fmt.Errorf("%w: datasecure: no tool key of %s", knx.ErrSecurity, dst)
+	}
+	if _, err := rand.Read(challenge[:]); err != nil {
+		return nil, challenge, err
+	}
+	f, err := SyncRequest(key, code, src, dst, tpci, seq, [6]byte{}, challenge)
+	return f, challenge, err
+}
+
+// OpenSyncResponse verifies a device's S-A_Sync_Res to the request with
+// challenge and takes over its sequence numbers: the table sends with at
+// least the one the device expects and accepts the device's from the one
+// it announced.
+func (t *Table) OpenSyncResponse(f *cemi.LData, challenge [6]byte) error {
+	t.mu.Lock()
+	key, ok := t.toolKeys[f.Source]
+	t.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("%w: datasecure: no tool key of %s", knx.ErrSecurity, f.Source)
+	}
+	remote, local, err := OpenSyncResponse(key, f, challenge)
+	if err != nil {
+		return err
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if local > t.seq {
+		t.seq = local
+	}
+	if remote > 0 {
+		t.tools[f.Source] = remote - 1
+	} else {
+		delete(t.tools, f.Source)
+	}
+	return nil
+}
+
+// SealToolRequest secures a point to point frame from a tool to a device
+// with the device's tool key (S-A_Data with tool access), with the next
+// sending sequence number.
+func (t *Table) SealToolRequest(f *cemi.LData) (*cemi.LData, error) {
+	dst := knx.IndividualAddress(f.Destination)
+	t.mu.Lock()
+	key, ok := t.toolKeys[dst]
+	seq := t.seq
+	if ok {
+		t.seq++
+	}
+	t.mu.Unlock()
+	if !ok || f.IsGroup() {
+		return nil, fmt.Errorf("%w: datasecure: no tool key of %s", knx.ErrSecurity, dst)
+	}
+	return Seal(key, f, seq, SCF{ToolAccess: true, Algorithm: AuthConf, Service: SData})
+}
+
+// OpenToolResponse verifies and decrypts a device's S-A_Data with tool
+// access to a tool, with the device's tool key: its sequence number must
+// be new.
+func (t *Table) OpenToolResponse(f *cemi.LData) (*cemi.LData, error) {
+	if f.IsGroup() || !IsSecure(f) || len(f.TPDU) < 3 {
+		return nil, fmt.Errorf("%w: datasecure: not a secured point to point frame", knx.ErrSecurity)
+	}
+	scf := ParseSCF(f.TPDU[2])
+	if !scf.ToolAccess || scf.Service != SData {
+		return nil, fmt.Errorf("%w: datasecure: frame of %s without tool access", knx.ErrSecurity, f.Source)
+	}
+	t.mu.Lock()
+	key, ok := t.toolKeys[f.Source]
+	t.mu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("%w: datasecure: no tool key of %s", knx.ErrSecurity, f.Source)
+	}
+	plain, seq, _, err := Open(key, f)
+	if err != nil {
+		return nil, err
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if last, ok := t.tools[f.Source]; ok && seq <= last {
+		return nil, fmt.Errorf("%w: datasecure: sequence %d of %s not above %d", knx.ErrSecurity, seq, f.Source, last)
+	}
+	t.tools[f.Source] = seq
+	return plain, nil
 }

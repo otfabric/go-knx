@@ -91,7 +91,7 @@ func TestSyncCalimeroCapture(t *testing.T) {
 func TestSurrogate(t *testing.T) {
 	tool, dev := knx.MustParseIndividualAddress("15.15.240"), knx.MustParseIndividualAddress("15.15.255")
 	toolKey := Key{7}
-	tab, _ := NewTable(nil, map[knx.IndividualAddress]uint64{tool: 0}, 100)
+	tab, _ := NewTable(nil, nil, 100)
 	tab.SetToolKey(dev, toolKey)
 	challenge := [6]byte{1, 2, 3, 4, 5, 6}
 	req, _ := SyncRequest(toolKey, cemi.LDataInd, tool, dev, 0, 1, [6]byte{}, challenge)
@@ -132,7 +132,7 @@ func TestSurrogate(t *testing.T) {
 		t.Errorf("answer %v %d %+v", err, seq, scf)
 	}
 
-	// Errors: no tool key, unknown sender, bad MAC, plain frames.
+	// Errors: no tool key, bad MAC, plain frames.
 	other, _ := NewTable(nil, nil, 1)
 	if _, err := other.Respond(req, dev, cemi.LDataInd); !errors.Is(err, knx.ErrSecurity) {
 		t.Errorf("no tool key: %v", err)
@@ -142,13 +142,6 @@ func TestSurrogate(t *testing.T) {
 	}
 	if _, err := other.SealTool(answer); !errors.Is(err, knx.ErrSecurity) {
 		t.Errorf("seal without tool key: %v", err)
-	}
-	other.SetToolKey(dev, toolKey)
-	if _, err := other.Respond(req, dev, cemi.LDataInd); !errors.Is(err, knx.ErrSecurity) {
-		t.Errorf("unknown requester: %v", err)
-	}
-	if _, err := other.OpenTool(sealed, dev); !errors.Is(err, knx.ErrSecurity) {
-		t.Errorf("tool frame of unknown sender: %v", err)
 	}
 	bad := req.Clone()
 	bad.TPDU[20] ^= 1

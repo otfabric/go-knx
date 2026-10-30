@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-knx"
+	"github.com/otfabric/go-knx/datasecure"
 	"github.com/otfabric/go-knx/knxnetip"
 	"github.com/otfabric/go-knx/secure"
 )
@@ -52,6 +53,7 @@ type options struct {
 	metrics          knx.Metrics
 	progMode         bool
 	ttl              int
+	toolKey          *datasecure.Key
 }
 
 func defaultOptions() options {
@@ -285,6 +287,15 @@ func WithRoutingRate(n int) Option {
 // WithProgrammingMode sets the programming mode bit of DEVICE_INFO.
 func WithProgrammingMode(on bool) Option {
 	return func(o *options) error { o.progMode = on; return nil }
+}
+
+// WithToolKey secures the remote management of the server's device (its
+// individual address) with KNX Data Secure: the server answers only
+// S-A_Sync and S-A_Data with tool access under this tool key, and its
+// interface object list has a security object (security mode on).
+// Without it, remote management is plain.
+func WithToolKey(k datasecure.Key) Option {
+	return func(o *options) error { o.toolKey = &k; return nil }
 }
 
 // WithLogger sets the logger.

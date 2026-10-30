@@ -30,11 +30,13 @@ import (
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/apdu"
 	"github.com/otfabric/go-knx/cemi"
+	"github.com/otfabric/go-knx/datasecure"
 	"github.com/otfabric/go-knx/device"
 	"github.com/otfabric/go-knx/internal/mcast"
 	"github.com/otfabric/go-knx/internal/ratelimit"
 	"github.com/otfabric/go-knx/internal/udp"
 	"github.com/otfabric/go-knx/knxnetip"
+	"github.com/otfabric/go-knx/mgmt"
 	"github.com/otfabric/go-knx/secure"
 )
 
@@ -82,7 +84,11 @@ type Server struct {
 	tcpLn     *net.TCPListener
 	tcpConns  map[*tcpConn]struct{}
 	props     *propStore
+	mgmt      *mgmt.Responder
 	startTime time.Time
+
+	nameMu sync.Mutex
+	name   string // the friendly name, writable by device management
 
 	mu      sync.Mutex
 	conns   map[uint8]*tconn
@@ -131,6 +137,16 @@ func New(opts ...Option) (*Server, error) {
 	}
 	s := &Server{o: o, usessions: map[uint16]*udpSession{}, conns: map[uint8]*tconn{}, tcpConns: map[*tcpConn]struct{}{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), routing: ratelimit.New(o.routingRate), startTime: time.Now()}
 	s.props = &propStore{s: s}
+	s.name = o.name
+	s.mgmt = &mgmt.Responder{Address: o.address, Descriptor: DeviceDescriptor, Properties: s.props}
+	if o.toolKey != nil {
+		t, err := datasecure.NewTable(nil, nil, 0)
+		if err != nil {
+			return nil, err
+		}
+		t.SetToolKey(o.address, *o.toolKey)
+		s.mgmt.Security = t
+	}
 	return s, nil
 }
 
@@ -614,7 +630,7 @@ func (s *Server) secured() bool {
 }
 
 func (s *Server) deviceInfo() knxnetip.DeviceInfo {
-	d := knxnetip.DeviceInfo{Medium: knxnetip.MediumIP, Address: s.o.address, Serial: s.o.serial, MAC: s.o.mac, Name: s.o.name, Multicast: netip.IPv4Unspecified()}
+	d := knxnetip.DeviceInfo{Medium: knxnetip.MediumIP, Address: s.o.address, Serial: s.o.serial, MAC: s.o.mac, Name: s.friendlyName(), Multicast: netip.IPv4Unspecified()}
 	if s.o.routing {
 		d.Multicast = s.group.Addr()
 	}
@@ -1075,4 +1091,15 @@ func (s *Server) distribute(t Telegram, origin *tconn) {
 			s.distribute(Telegram{Origin: FromDevice, Frame: resp}, nil)
 		}
 	}
+	// Remote device management of the server's own device.
+	for _, resp := range s.mgmt.Handle(ind) {
+		s.distribute(Telegram{Origin: FromServer, Frame: resp}, nil)
+	}
+}
+
+// friendlyName returns the server's friendly name.
+func (s *Server) friendlyName() string {
+	s.nameMu.Lock()
+	defer s.nameMu.Unlock()
+	return s.name
 }
