@@ -103,12 +103,12 @@ cross: ## Build every package for the release platforms
 	@for t in linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do \
 		echo "build $$t"; GOOS=$${t%/*} GOARCH=$${t#*/} CGO_ENABLED=0 go build ./... || exit 1; done
 
-# Independent implementations: otfabric/knx-interop v0.3.0. The published
+# Independent implementations: otfabric/knx-interop v0.4.0. The published
 # (MIT) images are pinned by digest in interop/harness_test.go; the images
 # with GPL binaries are never published, so interop-images builds them from
 # knx-interop's source at INTEROP_REF as :dev (KNX_INTEROP_IMAGE_<ADAPTER>
 # overrides any image).
-INTEROP_REF ?= v0.3.0
+INTEROP_REF ?= v0.4.0
 interop-images: ## Build the knx-interop images from source as :dev (needs Docker)
 	@rm -rf $(BIN_DIR)/knx-interop && mkdir -p $(BIN_DIR)
 	@git clone -q --depth 1 --branch $(INTEROP_REF) https://github.com/otfabric/knx-interop.git $(BIN_DIR)/knx-interop

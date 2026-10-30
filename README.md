@@ -1,10 +1,12 @@
 # go-knx
 
-[![CI](https://github.com/otfabric/go-knx/actions/workflows/ci.yml/badge.svg)](https://github.com/otfabric/go-knx/actions/workflows/ci.yml)
-[![Interop](https://github.com/otfabric/go-knx/actions/workflows/interop.yml/badge.svg)](https://github.com/otfabric/go-knx/actions/workflows/interop.yml)
-[![codecov](https://codecov.io/gh/otfabric/go-knx/graph/badge.svg)](https://codecov.io/gh/otfabric/go-knx)
+[![Go Version](https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/otfabric/go-knx.svg)](https://pkg.go.dev/github.com/otfabric/go-knx)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI Status](https://github.com/otfabric/go-knx/actions/workflows/ci.yml/badge.svg)](https://github.com/otfabric/go-knx/actions/workflows/ci.yml)
+[![Interop](https://github.com/otfabric/go-knx/actions/workflows/interop.yml/badge.svg)](https://github.com/otfabric/go-knx/actions/workflows/interop.yml)
+[![Code Coverage](https://codecov.io/gh/otfabric/go-knx/graph/badge.svg)](https://codecov.io/gh/otfabric/go-knx)
+[![Latest Release](https://img.shields.io/github/v/release/otfabric/go-knx?label=release)](https://github.com/otfabric/go-knx/releases)
 
 A native Go implementation of KNX over KNXnet/IP: frames, cEMI, datapoint
 types, discovery, a tunnelling client, routing, group communication and a
