@@ -286,9 +286,10 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 // listenUDPTCP opens the UDP socket and, with tcp, the TCP listener on the
-// same port. With port 0 it tries ephemeral ports until both are free (a
-// free UDP port may be taken for TCP). With a fixed port the TCP listener
-// is opened later by Start.
+// same port. With port 0 it takes an ephemeral TCP port, which the system
+// has checked, and tries until UDP is free on it too: the other way round
+// a free UDP port can fall in a range Windows reserves for TCP. With a
+// fixed port the TCP listener is opened later by Start.
 func listenUDPTCP(listen netip.AddrPort, tcp bool) (*net.UDPConn, *net.TCPListener, error) {
 	if listen.Port() != 0 || !tcp {
 		c, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(listen))
@@ -296,16 +297,16 @@ func listenUDPTCP(listen netip.AddrPort, tcp bool) (*net.UDPConn, *net.TCPListen
 	}
 	var last error
 	for i := 0; i < 20; i++ {
-		c, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(listen))
+		ln, err := net.ListenTCP("tcp4", net.TCPAddrFromAddrPort(listen))
 		if err != nil {
 			return nil, nil, err
 		}
-		ln, err := net.ListenTCP("tcp4", net.TCPAddrFromAddrPort(udp.AddrPortOf(c.LocalAddr())))
+		c, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(ln.Addr().(*net.TCPAddr).AddrPort()))
 		if err == nil {
 			return c, ln, nil
 		}
 		last = err
-		_ = c.Close()
+		_ = ln.Close()
 	}
 	return nil, nil, fmt.Errorf("no port free for UDP and TCP: %w", last)
 }

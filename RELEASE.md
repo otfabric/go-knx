@@ -5,6 +5,25 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.5.1
+
+**Date:** 2026-10-31
+**Previous release:** v0.5.0
+
+## Summary
+
+`server` with an ephemeral port and TCP starts on Windows.
+
+**Upgrade notes:** none.
+
+## Changes
+
+### Fixed
+
+- `server`: with port 0 and TCP the server could fail with "no port free for UDP and TCP" on Windows, where ephemeral UDP ports can fall in a range reserved for TCP. It now takes the TCP port first.
+
+---
+
 ## v0.5.0
 
 **Date:** 2026-10-30
