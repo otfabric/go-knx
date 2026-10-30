@@ -5,6 +5,23 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.3.1
+
+**Date:** 2026-10-30
+**Previous release:** v0.3.0
+
+## Changes
+
+- The interop suite pins knx-interop v0.3.0 (container contract 1.2) and
+  tests KNX Secure with its public test profile: xknx and Calimero tools
+  open secure sessions to go-knx's secure server (bound user addresses,
+  write, read, Data Secure decrypted with the profile key, device
+  management as user 1), and go-knx's secure client works against
+  Calimero's secure server (write seen and Data Secure decrypted by xknx,
+  device management, plain connection refused). No library changes.
+
+---
+
 ## v0.3.0
 
 **Date:** 2026-10-30
