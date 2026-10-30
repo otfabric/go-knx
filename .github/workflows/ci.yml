@@ -17,8 +17,11 @@ jobs:
   # same way, so coverage is measured and uploaded by the multicast job
   # (run-codecov: false here).
   ci:
-    uses: otfabric/.github/.github/workflows/go-ci.yml@v2
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v2.1.0
     with:
+      run-govulncheck: true
+      coverage-min: "90"
+      fuzz-time: 10s
       codecov-name: go-knx
       run-codecov: false
       test-exclude-regex: "(/example(s)?($|/)|/interop($|/))"
@@ -29,7 +32,7 @@ jobs:
 
   # The whole suite on Linux, natively on amd64 and arm64, with
   # KNX_REQUIRE_MULTICAST=1: the discovery and routing tests must run, not
-  # skip. Coverage is gated at 85 % and uploaded to Codecov.
+  # skip. Coverage is gated at 90 % and uploaded to Codecov.
   linux:
     name: Linux (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
@@ -47,7 +50,7 @@ jobs:
           go-version-file: go.mod
       - name: Tests with the race detector
         run: make test-multicast
-      - name: Coverage (minimum 85 %)
+      - name: Coverage (minimum 90 %)
         env:
           KNX_REQUIRE_MULTICAST: "1"
         run: make coverage-check
@@ -87,20 +90,3 @@ jobs:
         with:
           go-version: "1.23.x"
       - run: make build examples cross coverpkg-check
-
-  fuzz:
-    name: Fuzz
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: "1.23.x"
-      - run: make fuzz FUZZTIME=15s
-      - name: Upload the failing inputs
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: fuzz-failures
-          path: "**/testdata/fuzz/"
-          if-no-files-found: warn

@@ -21,7 +21,7 @@ TEST_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/interop')
 # Packages whose coverage counts (TESTING.md): not the examples, the
 # end-to-end and interop suites or the test helpers.
 COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e' | grep -v '/interop' | grep -v '/internal/fakeknx' | grep -v '/internal/leak' | paste -sd, -)
-COVER_MIN := 85
+COVER_MIN := 90
 
 all: build ## Build the examples
 
