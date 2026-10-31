@@ -16,6 +16,8 @@ on:
     branches: [main]
   pull_request:
     branches: ["**"]
+  schedule:
+    - cron: "23 3 * * 1"
   workflow_dispatch:
     inputs:
       interop-ref:
