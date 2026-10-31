@@ -5,6 +5,17 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.5.2
+
+**Date:** 2026-10-31
+**Previous release:** v0.5.1
+
+### Changed
+
+- Policy 1.2: build output in `bin/` and `release/`, a per-package coverage floor, and more tests and CI. No change in behaviour.
+
+---
+
 ## v0.5.1
 
 **Date:** 2026-10-31
