@@ -80,3 +80,42 @@ func TestPropertyAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDialRefused(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if _, err := devmgmt.Dial(ctx, "127.0.0.1:1"); err == nil {
+		t.Fatal("Dial to a closed port succeeded")
+	}
+}
+
+// Every operation reports the end of the connection instead of waiting for
+// a confirmation that cannot come.
+func TestOperationsAfterClose(t *testing.T) {
+	s, err := server.New(server.WithListenAddr("127.0.0.1:0"), server.WithDiscovery(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	c, err := devmgmt.Dial(ctx, s.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.PropRead(ctx, devmgmt.ObjectDevice, 1, devmgmt.PIDSerialNumber, 1, 1); !errors.Is(err, knx.ErrClosed) {
+		t.Errorf("PropRead: %v", err)
+	}
+	if _, err := c.PropElements(ctx, devmgmt.ObjectDevice, 1, devmgmt.PIDSerialNumber); !errors.Is(err, knx.ErrClosed) {
+		t.Errorf("PropElements: %v", err)
+	}
+	if err := c.PropWrite(ctx, devmgmt.ObjectDevice, 1, devmgmt.PIDSerialNumber, 1, 1, []byte{1}); !errors.Is(err, knx.ErrClosed) {
+		t.Errorf("PropWrite: %v", err)
+	}
+}

@@ -16,7 +16,8 @@ Every error matches one of the sentinels of the root package with
 | `knx.ErrRejected` | The peer refused with a KNXnet/IP status code | tunnel (CONNECT_RESPONSE, TUNNELLING_ACK) |
 | `knx.ErrBusy` | A limit: E_NO_MORE_CONNECTIONS, E_NO_MORE_UNIQUE_CONNECTIONS, a full queue | tunnel |
 | `knx.ErrNotConfirmed` | The L_Data.con reported an error or did not arrive | tunnel.Send |
-| `knx.ErrSecurity` | Reserved for KNX Secure (not implemented yet) | — |
+| `knx.ErrSecurity` | A KNX IP Secure or KNX Data Secure failure: a tag that does not verify, a replayed sequence number, a missing key. Secure connections never fall back to plain ones | secure, datasecure, keyring |
+| `keyring.ErrSignature` | A keyring file whose signature does not verify: the password is wrong or the file was modified. Nothing of the file is used. Matches `knx.ErrSecurity` | `keyring.Parse`, `keyring.LoadFile` |
 
 `*knxnetip.StatusError` carries the service and the status code
 (`knxnetip.StatusOf(err)`); it matches `ErrRejected`, and `ErrBusy` for the

@@ -22,6 +22,8 @@ TEST_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/interop')
 # end-to-end and interop suites or the test helpers.
 COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e' | grep -v '/interop' | grep -v '/internal/fakeknx' | grep -v '/internal/leak' | paste -sd, -)
 COVER_MIN := 90
+# Per-package floor (TEST-012); needs the -coverpkg coverage.out of `make coverage`.
+COVER_PKG_MIN := 85
 
 all: build ## Build the examples
 
@@ -81,6 +83,11 @@ coverage-check: coverage ## Fail when total coverage is below COVER_MIN
 	echo "total $$total% (minimum $(COVER_MIN)%)"; \
 	awk -v t=$$total -v m=$(COVER_MIN) 'BEGIN { exit (t+0 < m+0) }'
 
+coverage-pkg-check: coverage ## Fail when a package is below COVER_PKG_MIN
+	@awk -v m="$(COVER_PKG_MIN)" 'NR > 1 { n[$$1] = $$2; if ($$3 > 0) h[$$1] = 1 } \
+	END { for (k in n) { p = k; sub(/\/[^\/]*$$/, "", p); s[p] += n[k]; if (k in h) c[p] += n[k] } \
+	for (p in s) { v = 100 * c[p] / s[p]; if (v < m) { printf "%s: %.1f%% < %s%%\n", p, v, m; bad = 1 } } exit bad }' coverage.out
+
 cover: coverage ## Open the coverage report in a browser
 	@go tool cover -html=coverage.out
 
@@ -134,7 +141,7 @@ interop: ## Run the interop suite against the knx-interop images (Docker; writes
 	@KNX_REQUIRE_INTEROP=1 KNX_INTEROP_REPORT=$(CURDIR)/$(BIN_DIR)/interop-report.json \
 		go test -tags=interop -count=1 -timeout=60m -v ./interop/...
 
-check: fmt-check lint lint-ci vet vuln test coverage-check examples cross ## Everything CI checks except the interop job
+check: fmt-check lint lint-ci vet vuln test coverage-check coverage-pkg-check examples cross ## Everything CI checks except the interop job
 
 clean: ## Remove binaries and coverage files
 	@rm -rf $(BIN_DIR) coverage.out coverage.html

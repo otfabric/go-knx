@@ -1,0 +1,50 @@
+name: Extended
+run-name: "Extended (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
+
+# The nightly tier: what does not fit in a pull request. interop.yml has its
+# own weekly schedule.
+
+on:
+  schedule:
+    - cron: "37 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOWORK: "off"
+
+jobs:
+  fuzz:
+    name: Fuzz (5 minutes per target)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make fuzz FUZZTIME=5m
+      - name: Upload crashers
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-crashers
+          path: "**/testdata/fuzz/"
+          retention-days: 30
+          if-no-files-found: ignore
+
+  repeat:
+    name: Whole suite, five times (race)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Tests
+        env:
+          KNX_REQUIRE_MULTICAST: "1"
+        run: go test -count=5 -race -timeout=35m $(go list ./... | grep -v '/examples' | grep -v '/interop')

@@ -50,10 +50,10 @@ jobs:
           go-version-file: go.mod
       - name: Tests with the race detector
         run: make test-multicast
-      - name: Coverage (minimum 90 %)
+      - name: Coverage (minimum 90 %, 85 % per package)
         env:
           KNX_REQUIRE_MULTICAST: "1"
-        run: make coverage-check
+        run: make coverage-check coverage-pkg-check
       - name: Upload to Codecov
         if: matrix.arch == 'amd64'
         uses: codecov/codecov-action@v7

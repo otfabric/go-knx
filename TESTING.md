@@ -20,12 +20,28 @@ stay at or above 90 %. At the time of writing: total 97.7 %; root,
 knxnetip, cemi, apdu 100 %; dpt 99 %; tunnel 96 %; server 96 %; client
 99 %; device 99 %; discovery 92 %; routing 97 %.
 
+`make coverage-pkg-check` adds a floor of 85 % per package (`COVER_PKG_MIN`),
+from the same profile; the Linux CI job runs it. `internal/mcast` is the
+package closest to it: what is left there are failures of socket options that
+loopback cannot provoke.
+
+## Extended tier
+
+`.github/workflows/extended.yml` runs every night: every fuzz target for five
+minutes and the whole suite five times with the race detector and
+`KNX_REQUIRE_MULTICAST=1`. A crasher is uploaded as an artifact; commit it to
+`<package>/testdata/fuzz/<Target>/` with the fix. `interop.yml` runs weekly.
+
 ## Helpers
 
 - `internal/fakeknx`: a scriptable fake KNXnet/IP peer over a loopback UDP
   socket, used to drive the client through failure paths (lost ACKs,
   refused connections, server-initiated disconnects).
-- `internal/leak`: checks that a test leaves no goroutines behind.
+- `internal/leak`: checks that no goroutine outlives the code under test by
+  comparing goroutine stacks, so a failure names the goroutine. `leak.Check`
+  covers one test; `leak.VerifyNoLeaks` in `TestMain` covers every test of
+  the packages that start goroutines (client, discovery, routing, server,
+  tunnel) and of the e2e suite.
 
 ## Benchmarks (Apple M1, loopback, Go 1.27)
 
