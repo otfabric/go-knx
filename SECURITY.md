@@ -35,8 +35,11 @@ A KNXnet/IP network is part of a building's control system.
   Any host that can reach UDP port 3671 or the multicast group 224.0.23.12
   can read and send telegrams.
 - A tunnelling connection is identified by a channel number and the
-  client's address; a host on the same network can spoof datagrams of a
-  connected client.
+  client's control and data endpoints (address and port): the server
+  ignores frames of the channel from any other endpoint, including other
+  sockets on the client's host. A host on the same network that forges
+  the source address and port can still spoof datagrams of a connected
+  client.
 - NAT mode (route back endpoints) makes the server answer to the source
   address of each datagram, which is spoofable.
 

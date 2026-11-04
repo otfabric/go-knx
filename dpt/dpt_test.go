@@ -50,12 +50,12 @@ func wantInvalid(t *testing.T, what string, err error) {
 
 // goType is the Go type of decoded values of each kind.
 var goType = map[Kind]reflect.Type{
-	KindBool: reflect.TypeOf(false), KindControl: reflect.TypeOf(Control{}), KindStep: reflect.TypeOf(Step{}),
-	KindChar: reflect.TypeOf(""), KindUnsigned: reflect.TypeOf(uint64(0)), KindSigned: reflect.TypeOf(int64(0)),
-	KindFloat: reflect.TypeOf(0.0), KindTime: reflect.TypeOf(TimeOfDay{}), KindDate: reflect.TypeOf(Date{}),
-	KindString: reflect.TypeOf(""), KindScene: reflect.TypeOf(uint8(0)), KindSceneControl: reflect.TypeOf(SceneControl{}),
-	KindDateTime: reflect.TypeOf(DateTime{}), KindEnum: reflect.TypeOf(Enum{}), KindBits: reflect.TypeOf(uint64(0)),
-	KindRGB: reflect.TypeOf(RGB{}), KindRGBW: reflect.TypeOf(RGBW{}), KindXYY: reflect.TypeOf(XYY{}),
+	KindBool: reflect.TypeOf(false), KindControl: reflect.TypeFor[Control](), KindStep: reflect.TypeFor[Step](),
+	KindChar: reflect.TypeFor[string](), KindUnsigned: reflect.TypeFor[uint64](), KindSigned: reflect.TypeFor[int64](),
+	KindFloat: reflect.TypeFor[float64](), KindTime: reflect.TypeFor[TimeOfDay](), KindDate: reflect.TypeFor[Date](),
+	KindString: reflect.TypeFor[string](), KindScene: reflect.TypeFor[uint8](), KindSceneControl: reflect.TypeFor[SceneControl](),
+	KindDateTime: reflect.TypeFor[DateTime](), KindEnum: reflect.TypeFor[Enum](), KindBits: reflect.TypeFor[uint64](),
+	KindRGB: reflect.TypeFor[RGB](), KindRGBW: reflect.TypeFor[RGBW](), KindXYY: reflect.TypeFor[XYY](),
 }
 
 // samples returns values of t that must survive an encode/decode round

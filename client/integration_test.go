@@ -97,7 +97,7 @@ func TestOverServer(t *testing.T) {
 	}
 	// Both devices answer; the second answer must not count for the next
 	// read.
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case <-responses.C():
 		case <-time.After(wait):

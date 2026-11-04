@@ -246,7 +246,7 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 			until = nextSend
 		}
 		_ = s.conn.SetReadDeadline(until)
-		n, from, err := s.conn.ReadFromUDPAddrPort(buf)
+		n, from, err := udp.Read(s.conn.ReadFromUDPAddrPort, buf)
 		if err != nil {
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
@@ -317,13 +317,13 @@ func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, 
 	defer stop()
 	buf := make([]byte, knxnetip.MaxFrameLen+1)
 	step := o.timeout / 3
-	for attempt := 0; attempt < 3; attempt++ {
+	for range 3 {
 		if _, err := s.conn.WriteToUDPAddrPort(b, remote); err != nil {
 			return nil, fmt.Errorf("discovery: send description request to %s: %w", remote, err)
 		}
 		_ = s.conn.SetReadDeadline(time.Now().Add(step))
 		for {
-			n, from, err := s.conn.ReadFromUDPAddrPort(buf)
+			n, from, err := udp.Read(s.conn.ReadFromUDPAddrPort, buf)
 			if err != nil {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()

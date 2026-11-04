@@ -54,6 +54,9 @@ func Seal(key Key, session uint16, seq uint64, serial [6]byte, tag uint16, frame
 // Open verifies and decrypts a SECURE_WRAPPER and returns the frame it
 // carries. A wrapped SECURE_WRAPPER is refused.
 func Open(key Key, w *knxnetip.SecureWrapper) ([]byte, error) {
+	if len(w.Encrypted)+wrapperOverhead > knxnetip.MaxFrameLen {
+		return nil, fmt.Errorf("%w: secure: SECURE_WRAPPER of %d encrypted octets is too long", knx.ErrMalformed, len(w.Encrypted))
+	}
 	frame, mac := ccm.CTR(key[:], wrapperCtr0(w), w.MAC, w.Encrypted)
 	want := ccm.MAC(key[:], wrapperB0(w, len(frame)), wrapperAD(w, len(frame)), frame)
 	if subtle.ConstantTimeCompare(mac[:], want[:]) != 1 {
@@ -79,7 +82,8 @@ func wrapperB0(w *knxnetip.SecureWrapper, n int) []byte {
 	b = append(b, w.Sequence[:]...)
 	b = append(b, w.Serial[:]...)
 	b = binary.BigEndian.AppendUint16(b, w.MessageTag)
-	return binary.BigEndian.AppendUint16(b, uint16(n))
+	// n is at most knxnetip.MaxFrameLen: Seal and Open check it.
+	return binary.BigEndian.AppendUint16(b, uint16(max(min(n, 0xFFFF), 0)))
 }
 
 func wrapperCtr0(w *knxnetip.SecureWrapper) []byte {

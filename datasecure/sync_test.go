@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/cemi"
@@ -163,5 +164,22 @@ func TestSurrogate(t *testing.T) {
 	noTool, _ := Seal(toolKey, data, 9, GroupData)
 	if p, err := tab.OpenTool(noTool, dev); p != nil || err != nil {
 		t.Errorf("frame without tool access: %v %v", p, err)
+	}
+}
+
+// TestNewTableClockBeforeEpoch: with the clock before the sequence
+// epoch, the default first sequence number would be negative; NewTable
+// refuses instead of restarting at numbers peers have already seen.
+func TestNewTableClockBeforeEpoch(t *testing.T) {
+	saved := sequenceEpoch
+	t.Cleanup(func() { sequenceEpoch = saved })
+	sequenceEpoch = time.Now().Add(time.Hour)
+	if _, err := NewTable(nil, nil, 0); !errors.Is(err, knx.ErrInvalidValue) {
+		t.Fatalf("NewTable with the clock before the epoch: %v, want ErrInvalidValue", err)
+	}
+	sequenceEpoch = saved
+	tab, err := NewTable(nil, nil, 0)
+	if err != nil || tab.seq == 0 {
+		t.Fatalf("NewTable: seq %v, %v", tab, err)
 	}
 }

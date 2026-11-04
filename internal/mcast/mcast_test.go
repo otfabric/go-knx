@@ -5,6 +5,7 @@ package mcast_test
 import (
 	"net"
 	"net/netip"
+	"runtime"
 	"testing"
 	"time"
 
@@ -92,5 +93,27 @@ func TestMulticastLoopback(t *testing.T) {
 	buf := make([]byte, 8)
 	if n, _, err := r.ReadFromUDPAddrPort(buf); err != nil || string(buf[:n]) != "ping" {
 		t.Fatalf("read %q %v", buf[:n], err)
+	}
+}
+
+// TestConfigureTTLRange: a TTL beyond one octet is refused. On BSD and
+// macOS the option is a single octet, where 256 used to wrap to TTL 0;
+// Linux rejects it in the kernel.
+func TestConfigureTTLRange(t *testing.T) {
+	switch runtime.GOOS {
+	case "darwin", "freebsd", "netbsd", "openbsd", "dragonfly", "linux":
+	default:
+		t.Skipf("TTL is not set on %s", runtime.GOOS)
+	}
+	c, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if err := mcast.Configure(c, nil, false, 256); err == nil {
+		t.Fatal("Configure accepted TTL 256")
+	}
+	if err := mcast.Configure(c, nil, false, 255); err != nil {
+		t.Fatalf("Configure TTL 255: %v", err)
 	}
 }

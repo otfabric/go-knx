@@ -158,11 +158,15 @@ func (f *LData) String() string {
 // of at most 15 octets; the TPDU must hold 1..255 octets of NPDU plus the
 // TPCI octet.
 func (f *LData) AppendTo(b []byte) ([]byte, error) {
-	if len(f.TPDU) < 1 || len(f.TPDU) > 256 {
+	npdu := len(f.TPDU) - 1
+	if npdu < 0 {
 		return nil, fmt.Errorf("%w: cemi: TPDU of %d octets", knx.ErrInvalidValue, len(f.TPDU))
 	}
-	if f.Standard() && len(f.TPDU)-1 > MaxStandardNPDU {
-		return nil, fmt.Errorf("%w: cemi: standard frame with an NPDU of %d octets (at most %d)", knx.ErrInvalidValue, len(f.TPDU)-1, MaxStandardNPDU)
+	if npdu > 255 {
+		return nil, fmt.Errorf("%w: cemi: TPDU of %d octets", knx.ErrInvalidValue, len(f.TPDU))
+	}
+	if f.Standard() && npdu > MaxStandardNPDU {
+		return nil, fmt.Errorf("%w: cemi: standard frame with an NPDU of %d octets (at most %d)", knx.ErrInvalidValue, npdu, MaxStandardNPDU)
 	}
 	b, err := appendAddInfo(append(b, byte(f.MsgCode)), f.AddInfo)
 	if err != nil {
@@ -171,7 +175,7 @@ func (f *LData) AppendTo(b []byte) ([]byte, error) {
 	b = append(b, f.Ctrl1, f.Ctrl2)
 	b = binary.BigEndian.AppendUint16(b, uint16(f.Source))
 	b = binary.BigEndian.AppendUint16(b, f.Destination)
-	b = append(b, byte(len(f.TPDU)-1))
+	b = append(b, byte(npdu))
 	return append(b, f.TPDU...), nil
 }
 

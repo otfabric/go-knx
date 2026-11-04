@@ -14,6 +14,7 @@ package device
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -122,12 +123,7 @@ func (o *GroupObject) SendingAddress() knx.GroupAddress { return o.Addresses[0] 
 
 // Has reports whether g is one of the object's addresses.
 func (o *GroupObject) Has(g knx.GroupAddress) bool {
-	for _, a := range o.Addresses {
-		if a == g {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(o.Addresses, g)
 }
 
 // Raw returns the encoded value and whether one was set.

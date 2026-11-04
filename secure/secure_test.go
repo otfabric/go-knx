@@ -167,7 +167,7 @@ func TestSessionRoundTrip(t *testing.T) {
 		t.Fatal("session keys differ")
 	}
 	tx, rx := NewSession(7, ka, [6]byte{1}), NewSession(7, kb, [6]byte{2})
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		raw, err := tx.Marshal(&knxnetip.SessionStatus{Status: knxnetip.SessionKeepAlive})
 		if err != nil {
 			t.Fatal(err)
@@ -209,5 +209,15 @@ func TestTimerNotify(t *testing.T) {
 	m.Timer[5]++
 	if err := VerifyTimerNotify(k, m); !errors.Is(err, knx.ErrSecurity) {
 		t.Errorf("tampered timer: %v", err)
+	}
+}
+
+// TestOpenTooLong: a SECURE_WRAPPER built by a caller with more than
+// MaxFrameLen octets is refused; its length used to wrap in block 0.
+func TestOpenTooLong(t *testing.T) {
+	var k Key
+	w := &knxnetip.SecureWrapper{Encrypted: make([]byte, knxnetip.MaxFrameLen)}
+	if _, err := Open(k, w); !errors.Is(err, knx.ErrMalformed) {
+		t.Errorf("oversized wrapper: %v", err)
 	}
 }

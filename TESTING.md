@@ -5,8 +5,10 @@
 | Unit tests (codecs, state machines, server, client, devices) | `*_test.go` in every package | `make test` |
 | Golden frames | `knxnetip/testdata/frames.json` (45 frames built from the frame structures, not copied from a specification or capture) | `make test` |
 | DPT reference vectors | `dpt/testdata/xknx_vectors.json` (computed with xknx 4.0.0; known differences in `dpt/xknx_test.go`) | `make test` |
-| Fuzz tests | `FuzzXxx` in knxnetip, cemi, apdu, dpt and the root package | `make fuzz FUZZTIME=30s` |
+| Fuzz tests | `FuzzXxx` in knxnetip, cemi, apdu, dpt and the root package (codecs); secure (session and wrapper frames), datasecure (S-A_Data, sync, tool access), keyring (parse), mgmt (responder), server (UDP datagrams and TCP stream) and tunnel (client receive path) | `make fuzz FUZZTIME=30s` |
 | End-to-end over loopback sockets | `e2e/` | `make e2e` |
+| Hostile peers | `e2e/hostile_test.go`: noise, CONNECT floods, sequence replay, spoofed channel frames, stalled and lying TCP peers, forged and replayed secure frames, a garbage-answering server for the client, discovery against garbage | `make e2e` |
+| Deterministic chaos | `e2e/chaos_test.go`: a seeded UDP proxy that drops, duplicates, reorders and delays datagrams; writes are delivered at most once, and the client reconnects after a black hole | `make e2e` |
 | Multicast (discovery, routing) | tests gated on a working multicast loopback; `KNX_REQUIRE_MULTICAST=1` turns the skip into a failure (Linux CI) | `make test-multicast` |
 | Interoperability | `interop/` (build tag `interop`); knx-interop's matrix with `interop/node` | `make interop`, `make interop-matrix` |
 | Benchmarks | `bench_test.go` files, server benchmarks | `make bench` |

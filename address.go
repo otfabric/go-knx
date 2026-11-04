@@ -55,7 +55,7 @@ func (a IndividualAddress) Area() uint8 { return uint8(a >> 12) }
 func (a IndividualAddress) Line() uint8 { return uint8(a>>8) & 0x0F }
 
 // Device returns the device (0..255).
-func (a IndividualAddress) Device() uint8 { return uint8(a) }
+func (a IndividualAddress) Device() uint8 { return uint8(a & 0xFF) }
 
 // Uint16 returns the address as sent on the wire.
 func (a IndividualAddress) Uint16() uint16 { return uint16(a) }
@@ -202,7 +202,7 @@ func (g GroupAddress) Main() uint8 { return uint8(g >> 11) }
 func (g GroupAddress) Middle() uint8 { return uint8(g>>8) & 0x07 }
 
 // Sub returns the sub group of the three-level presentation (0..255).
-func (g GroupAddress) Sub() uint8 { return uint8(g) }
+func (g GroupAddress) Sub() uint8 { return uint8(g & 0xFF) }
 
 // Sub2 returns the sub group of the two-level presentation (0..2047).
 func (g GroupAddress) Sub2() uint16 { return uint16(g) & 0x07FF }

@@ -58,7 +58,7 @@ func latin1(s string) ([]byte, error) {
 		if r > 0xFF {
 			return nil, fmt.Errorf("%w: secure: password character %q is not Latin-1", knx.ErrInvalidValue, r)
 		}
-		b = append(b, byte(r))
+		b = append(b, byte(r&0xFF)) // r <= 0xFF: checked above
 	}
 	return b, nil
 }

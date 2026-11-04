@@ -5,6 +5,7 @@ package udp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"testing"
@@ -101,5 +102,52 @@ func TestAddrPortOf(t *testing.T) {
 	}
 	if got := AddrPortOf(&net.TCPAddr{}); got.IsValid() {
 		t.Fatalf("AddrPortOf(TCP) = %v", got)
+	}
+}
+
+type timeoutErr struct{}
+
+func (timeoutErr) Error() string   { return "timeout" }
+func (timeoutErr) Timeout() bool   { return true }
+func (timeoutErr) Temporary() bool { return true }
+
+func TestDatagramError(t *testing.T) {
+	msgSize := &net.OpError{Op: "read", Net: "udp4", Err: errors.New("wsarecvfrom: message too long")}
+	for err, want := range map[error]bool{
+		nil:                                   false,
+		net.ErrClosed:                         false,
+		fmt.Errorf("read: %w", net.ErrClosed): false,
+		timeoutErr{}:                          false,
+		&net.OpError{Op: "read", Err: timeoutErr{}}: false,
+		msgSize:             true,
+		errors.New("reset"): true,
+	} {
+		if got := DatagramError(err); got != want {
+			t.Errorf("DatagramError(%v) = %v, want %v", err, got, want)
+		}
+	}
+}
+
+func TestReadSkipsDatagramErrors(t *testing.T) {
+	from := netip.MustParseAddrPort("127.0.0.1:3671")
+	steps := []error{errors.New("message too long"), errors.New("connection reset"), nil}
+	calls := 0
+	read := func(b []byte) (int, netip.AddrPort, error) {
+		err := steps[calls]
+		calls++
+		if err != nil {
+			return 0, netip.AddrPort{}, err
+		}
+		return copy(b, "ok"), from, nil
+	}
+	buf := make([]byte, 8)
+	n, got, err := Read(read, buf)
+	if err != nil || string(buf[:n]) != "ok" || got != from || calls != 3 {
+		t.Fatalf("Read = %d %v %v after %d calls", n, got, err, calls)
+	}
+	for _, stop := range []error{net.ErrClosed, timeoutErr{}} {
+		if _, _, err := Read(func([]byte) (int, netip.AddrPort, error) { return 0, netip.AddrPort{}, stop }, buf); !errors.Is(err, stop) {
+			t.Errorf("Read with %v = %v", stop, err)
+		}
 	}
 }

@@ -175,7 +175,7 @@ func (p TPDU) Append(b []byte) []byte {
 	if a.Has6BitData() {
 		a = a&0x3C0 | APCI(p.Short&0x3F)
 	}
-	b = append(b, o|byte(a>>8), byte(a))
+	b = append(b, o|byte(a>>8), byte(a&0xFF))
 	return append(b, p.Data...)
 }
 

@@ -33,8 +33,10 @@ type Description struct {
 	Index uint8 // the property's index in its object
 	// Type is the property datatype (PDT); Writable sets the write enable
 	// bit.
-	Type        uint8
-	Writable    bool
+	Type     uint8
+	Writable bool
+	// MaxElements is 12 bits on the wire (0..4095); a larger value is
+	// sent as 4095.
 	MaxElements uint16
 	// Access is the read level (high nibble) and the write level (low).
 	Access uint8
@@ -222,7 +224,8 @@ func (r *Responder) service(t apdu.TPDU, tpci apdu.TPCI) []byte {
 			if d.Writable {
 				typ |= 0x80
 			}
-			data = []byte{object, d.PID, d.Index, typ, byte(d.MaxElements >> 8 & 0x0F), byte(d.MaxElements), d.Access}
+			maxElems := min(d.MaxElements, 0x0FFF)
+			data = []byte{object, d.PID, d.Index, typ, byte(maxElems >> 8), byte(maxElems & 0xFF), d.Access}
 		}
 		return apdu.TPDU{TPCI: tpci, APCI: apdu.PropertyDescriptionResponseService, Data: data}.Bytes()
 	case apdu.DeviceDescriptorReadService:

@@ -190,7 +190,7 @@ func TestDataSecure(t *testing.T) {
 	if err := c1.GroupWrite(c, plainG, true, client.WithDPT("1.001")); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case tg := <-sub.C():
 			switch tg.Group {

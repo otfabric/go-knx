@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -110,7 +111,7 @@ var ErrSignature = fmt.Errorf("%w: keyring: signature verification failed (wrong
 
 // LoadFile reads a keyring file.
 func LoadFile(path, password string) (*Keyring, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +319,7 @@ func (d decrypter) iface(e *element) (Interface, error) {
 			return itf, err
 		}
 		var senders []knx.IndividualAddress
-		for _, s := range strings.Fields(g.attr("Senders")) {
+		for s := range strings.FieldsSeq(g.attr("Senders")) {
 			a, err := individualAddress(s)
 			if err != nil {
 				return itf, err
@@ -425,10 +426,11 @@ func parseTree(b []byte) (*element, error) {
 func signature(root *element, hash []byte) ([]byte, error) {
 	var b []byte
 	add := func(s string) error {
-		if len(s) > 255 {
-			return malformed("value of %d octets in the signature", len(s))
+		n := len(s)
+		if n > 255 {
+			return malformed("value of %d octets in the signature", n)
 		}
-		b = append(append(b, byte(len(s))), s...)
+		b = append(append(b, byte(n)), s...)
 		return nil
 	}
 	var walk func(e *element) error

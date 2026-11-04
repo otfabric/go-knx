@@ -4,7 +4,8 @@ package secure
 
 import (
 	"context"
-	"math/rand/v2"
+	"crypto/rand"
+	"encoding/binary"
 	"sync"
 	"time"
 
@@ -65,7 +66,46 @@ func NewRoutingTimer(key Key, serial [6]byte, latency time.Duration, send func(*
 func (r *RoutingTimer) localMS() int64 { return time.Since(r.start).Milliseconds() }
 
 // value returns the timer value; r.mu must be held.
-func (r *RoutingTimer) value() uint64 { return uint64(r.localMS()+r.offset) & MaxSequence }
+func (r *RoutingTimer) value() uint64 { return timerUint(r.localMS() + r.offset) }
+
+// timerUint returns v as a 48-bit timer value. It saturates at
+// MaxSequence instead of wrapping: a wrapped timer would go back to
+// values peers have seen and refuse.
+func timerUint(v int64) uint64 {
+	if v < 0 {
+		return 0
+	}
+	if v > MaxSequence {
+		return MaxSequence
+	}
+	return uint64(v)
+}
+
+// timerInt returns a 48-bit timer value as int64, exact below 2^48.
+func timerInt(v uint64) int64 {
+	if v > MaxSequence {
+		return MaxSequence
+	}
+	return int64(v)
+}
+
+// randomTag returns a message tag from crypto/rand: the tag of a
+// synchronisation TIMER_NOTIFY is the challenge the time keeper's answer
+// must echo, so it must not be predictable.
+func randomTag() uint16 {
+	var b [2]byte
+	_, _ = rand.Read(b[:]) // crypto/rand.Read does not fail (Go 1.24+)
+	return binary.BigEndian.Uint16(b[:])
+}
+
+// jitter returns a uniformly random duration in [0, span) from
+// crypto/rand (0 for span <= 0).
+func jitter(span time.Duration) time.Duration {
+	var b [8]byte
+	_, _ = rand.Read(b[:]) // crypto/rand.Read does not fail (Go 1.24+)
+	f := float64(binary.BigEndian.Uint64(b[:])>>11) / (1 << 53)
+	return time.Duration(f * float64(max(span, 0)))
+}
 
 func (r *RoutingTimer) delays(update bool) (lo, hi time.Duration) {
 	keeperPeriodicMax := minDelayKeeperPeriodic + 3*r.syncTol
@@ -88,7 +128,7 @@ func (r *RoutingTimer) delays(update bool) (lo, hi time.Duration) {
 // answer; without one this router becomes the time keeper. Frames are
 // accepted only after it returns.
 func (r *RoutingTimer) Synchronize(ctx context.Context) {
-	tag := uint16(rand.Uint32())
+	tag := randomTag()
 	e := &expectedNotify{tag: tag, ch: make(chan uint64, 1)}
 	r.mu.Lock()
 	r.expect = e
@@ -109,7 +149,7 @@ func (r *RoutingTimer) Synchronize(ctx context.Context) {
 	r.mu.Lock()
 	r.expect = nil
 	if ok {
-		r.offset = int64(got) - r.localMS()
+		r.offset = timerInt(got) - r.localMS()
 	} else {
 		r.timekeeper = true
 	}
@@ -146,10 +186,10 @@ func (r *RoutingTimer) Next() uint64 {
 // authenticated): a newer value advances the timer, a value older than
 // the latency tolerance is refused and answered by an update notify.
 func (r *RoutingTimer) Accept(w *knxnetip.SecureWrapper) bool {
-	recv := int64(Uint48(w.Sequence))
+	recv := timerInt(Uint48(w.Sequence))
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	local := int64(r.value())
+	local := timerInt(r.value())
 	switch {
 	case recv > local:
 		r.offset += recv - local
@@ -177,17 +217,18 @@ func (r *RoutingTimer) HandleNotify(m *knxnetip.TimerNotify) bool {
 	if VerifyTimerNotify(r.key, m) != nil {
 		return false
 	}
-	recv := int64(Uint48(m.Timer))
+	recvU := Uint48(m.Timer)
+	recv := timerInt(recvU)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if e := r.expect; e != nil && m.Serial == r.serial && m.MessageTag == e.tag {
 		select {
-		case e.ch <- uint64(recv):
+		case e.ch <- recvU:
 		default:
 		}
 		return true
 	}
-	local := int64(r.value())
+	local := timerInt(r.value())
 	switch {
 	case recv > local:
 		r.offset += recv - local
@@ -220,7 +261,7 @@ func (r *RoutingTimer) reschedule(u *update) {
 	}
 	r.schedUpdate = u != nil
 	lo, hi := r.delays(u != nil)
-	d := lo + time.Duration(rand.Int64N(int64(hi-lo)+1))
+	d := lo + jitter(hi-lo)
 	r.gen++
 	gen := r.gen
 	r.t = time.AfterFunc(d, func() { r.expired(gen, u) })
@@ -232,7 +273,7 @@ func (r *RoutingTimer) expired(gen uint64, u *update) {
 		r.mu.Unlock()
 		return
 	}
-	serial, tag := r.serial, uint16(rand.Uint32())
+	serial, tag := r.serial, randomTag()
 	if u != nil {
 		serial, tag = u.serial, u.tag
 	}

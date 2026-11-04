@@ -6,6 +6,7 @@ package udp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -104,4 +105,30 @@ func AddrPortOf(a net.Addr) netip.AddrPort {
 		return netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port())
 	}
 	return netip.AddrPort{}
+}
+
+// DatagramError reports whether err, returned by a read on a UDP socket,
+// concerns one datagram rather than the socket: the reader drops that
+// datagram and reads on. Windows reports a datagram larger than the
+// buffer (WSAEMSGSIZE) and an ICMP port unreachable for an earlier send
+// (WSAECONNRESET) this way; other systems truncate or ignore them. A
+// timeout and a closed socket are not datagram errors.
+func DatagramError(err error) bool {
+	if err == nil || errors.Is(err, net.ErrClosed) {
+		return false
+	}
+	var ne net.Error
+	return !errors.As(err, &ne) || !ne.Timeout()
+}
+
+// Read calls read until it returns a datagram or an error that is not a
+// [DatagramError], dropping the datagrams that failed: one oversized or
+// refused datagram must not end a reader whose deadline still runs.
+func Read(read func([]byte) (int, netip.AddrPort, error), buf []byte) (int, netip.AddrPort, error) {
+	for {
+		n, from, err := read(buf)
+		if !DatagramError(err) {
+			return n, from, err
+		}
+	}
 }

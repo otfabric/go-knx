@@ -198,7 +198,7 @@ func TestRateLimit(t *testing.T) {
 	leak.Check(t)
 	c, _, _, _ := listen(t, routing.WithRate(20))
 	start := time.Now()
-	for i := 0; i < 30; i++ { // a burst of 20, then 10 at 20/s
+	for i := range 30 { // a burst of 20, then 10 at 20/s
 		if err := c.Send(ctx(t), frame(byte(i))); err != nil {
 			t.Fatal(err)
 		}
@@ -220,7 +220,7 @@ func TestRateLimit(t *testing.T) {
 	// No limit.
 	u, _, _, _ := listen(t, routing.WithRate(0))
 	start = time.Now()
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		if err := u.Send(ctx(t), frame(byte(i))); err != nil {
 			t.Fatal(err)
 		}
@@ -291,7 +291,7 @@ func TestLostMessageAndEventOverflow(t *testing.T) {
 	}
 	// The event channel is bounded: unread events are dropped, the
 	// reader keeps going.
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		p.Send(local, &knxnetip.RoutingLostMessage{Lost: uint16(i)})
 	}
 	p.Send(local, &knxnetip.RoutingIndication{CEMI: encoded(t, frame(9))})

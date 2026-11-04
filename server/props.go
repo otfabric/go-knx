@@ -227,7 +227,7 @@ func (p *propStore) readData(t uint16, pid uint8, start uint16, count uint8) ([]
 		if count != 1 {
 			return nil, errIndexRange
 		}
-		return u16(uint16(len(elems))), 0
+		return u16(uint16(max(min(len(elems), 0xFFFF), 0))), 0
 	}
 	first, n := int(start)-1, int(count)
 	if n == 0 || first+n > len(elems) {
@@ -319,9 +319,17 @@ func (p *propStore) DescribeProperty(object, pid, index uint8) (mgmt.Description
 	if !ok {
 		return mgmt.Description{}, false
 	}
+	// The index of pid among the sorted keys: the number of keys below it,
+	// at most 255 as the keys are distinct uint8 values.
+	var idx uint8
+	for _, id := range pids {
+		if id < pid {
+			idx++
+		}
+	}
 	return mgmt.Description{
-		PID: pid, Index: uint8(slices.Index(pids, pid)), Type: pdts[pr.size],
+		PID: pid, Index: idx, Type: pdts[pr.size],
 		Writable:    o[object] == objKNXnetIP && pid == pidFriendlyName,
-		MaxElements: uint16(len(pr.elements())), Access: 0xF0,
+		MaxElements: uint16(max(min(len(pr.elements()), 0xFFFF), 0)), Access: 0xF0,
 	}, true
 }

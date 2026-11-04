@@ -177,7 +177,10 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 	}
 	c.wg.Add(2)
 	go c.heartbeatLoop()
-	go c.supervise()
+	// Reconnects outlive Dial: they keep the values of ctx (tracing and
+	// the like) but not its cancellation or deadline, which bound the
+	// first connect only. Close cancels them.
+	go c.supervise(context.WithoutCancel(ctx))
 	return c, nil
 }
 
@@ -351,8 +354,7 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	if c.tr.stream() {
 		// TCP is reliable: tunnelling requests are not acknowledged.
 		if err := c.write(dataEP, req); err != nil {
-			c.signalLost(gen, fmt.Errorf("%w: %v", knx.ErrConnectionLost, err))
-			return err
+			return c.sendError(gen, err)
 		}
 		acked = true
 	}
@@ -362,7 +364,7 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 			c.o.logger.Debugf("tunnel: no ACK for sequence %d, repeating", seq)
 		}
 		if err := c.write(dataEP, req); err != nil {
-			return err
+			return c.sendError(gen, err)
 		}
 		t := time.NewTimer(c.o.requestTimeout)
 	wait:
@@ -418,6 +420,31 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	case <-c.closing:
 		return knx.ErrClosed
 	}
+}
+
+// sendError maps a failed write of Send to the error contract: after
+// Close an error matching knx.ErrClosed; when the connection was lost (the
+// socket closed under Send, or the write itself failed) one matching
+// knx.ErrConnectionLost. Both wrap the write error. A failed write on a
+// connection that is still up counts as losing it.
+func (c *Conn) sendError(gen uint64, err error) error {
+	select {
+	case <-c.closing:
+		c.mu.Lock()
+		cause := c.err
+		c.mu.Unlock()
+		if cause == nil {
+			return fmt.Errorf("%w: tunnel: send: %w", knx.ErrClosed, err)
+		}
+		if errors.Is(cause, knx.ErrConnectionLost) {
+			return fmt.Errorf("%w: send: %w", cause, err)
+		}
+		return fmt.Errorf("%w: tunnel: %w: send: %w", knx.ErrConnectionLost, cause, err)
+	default:
+	}
+	lost := fmt.Errorf("%w: tunnel: send: %w", knx.ErrConnectionLost, err)
+	c.signalLost(gen, lost)
+	return lost
 }
 
 // Receive returns the next frame the server sent on the tunnel
@@ -725,8 +752,9 @@ func (c *Conn) heartbeat(ch uint8) error {
 	return fmt.Errorf("%w: tunnel: no CONNECTIONSTATE_RESPONSE after %d attempts", knx.ErrConnectionLost, c.o.heartbeatAttempts)
 }
 
-// supervise handles lost connections: reconnect or close.
-func (c *Conn) supervise() {
+// supervise handles lost connections: reconnect or close. Each reconnect
+// runs under a child of parent that Close cancels.
+func (c *Conn) supervise(parent context.Context) {
 	defer c.wg.Done()
 	for {
 		var ev lostEvent
@@ -760,7 +788,7 @@ func (c *Conn) supervise() {
 				return
 			case <-time.After(backoff):
 			}
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(parent)
 			go func() {
 				select {
 				case <-c.closing:

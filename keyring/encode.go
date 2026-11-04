@@ -11,7 +11,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -121,7 +121,7 @@ func sortedGroups[V any](m map[knx.GroupAddress]V) []knx.GroupAddress {
 	for g := range m {
 		gs = append(gs, g)
 	}
-	sort.Slice(gs, func(i, j int) bool { return gs[i] < gs[j] })
+	slices.Sort(gs)
 	return gs
 }
 
@@ -175,7 +175,7 @@ func (e encrypter) password(p string) (string, error) {
 	}
 	b = append(b, p...)
 	n := 16 - len(b)%16
-	for i := 0; i < n; i++ {
+	for range n {
 		b = append(b, byte(n))
 	}
 	return e.encrypt(b), nil

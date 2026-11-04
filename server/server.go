@@ -301,7 +301,7 @@ func listenUDPTCP(listen netip.AddrPort, tcp bool) (*net.UDPConn, *net.TCPListen
 // ephemeralUDPTCP is the port 0 case of listenUDPTCP.
 func ephemeralUDPTCP(listen netip.AddrPort, listenUDP func(string, *net.UDPAddr) (*net.UDPConn, error)) (*net.UDPConn, *net.TCPListener, error) {
 	var last error
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		ln, err := net.ListenTCP("tcp4", net.TCPAddrFromAddrPort(listen))
 		if err != nil {
 			return nil, nil, err
@@ -325,10 +325,10 @@ func (s *Server) busmonitorFrame(f *cemi.LData) []byte {
 	if err != nil {
 		return nil
 	}
-	ms := uint16(time.Since(s.startTime).Milliseconds())
+	ms := uint16(time.Since(s.startTime).Milliseconds() & 0xFFFF)
 	b, err := cemi.Marshal(&cemi.Raw{MsgCode: cemi.LBusmonInd, AddInfo: []cemi.AdditionalInfo{
 		{Type: cemi.AddInfoBusmonitorStatus, Data: []byte{0x00}},
-		{Type: cemi.AddInfoTimestamp, Data: []byte{byte(ms >> 8), byte(ms)}},
+		{Type: cemi.AddInfoTimestamp, Data: []byte{byte(ms >> 8), byte(ms & 0xFF)}},
 	}, Data: raw})
 	if err != nil {
 		return nil
@@ -821,12 +821,22 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 		s.mu.Unlock()
 		return
 	}
-	// A repeated CONNECT_REQUEST of a client whose response was lost gets
-	// its existing channel.
-	for _, c := range s.conns {
-		if c.kind == kind && c.ctrl == ctrl && c.data == data && c.tcp == p.tcp && c.us == p.us {
+	// A CONNECT_REQUEST from the endpoints of an existing connection (a
+	// client whose response was lost, or one that reconnects from the same
+	// socket without a DISCONNECT_REQUEST, as knxd does) starts a new
+	// connection: it keeps the channel and the individual address, but its
+	// sequence counters start at 0 and the old send queue is dropped, as
+	// the client's own counters start at 0.
+	for _, old := range s.conns {
+		if old.kind == kind && old.ctrl == ctrl && old.data == data && old.tcp == p.tcp && old.us == p.us {
+			c := s.newConn(kind, old.channel, old.addr, ctrl, data, p)
+			s.conns[old.channel] = c
 			s.mu.Unlock()
+			old.closeOnce.Do(func() { close(old.done) })
 			s.reply(p, m.Control, &knxnetip.ConnectResponse{Channel: c.channel, Data: dataHPAI, CRD: crd(c)})
+			s.o.logger.Infof("server: channel %d reconnected from %s: sequence counters reset", c.channel, ctrl)
+			s.wg.Add(1)
+			go c.sender()
 			return
 		}
 	}
@@ -912,15 +922,14 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 		}
 	}
 	ch := s.next
-	for i := 0; i < 256; i++ {
+	for range 256 {
 		ch++
 		if _, taken := s.conns[ch]; ch != 0 && !taken {
 			break
 		}
 	}
 	s.next = ch
-	c := &tconn{s: s, kind: kind, channel: ch, addr: addr, ctrl: ctrl, data: data, tcp: p.tcp, us: p.us, lastSeen: time.Now(),
-		queue: make(chan out, s.o.queueSize), ackCh: make(chan ack, 1), done: make(chan struct{})}
+	c := s.newConn(kind, ch, addr, ctrl, data, p)
 	s.conns[ch] = c
 	s.mu.Unlock()
 
@@ -933,6 +942,12 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 	s.o.logger.Infof("server: channel %d (%s, %s) connected from %s as %s", ch, kind, transport, ctrl, addr)
 	s.wg.Add(1)
 	go c.sender()
+}
+
+// newConn returns the state of a new connection, sequence counters at 0.
+func (s *Server) newConn(kind connKind, ch uint8, addr knx.IndividualAddress, ctrl, data netip.AddrPort, p peer) *tconn {
+	return &tconn{s: s, kind: kind, channel: ch, addr: addr, ctrl: ctrl, data: data, tcp: p.tcp, us: p.us, lastSeen: time.Now(),
+		queue: make(chan out, s.o.queueSize), ackCh: make(chan ack, 1), done: make(chan struct{})}
 }
 
 // secureAddress returns the tunnelling address bound to an
@@ -971,13 +986,9 @@ func (s *Server) disconnect(c *tconn, notify bool, cause error) {
 // janitor closes connections without heartbeat.
 func (s *Server) janitor() {
 	defer s.wg.Done()
-	tick := s.o.aliveTime / 10
-	if tick > time.Second {
-		tick = time.Second
-	}
-	if tick < time.Millisecond {
-		tick = time.Millisecond // NewTicker panics on 0
-	}
+	tick := max(min(s.o.aliveTime/10, time.Second),
+		// NewTicker panics on 0
+		time.Millisecond)
 	t := time.NewTicker(tick)
 	defer t.Stop()
 	for {

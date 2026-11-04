@@ -41,6 +41,9 @@ func TestTP1Errors(t *testing.T) {
 	if _, err := TP1Frame(long); !errors.Is(err, knx.ErrUnsupported) {
 		t.Fatalf("extended: %v", err)
 	}
+	if _, err := TP1Frame(NewGroupFrame(LDataReq, 1, 1, knx.PriorityLow, nil)); !errors.Is(err, knx.ErrUnsupported) {
+		t.Fatalf("empty TPDU: %v", err)
+	}
 	good, _ := TP1Frame(NewGroupFrame(LDataReq, 1, 1, knx.PriorityLow, []byte{0x00, 0x81}))
 	for name, b := range map[string][]byte{
 		"short":    good[:5],

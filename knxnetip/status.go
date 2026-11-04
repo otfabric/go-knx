@@ -85,8 +85,7 @@ func (e *StatusError) Is(target error) bool {
 
 // StatusOf returns the status of a *StatusError in err's chain.
 func StatusOf(err error) (Status, bool) {
-	var se *StatusError
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*StatusError](err); ok {
 		return se.Status, true
 	}
 	return 0, false

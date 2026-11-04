@@ -17,7 +17,7 @@ jobs:
   # same way, so coverage is measured and uploaded by the multicast job
   # (run-codecov: false here).
   ci:
-    uses: otfabric/.github/.github/workflows/go-ci.yml@v3.3.0
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v3.3.1
     with:
       run-govulncheck: true
       coverage-min: "90"
@@ -27,7 +27,7 @@ jobs:
       test-exclude-regex: "(/example(s)?($|/)|/interop($|/))"
       coverpkg: >-
         github.com/otfabric/go-knx,github.com/otfabric/go-knx/apdu,github.com/otfabric/go-knx/cemi,github.com/otfabric/go-knx/client,github.com/otfabric/go-knx/datasecure,github.com/otfabric/go-knx/device,github.com/otfabric/go-knx/devmgmt,github.com/otfabric/go-knx/discovery,github.com/otfabric/go-knx/dpt,github.com/otfabric/go-knx/internal/ccm,github.com/otfabric/go-knx/internal/mcast,github.com/otfabric/go-knx/internal/pbkdf2,github.com/otfabric/go-knx/internal/ratelimit,github.com/otfabric/go-knx/internal/udp,github.com/otfabric/go-knx/keyring,github.com/otfabric/go-knx/knxnetip,github.com/otfabric/go-knx/mgmt,github.com/otfabric/go-knx/routing,github.com/otfabric/go-knx/secure,github.com/otfabric/go-knx/server,github.com/otfabric/go-knx/tunnel
-      go-versions: '["1.23", "1.24", "1.25", "1.26"]'
+      go-versions: '["1.26", "1.27"]'
     secrets: inherit
 
   # The whole suite on Linux, natively on amd64 and arm64, with
@@ -88,5 +88,5 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.23.x"
+          go-version: "1.26.x"
       - run: make build examples cross coverpkg-check

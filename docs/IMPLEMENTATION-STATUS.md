@@ -58,7 +58,7 @@ the implementation versions. Nothing here is a conformance claim
 | Data Secure CTR stream | The 4-octet MAC is encrypted first and the APDU continues the same key stream | xknx; checked against its vectors and both ways with xknx, decrypted by Calimero |
 | Plain connection to a secure server | refused with E_CONNECTION_TYPE | Calimero's secure server answers the same |
 | Secure device management | user 1 (management user) only | Calimero's secure server refuses other users |
-| Secure routing timer | starts at 0 when the process starts; adopts any newer timer | the synchronisation of xknx's reading of 3/8/9 §2.2.2.3; Calimero and xknx synchronise with it |
+| Secure routing timer | starts at 0 when the process starts; adopts any newer timer; saturates at 2^48−1 instead of wrapping; message tags and notify delays come from crypto/rand | the synchronisation of xknx's reading of 3/8/9 §2.2.2.3; Calimero and xknx synchronise with it |
 | Tool access sequence numbers | kept per peer apart from the group senders; any tool that has the device's tool key may synchronise | the tool key is the tool's credential; Calimero synchronises with sequence 1 and a zero serial number |
 | Data Secure MAC of a tunnelling client | computed over the source address the frame carries on the network (the tunnel address); go-knx sets it | Calimero tools 3.0-M1 computes it over 0.0.0 unless given its address (`-k`), and a device then refuses its frames |
 | Wrapper serial number of a secure tunnelling client | 00FA followed by 4 random octets | not checked by xknx or Calimero; the server uses its own serial |
