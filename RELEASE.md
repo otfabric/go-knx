@@ -5,6 +5,34 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.7.0
+
+**Date:** 2026-11-05
+**Previous release:** v0.6.0
+
+## Summary
+
+Bounds for every call that waits for a peer or collects its answers. Found while hardening knxctl, which had to work around them. API.md has a new Bounds section.
+
+**Upgrade notes:** `GroupReadAll` and `Search` now stop at a limit (1000 responses, 256 servers): raise it with `WithMaxResponses` or `WithMaxResults`. devmgmt calls without a context deadline now end after 3 s.
+
+## Changes
+
+### Added
+
+- `client.WithMaxResponses`, `client.DefaultMaxResponses`, `discovery.WithMaxResults`, `discovery.DefaultMaxResults`, `devmgmt.DefaultTimeout`, `client.MaxPropertyData`.
+
+### Fixed
+
+- `discovery.Search` kept every distinct answer, so a flood of SEARCH_RESPONSEs grew memory for the whole timeout. It now returns once it has `DefaultMaxResults` servers (`WithMaxResults`).
+- `client.GroupReadAll` kept every response. It now returns once it has `DefaultMaxResponses` (`WithMaxResponses`).
+- devmgmt `PropRead`/`PropWrite` waited as long as the context lived. A server that acknowledged the request and never confirmed it blocked a caller without a deadline for ever. They now end after `DefaultTimeout` with `knx.ErrTimeout`.
+- `client.Device` reported a cancelled context as `knx.ErrTimeout` ("no answer"). It now returns an error matching `context.Canceled`. An expired deadline still matches `knx.ErrTimeout` and now also `context.DeadlineExceeded`.
+- `tunnel.Conn.Send` (and devmgmt, client over a tunnel): a frame too long for a KNXnet/IP datagram, or too long once wrapped by KNX IP Secure, was counted as a failed write. The connection was torn down (or reconnected) and the caller got `knx.ErrConnectionLost`. It now returns `knx.ErrInvalidValue`, sends nothing and keeps the connection.
+- `client.Device.PropertyWrite` refuses data over `MaxPropertyData` (250 octets) before sending.
+
+---
+
 ## v0.6.0
 
 **Date:** 2026-11-04
