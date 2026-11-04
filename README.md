@@ -1,6 +1,6 @@
 # go-knx
 
-[![Go Version](https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/otfabric/go-knx.svg)](https://pkg.go.dev/github.com/otfabric/go-knx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI Status](https://github.com/otfabric/go-knx/actions/workflows/ci.yml/badge.svg)](https://github.com/otfabric/go-knx/actions/workflows/ci.yml)
@@ -55,7 +55,7 @@ xknx 4.0.0 and KNXUltimate 6.3.1: [INTEROPERABILITY.md](INTEROPERABILITY.md).
 go get github.com/otfabric/go-knx
 ```
 
-Go 1.23 or later.
+Go 1.26 or later.
 
 ## Quick start
 

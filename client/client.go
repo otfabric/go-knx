@@ -500,15 +500,13 @@ func (c *Client) individual(ctx context.Context, ld *cemi.LData) {
 			return
 		}
 	}
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		if err := c.link.Send(sctx, res); err != nil {
 			c.logger.Debugf("client: S-A_Sync_Res to %s: %v", ld.Source, err)
 		}
-	}()
+	})
 }
 
 // Group object diagnostics (interface object type 9, PID 66), the

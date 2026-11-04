@@ -307,11 +307,11 @@ func TestConcurrentHandle(t *testing.T) {
 	d.Add(o)
 	d.OnChange(func(device.Event) {})
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				d.Handle(frame(t, other, ga, write(t, apdu.GroupValue{Data: []byte{byte(j)}})))
 				d.Handle(frame(t, other, ga, apdu.GroupValueRead()))
 				_, _ = d.Transmit(o, float64(j%100))

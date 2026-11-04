@@ -5,6 +5,7 @@ package datasecure
 import (
 	"crypto/rand"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -47,12 +48,8 @@ func NewTable(keys map[knx.GroupAddress]Key, senders map[knx.IndividualAddress]u
 		return nil, fmt.Errorf("%w: datasecure: sequence %d exceeds 48 bits", knx.ErrInvalidValue, seq)
 	}
 	t := &Table{keys: map[knx.GroupAddress]Key{}, senders: map[knx.IndividualAddress]uint64{}, seq: seq, toolKeys: map[knx.IndividualAddress]Key{}, tools: map[knx.IndividualAddress]uint64{}, synced: map[knx.IndividualAddress]uint64{}}
-	for g, k := range keys {
-		t.keys[g] = k
-	}
-	for a, s := range senders {
-		t.senders[a] = s
-	}
+	maps.Copy(t.keys, keys)
+	maps.Copy(t.senders, senders)
 	return t, nil
 }
 

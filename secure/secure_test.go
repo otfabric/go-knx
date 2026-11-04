@@ -167,7 +167,7 @@ func TestSessionRoundTrip(t *testing.T) {
 		t.Fatal("session keys differ")
 	}
 	tx, rx := NewSession(7, ka, [6]byte{1}), NewSession(7, kb, [6]byte{2})
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		raw, err := tx.Marshal(&knxnetip.SessionStatus{Status: knxnetip.SessionKeepAlive})
 		if err != nil {
 			t.Fatal(err)

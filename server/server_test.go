@@ -349,7 +349,7 @@ func TestServerSequenceNumbers(t *testing.T) {
 	leak.Check(t)
 	s, _ := start(t)
 	r := dialRaw(t, s)
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		if err := s.GroupWrite(ga, apdu.GroupValue{Data: []byte{byte(i)}}); err != nil {
 			t.Fatal(err)
 		}
@@ -613,7 +613,7 @@ func TestConcurrentClients(t *testing.T) {
 		wg.Add(1)
 		go func(i int, c *tunnel.Conn) {
 			defer wg.Done()
-			for j := 0; j < writes; j++ {
+			for j := range writes {
 				if err := c.Send(context.Background(), write(ga, byte(j))); err != nil {
 					t.Errorf("client %d write %d: %v", i, j, err)
 					return

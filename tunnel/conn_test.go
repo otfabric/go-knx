@@ -441,7 +441,7 @@ func TestOptions(t *testing.T) {
 func TestSendAckAndConfirm(t *testing.T) {
 	leak.Check(t)
 	f := dial(t)
-	for seq := uint8(0); seq < 3; seq++ {
+	for seq := range uint8(3) {
 		res := f.send(groupWrite(seq))
 		req := f.expectRequest()
 		if req.Seq != seq {
@@ -694,7 +694,7 @@ func TestSequenceRollover(t *testing.T) {
 		return false
 	})
 	const n = 300
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if err := f.c.Send(ctx(t), groupWrite(byte(i))); err != nil {
 			t.Fatalf("send %d: %v", i, err)
 		}
@@ -708,7 +708,7 @@ func TestSequenceRollover(t *testing.T) {
 	}
 	mu.Unlock()
 	// Inbound: the counter wraps too.
-	for i := 0; i < n; i++ {
+	for i := range n {
 		f.inbound(uint8(i), indication(byte(i)))
 		a, _ := fakeknx.Expect[*knxnetip.TunnellingAck](p, wait)
 		if a.Seq != uint8(i) {
@@ -730,7 +730,7 @@ func TestSequenceRollover(t *testing.T) {
 func TestQueueFull(t *testing.T) {
 	leak.Check(t)
 	f := dial(t, tunnel.WithQueueSize(1))
-	for seq := uint8(0); seq < 3; seq++ {
+	for seq := range uint8(3) {
 		f.inbound(seq, indication(seq))
 		if a, _ := fakeknx.Expect[*knxnetip.TunnellingAck](f.p, wait); a.Seq != seq {
 			t.Fatalf("ack %d", a.Seq)
@@ -1190,11 +1190,11 @@ func TestConcurrentSends(t *testing.T) {
 		return true
 	})
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			for j := 0; j < 20; j++ {
+			for j := range 20 {
 				if err := f.c.Send(context.Background(), groupWrite(byte(i*20+j))); err != nil {
 					t.Error(err)
 					return

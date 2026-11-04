@@ -327,7 +327,7 @@ func probeMulticast() error {
 	_ = s.SetWriteDeadline(time.Now().Add(time.Second))
 	msg := []byte("knx-multicast-probe")
 	_ = r.SetReadDeadline(time.Now().Add(time.Second))
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if _, err := s.WriteToUDPAddrPort(msg, group); err != nil {
 			return fmt.Errorf("send to %s: %w", group, err)
 		}

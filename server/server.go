@@ -301,7 +301,7 @@ func listenUDPTCP(listen netip.AddrPort, tcp bool) (*net.UDPConn, *net.TCPListen
 // ephemeralUDPTCP is the port 0 case of listenUDPTCP.
 func ephemeralUDPTCP(listen netip.AddrPort, listenUDP func(string, *net.UDPAddr) (*net.UDPConn, error)) (*net.UDPConn, *net.TCPListener, error) {
 	var last error
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		ln, err := net.ListenTCP("tcp4", net.TCPAddrFromAddrPort(listen))
 		if err != nil {
 			return nil, nil, err
@@ -912,7 +912,7 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 		}
 	}
 	ch := s.next
-	for i := 0; i < 256; i++ {
+	for range 256 {
 		ch++
 		if _, taken := s.conns[ch]; ch != 0 && !taken {
 			break
@@ -971,13 +971,9 @@ func (s *Server) disconnect(c *tconn, notify bool, cause error) {
 // janitor closes connections without heartbeat.
 func (s *Server) janitor() {
 	defer s.wg.Done()
-	tick := s.o.aliveTime / 10
-	if tick > time.Second {
-		tick = time.Second
-	}
-	if tick < time.Millisecond {
-		tick = time.Millisecond // NewTicker panics on 0
-	}
+	tick := max(min(s.o.aliveTime/10, time.Second),
+		// NewTicker panics on 0
+		time.Millisecond)
 	t := time.NewTicker(tick)
 	defer t.Stop()
 	for {

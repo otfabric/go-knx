@@ -317,7 +317,7 @@ func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, 
 	defer stop()
 	buf := make([]byte, knxnetip.MaxFrameLen+1)
 	step := o.timeout / 3
-	for attempt := 0; attempt < 3; attempt++ {
+	for range 3 {
 		if _, err := s.conn.WriteToUDPAddrPort(b, remote); err != nil {
 			return nil, fmt.Errorf("discovery: send description request to %s: %w", remote, err)
 		}

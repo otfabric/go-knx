@@ -30,7 +30,7 @@ func TestUnlimited(t *testing.T) {
 		if b != nil {
 			t.Fatalf("New(%d) = %v, want nil", r, b)
 		}
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			if !b.Allow() {
 				t.Fatalf("rate %d refused", r)
 			}
@@ -40,7 +40,7 @@ func TestUnlimited(t *testing.T) {
 
 func TestBurstThenRefill(t *testing.T) {
 	b, c := newTest(10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if !b.Allow() {
 			t.Fatalf("burst token %d refused", i)
 		}
@@ -75,7 +75,7 @@ func TestSteadyRate(t *testing.T) {
 	for b.Allow() {
 	}
 	allowed := 0
-	for i := 0; i < 1000; i++ { // 1 s in 1 ms steps
+	for range 1000 { // 1 s in 1 ms steps
 		c.advance(time.Millisecond)
 		if b.Allow() {
 			allowed++
@@ -102,18 +102,16 @@ func TestConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	n := 0
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 100; j++ {
+	for range 8 {
+		wg.Go(func() {
+			for range 100 {
 				if b.Allow() {
 					mu.Lock()
 					n++
 					mu.Unlock()
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if n < 100 || n > 110 {

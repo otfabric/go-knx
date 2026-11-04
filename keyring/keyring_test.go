@@ -183,7 +183,7 @@ func TestRoundTrip(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(os.Getenv("KNX_KEYRING_OUT"), "roundtrip.knxkeys"), b, 0o600)
 	}
 	// Passwords of every length pad to whole blocks.
-	for n := 0; n < 40; n++ {
+	for n := range 40 {
 		k.Interfaces[0].Password = strings.Repeat("x", n)
 		b, err := k.Encode("p")
 		if err != nil {

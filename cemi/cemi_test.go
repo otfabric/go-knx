@@ -159,7 +159,7 @@ func TestLDataAccessors(t *testing.T) {
 			t.Fatalf("SetPriority(%v): ctrl1 %02X", p, f.Ctrl1)
 		}
 	}
-	for n := uint8(0); n < 8; n++ {
+	for n := range uint8(8) {
 		f.SetHopCount(n)
 		if f.HopCount() != n || f.Ctrl2&0x8F != 0x05 {
 			t.Fatalf("SetHopCount(%d): ctrl2 %02X", n, f.Ctrl2)

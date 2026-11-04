@@ -18,7 +18,7 @@ Sibling links point at the default branch of each repository.
 
 | Convention | Source in siblings | In go-knx |
 |---|---|---|
-| Module `github.com/otfabric/go-<proto>`, Go 1.23 floor, no runtime dependencies, no cgo | go-canbus `go.mod`; go-ethernetip `go.mod` | `go.mod`: go 1.23, no requirements |
+| Module `github.com/otfabric/go-<proto>`, Go 1.26 floor, no runtime dependencies, no cgo | go-canbus `go.mod`; go-ethernetip `go.mod` | `go.mod`: go 1.26, no requirements |
 | Root package holds the shared sentinel errors, `Logger` (Std/slog adapters, FieldLogger, ContextLogger), `Metrics` + `NopMetrics`, `State` | go-ethernetip `errors.go`, `logger.go`, `metrics.go`, `state.go` | `errors.go`, `logger.go` (adapted copy), `metrics.go`, `state.go`, plus the address types |
 | Subpackages per layer; client and server separate; codecs separate from transports | go-ethernetip `encap/`, `cip/`, `client/`, `server/` | `knxnetip/`, `cemi/`, `apdu/`, `dpt/`, `tunnel/`, `routing/`, `discovery/`, `client/`, `server/`, `device/` |
 | Functional options returning errors (`Option func(*options) error`), validated at construction | go-ethernetip `client/options.go` | every package with a constructor |

@@ -262,7 +262,7 @@ func TestReadFrame(t *testing.T) {
 	}
 	// Two frames back to back.
 	two := bytes.NewReader(append(append([]byte(nil), good...), good...))
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		b, err := ReadFrame(two)
 		if err != nil || !bytes.Equal(b, good) {
 			t.Fatalf("frame %d: % X, %v", i, b, err)

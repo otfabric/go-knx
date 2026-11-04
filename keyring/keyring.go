@@ -318,7 +318,7 @@ func (d decrypter) iface(e *element) (Interface, error) {
 			return itf, err
 		}
 		var senders []knx.IndividualAddress
-		for _, s := range strings.Fields(g.attr("Senders")) {
+		for s := range strings.FieldsSeq(g.attr("Senders")) {
 			a, err := individualAddress(s)
 			if err != nil {
 				return itf, err
