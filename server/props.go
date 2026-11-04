@@ -319,16 +319,16 @@ func (p *propStore) DescribeProperty(object, pid, index uint8) (mgmt.Description
 	if !ok {
 		return mgmt.Description{}, false
 	}
-	// pids holds distinct uint8 keys, so the index is 0..255.
-	idx := slices.Index(pids, pid)
-	if idx < 0 {
-		return mgmt.Description{}, false
-	}
-	if idx > 0xFF {
-		return mgmt.Description{}, false
+	// The index of pid among the sorted keys: the number of keys below it,
+	// at most 255 as the keys are distinct uint8 values.
+	var idx uint8
+	for _, id := range pids {
+		if id < pid {
+			idx++
+		}
 	}
 	return mgmt.Description{
-		PID: pid, Index: uint8(idx), Type: pdts[pr.size],
+		PID: pid, Index: idx, Type: pdts[pr.size],
 		Writable:    o[object] == objKNXnetIP && pid == pidFriendlyName,
 		MaxElements: uint16(max(min(len(pr.elements()), 0xFFFF), 0)), Access: 0xF0,
 	}, true

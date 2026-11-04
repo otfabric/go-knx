@@ -274,17 +274,24 @@ func TestParseCopies(t *testing.T) {
 	}
 }
 
-func TestMessageCodeString(t *testing.T) {
-	for c, want := range map[MessageCode]string{LDataReq: "L_Data.req", LDataInd: "L_Data.ind", LDataCon: "L_Data.con",
-		MPropReadReq: "M_PropRead.req", MResetInd: "M_Reset.ind", LBusmonInd: "L_Busmon.ind", 0x42: "0x42"} {
-		if c.String() != want {
-			t.Errorf("%02X: %q", uint8(c), c.String())
-		}
-	}
-}
-
 func TestDefaults(t *testing.T) {
 	if DefaultCtrl1 != 0xbc || DefaultCtrl2 != 0xe0 {
 		t.Fatalf("defaults %02X %02X", DefaultCtrl1, DefaultCtrl2)
+	}
+}
+
+func TestMessageCodeString(t *testing.T) {
+	want := map[MessageCode]string{
+		LRawReq: "L_Raw.req", LDataReq: "L_Data.req", LPollDataReq: "L_Poll_Data.req", LPollDataCon: "L_Poll_Data.con",
+		LDataInd: "L_Data.ind", LBusmonInd: "L_Busmon.ind", LRawInd: "L_Raw.ind", LDataCon: "L_Data.con", LRawCon: "L_Raw.con",
+		MResetInd: "M_Reset.ind", MResetReq: "M_Reset.req", MPropWriteCon: "M_PropWrite.con", MPropWriteReq: "M_PropWrite.req",
+		MPropInfoInd: "M_PropInfo.ind", MFuncPropCommandReq: "M_FuncPropCommand.req", MFuncPropStateReadReq: "M_FuncPropStateRead.req",
+		MFuncPropCon: "M_FuncProp.con", MPropReadCon: "M_PropRead.con", MPropReadReq: "M_PropRead.req",
+		0x01: "0x01", 0x42: "0x42",
+	}
+	for c, s := range want {
+		if got := c.String(); got != s {
+			t.Errorf("%#x: %q, want %q", uint8(c), got, s)
+		}
 	}
 }

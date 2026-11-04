@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
-	"math/big"
 	"sync"
 	"time"
 
@@ -99,17 +98,13 @@ func randomTag() uint16 {
 	return binary.BigEndian.Uint16(b[:])
 }
 
-// jitter returns a uniformly random duration in [0, span] from
-// crypto/rand.
+// jitter returns a uniformly random duration in [0, span) from
+// crypto/rand (0 for span <= 0).
 func jitter(span time.Duration) time.Duration {
-	if span <= 0 {
-		return 0
-	}
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(span)+1))
-	if err != nil {
-		return span
-	}
-	return time.Duration(n.Int64())
+	var b [8]byte
+	_, _ = rand.Read(b[:]) // crypto/rand.Read does not fail (Go 1.24+)
+	f := float64(binary.BigEndian.Uint64(b[:])>>11) / (1 << 53)
+	return time.Duration(f * float64(max(span, 0)))
 }
 
 func (r *RoutingTimer) delays(update bool) (lo, hi time.Duration) {

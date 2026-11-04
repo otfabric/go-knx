@@ -150,25 +150,22 @@ const (
 )
 
 func appendAddInfo(b []byte, infos []AdditionalInfo) ([]byte, error) {
+	at := len(b)
+	b = append(b, 0) // the total length, set below
 	n := 0
-	for _, a := range infos {
-		if len(a.Data) > 255 {
-			return nil, fmt.Errorf("%w: cemi: additional information of %d octets", knx.ErrInvalidValue, len(a.Data))
-		}
-		n += 2 + len(a.Data)
-	}
-	if n > 255 {
-		return nil, fmt.Errorf("%w: cemi: additional information of %d octets", knx.ErrInvalidValue, n)
-	}
-	b = append(b, byte(n))
 	for _, a := range infos {
 		l := len(a.Data)
 		if l > 255 {
 			return nil, fmt.Errorf("%w: cemi: additional information of %d octets", knx.ErrInvalidValue, l)
 		}
+		n += 2 + l
 		b = append(b, a.Type, byte(l))
 		b = append(b, a.Data...)
 	}
+	if n > 255 {
+		return nil, fmt.Errorf("%w: cemi: additional information of %d octets", knx.ErrInvalidValue, n)
+	}
+	b[at] = byte(n)
 	return b, nil
 }
 

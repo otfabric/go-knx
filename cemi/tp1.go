@@ -16,7 +16,7 @@ import (
 func TP1Frame(f *LData) ([]byte, error) {
 	npdu := len(f.TPDU) - 1
 	if npdu < 0 {
-		return nil, fmt.Errorf("%w: cemi: a TP1 standard frame carries an NPDU of at most %d octets, not %d", knx.ErrUnsupported, MaxStandardNPDU, npdu)
+		return nil, fmt.Errorf("%w: cemi: a TP1 frame needs a TPDU of at least one octet", knx.ErrUnsupported)
 	}
 	if npdu > MaxStandardNPDU {
 		return nil, fmt.Errorf("%w: cemi: a TP1 standard frame carries an NPDU of at most %d octets, not %d", knx.ErrUnsupported, MaxStandardNPDU, npdu)

@@ -87,3 +87,11 @@ func TestAppendHeaderLengthOverflow(t *testing.T) {
 		t.Errorf("largest length % X", b[4:])
 	}
 }
+
+func TestLenOctet(t *testing.T) {
+	for n, want := range map[int]byte{-1: 0, 0: 0, 2: 2, 255: 255, 256: 0} {
+		if got := lenOctet(n); got != want {
+			t.Errorf("lenOctet(%d) = %d, want %d", n, got, want)
+		}
+	}
+}

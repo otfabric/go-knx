@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/otfabric/go-knx/internal/udp"
 	"github.com/otfabric/go-knx/knxnetip"
 )
 
@@ -35,7 +36,7 @@ func (t udpTransport) writeTo(b []byte, to netip.AddrPort) error {
 }
 
 func (t udpTransport) readFrom(buf []byte) (int, netip.AddrPort, error) {
-	n, from, err := t.c.ReadFromUDPAddrPort(buf)
+	n, from, err := udp.Read(t.c.ReadFromUDPAddrPort, buf)
 	return n, netip.AddrPortFrom(from.Addr().Unmap(), from.Port()), err
 }
 
