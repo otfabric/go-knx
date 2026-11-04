@@ -5,6 +5,42 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.6.0
+
+**Date:** 2026-11-04
+**Previous release:** v0.5.2
+
+## Summary
+
+Static analysis (gosec, opengrep) at low/low is clean: every finding was fixed in the code, none was recorded as accepted. The work found defects where lengths and counters wrapped, and new hostile-peer, chaos and fuzz tests found a server defect on reconnects and a spoofing gap. Go 1.26 is now the minimum version.
+
+**Upgrade notes:** Go 1.26 or later. No API signatures changed. See Changed for the stricter behaviour of the server and client.
+
+## Changes
+
+### Fixed
+
+- `server`: a repeated CONNECT_REQUEST from the same endpoints (a client reconnecting from its socket, e.g. `tunnel.WithReconnect`) got its old channel with stale sequence counters. The client's first telegram was then acknowledged as a repetition and dropped, and the server's next request was ignored. The connection now restarts at sequence 0 and keeps its channel and individual address. Frames still queued for the old connection are dropped.
+- `server`: frames of a channel (TUNNELLING_REQUEST/ACK, CONNECTIONSTATE_REQUEST, DISCONNECT_REQUEST) were accepted from any port of the client's IP address. They are now accepted only from the connection's recorded control or data endpoint, address and port.
+- `tunnel`: `Send` could return a bare "use of closed network connection" error. It now returns an error matching `knx.ErrClosed` or `knx.ErrConnectionLost`, with the cause wrapped.
+- `knxnetip`: structure lengths that do not fit their length octet (a DIB, CRI, CRD or SRP of 256 octets or more) wrapped modulo 256, and the wrapped frame decoded as different structures. `Marshal` and `Append` now return `ErrInvalidValue`. `AppendTo` and `AppendHeader` write the length 0, which every decoder refuses.
+- `knxnetip`: `AppendHeader` wrapped a total length above 65535, for example to 6.
+- `secure`: the routing timer wrapped at 48 bits. A TIMER_NOTIFY at 2^48−1 set it back to a few milliseconds, after which peers refused every frame. It now saturates.
+- `secure`: the TIMER_NOTIFY message tag, which the time keeper's answer must echo, and the notify delay came from math/rand. They now come from crypto/rand.
+- `secure`: `Open` refuses a wrapper longer than `knxnetip.MaxFrameLen`. Before, the length in the first CCM block wrapped.
+- `mgmt`: the maximum element count of a property description is 12 bits on the wire and was masked, so 4096 was described as 0. It now saturates at 4095.
+- `internal/mcast` (macOS, BSD): a multicast TTL of 256 or more wrapped to 0. It is refused (the public options already limit it to 1..255).
+- `datasecure`: `NewTable` with the system clock before the sequence epoch (2018-01-05) now gives a clear error.
+- `interop/node`: `--object`, `--pid`, `--start` and `--count` out of range were truncated (`--pid 300` read PID 44). They are refused.
+
+### Changed
+
+- Go 1.26 minimum (CI on 1.26 and 1.27), `go fix` applied.
+- Tests: fuzz targets for secure, datasecure, keyring, mgmt, the server (UDP datagrams and TCP stream) and the tunnel client. New e2e suites for hostile peers and deterministic chaos. See TESTING.md.
+- knx-interop v0.7.1 images (same contract 1.4), shared workflows v3.3.1.
+
+---
+
 ## v0.5.2
 
 **Date:** 2026-10-31

@@ -78,7 +78,11 @@ type tconn struct {
 }
 
 // from accepts frames from the client: its TCP connection, or over UDP
-// its address.
+// exactly its control or data endpoint (address and port). With route
+// back (NAT) those are the endpoints the CONNECT_REQUEST came from. Some
+// clients send CONNECTIONSTATE_REQUEST from the data socket and
+// tunnelling frames from the control socket, so either endpoint counts;
+// another socket on the client's host does not.
 func (c *tconn) from(p peer) bool {
 	if c.tcp != nil || p.tcp != nil {
 		return c.tcp == p.tcp
@@ -87,7 +91,7 @@ func (c *tconn) from(p peer) bool {
 		// A secure connection takes frames of its session only.
 		return false
 	}
-	return p.addr.Addr() == c.ctrl.Addr() || p.addr.Addr() == c.data.Addr()
+	return p.addr == c.ctrl || p.addr == c.data
 }
 
 // send writes a frame to the client's data endpoint.
@@ -277,7 +281,7 @@ func (c *tconn) feature(set bool, f knxnetip.FeatureID, v []byte) ([]byte, uint8
 	case knxnetip.FeatureActiveEMIType:
 		return []byte{0x03}, featureOK // cEMI
 	case knxnetip.FeatureIndividualAddress:
-		return []byte{byte(c.addr >> 8), byte(c.addr)}, featureOK
+		return []byte{byte(c.addr >> 8), byte(c.addr & 0xFF)}, featureOK
 	case knxnetip.FeatureMaxAPDULength:
 		return []byte{0x00, byte(MaxAPDU)}, featureOK
 	default:

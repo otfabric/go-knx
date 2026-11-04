@@ -42,7 +42,13 @@ type Table struct {
 // since 2018-01-05, which exceeds earlier runs.
 func NewTable(keys map[knx.GroupAddress]Key, senders map[knx.IndividualAddress]uint64, seq uint64) (*Table, error) {
 	if seq == 0 {
-		seq = uint64(time.Since(sequenceEpoch).Milliseconds())
+		ms := time.Since(sequenceEpoch).Milliseconds()
+		if ms < 1 {
+			// A clock before 2018-01-05 would restart at sequence
+			// numbers the peers have already seen.
+			return nil, fmt.Errorf("%w: datasecure: system clock is before the sequence epoch; pass the next sequence number", knx.ErrInvalidValue)
+		}
+		seq = uint64(ms)
 	}
 	if seq > MaxSequence {
 		return nil, fmt.Errorf("%w: datasecure: sequence %d exceeds 48 bits", knx.ErrInvalidValue, seq)

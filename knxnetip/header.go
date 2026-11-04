@@ -143,8 +143,34 @@ func ParseHeader(b []byte) (Header, error) {
 }
 
 // AppendHeader appends a header for service with a body of bodyLen octets.
+// A total length that does not fit the 16-bit length field (bodyLen < 0 or
+// bodyLen+[HeaderLen] > 65535) is written as 0, which [ParseHeader]
+// rejects, rather than wrapped to a length that would frame a different
+// datagram.
 func AppendHeader(b []byte, service ServiceType, bodyLen int) []byte {
-	return append(b, HeaderLen, Version10, byte(service>>8), byte(service), byte((bodyLen+HeaderLen)>>8), byte(bodyLen+HeaderLen))
+	n := bodyLen + HeaderLen
+	if bodyLen < 0 {
+		n = 0
+	}
+	if n > 0xFFFF {
+		n = 0
+	}
+	return append(b, HeaderLen, Version10, byte(service>>8), byte(service&0xFF), byte(n>>8), byte(n&0xFF))
+}
+
+// lenOctet returns n as the length octet of a structure (DIB, CRI, CRD,
+// search parameter). A length that does not fit an octet is written as 0,
+// which every decoder of this package rejects, so [Append] and [Marshal]
+// refuse the frame instead of emitting a wrapped length that would frame
+// different structures.
+func lenOctet(n int) byte {
+	if n < 0 {
+		return 0
+	}
+	if n > 0xFF {
+		return 0
+	}
+	return byte(n)
 }
 
 func malformed(format string, a ...any) error {

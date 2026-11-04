@@ -14,15 +14,19 @@ import (
 // type / hop count / length octet, TPDU and check octet. Only standard
 // frames (NPDU of at most 15 octets) have this format.
 func TP1Frame(f *LData) ([]byte, error) {
-	if len(f.TPDU) < 1 || len(f.TPDU)-1 > MaxStandardNPDU {
-		return nil, fmt.Errorf("%w: cemi: a TP1 standard frame carries an NPDU of at most %d octets, not %d", knx.ErrUnsupported, MaxStandardNPDU, len(f.TPDU)-1)
+	npdu := len(f.TPDU) - 1
+	if npdu < 0 {
+		return nil, fmt.Errorf("%w: cemi: a TP1 standard frame carries an NPDU of at most %d octets, not %d", knx.ErrUnsupported, MaxStandardNPDU, npdu)
+	}
+	if npdu > MaxStandardNPDU {
+		return nil, fmt.Errorf("%w: cemi: a TP1 standard frame carries an NPDU of at most %d octets, not %d", knx.ErrUnsupported, MaxStandardNPDU, npdu)
 	}
 	// Control field: standard frame (bit 7), not repeated (bit 5), the
 	// fixed bit 4, priority (bits 3-2).
 	b := []byte{0x80 | 0x20 | 0x10 | byte(f.Priority())<<2}
 	b = binary.BigEndian.AppendUint16(b, uint16(f.Source))
 	b = binary.BigEndian.AppendUint16(b, f.Destination)
-	o := f.HopCount()<<4 | byte(len(f.TPDU)-1)
+	o := f.HopCount()<<4 | byte(npdu)
 	if f.IsGroup() {
 		o |= 0x80
 	}

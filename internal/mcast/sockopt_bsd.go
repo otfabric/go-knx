@@ -19,5 +19,11 @@ func setLoopback(fd uintptr, on bool) error {
 }
 
 func setTTL(fd uintptr, ttl int) error {
+	if ttl < 0 {
+		return syscall.EINVAL
+	}
+	if ttl > 255 {
+		return syscall.EINVAL
+	}
 	return syscall.SetsockoptByte(int(fd), syscall.IPPROTO_IP, syscall.IP_MULTICAST_TTL, byte(ttl))
 }

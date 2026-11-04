@@ -26,7 +26,7 @@ func Append(b []byte, m Message) ([]byte, error) {
 	if n > MaxFrameLen {
 		return b[:start], fmt.Errorf("%w: %s frame of %d octets exceeds %d", errTooLong, m.Service(), n, MaxFrameLen)
 	}
-	binary.BigEndian.PutUint16(b[start+4:], uint16(n))
+	binary.BigEndian.PutUint16(b[start+4:], uint16(max(min(n, 0xFFFF), 0)))
 	// Never emit what this package would refuse to decode: a structure
 	// whose length octet overflowed, a field out of range.
 	if _, err := ParseBody(m.Service(), b[start+HeaderLen:]); err != nil {
@@ -255,7 +255,7 @@ func (m *SearchRequestExt) AppendBody(b []byte) []byte {
 		if p.Mandatory {
 			t |= 0x80
 		}
-		b = append(b, byte(2+len(p.Data)), t)
+		b = append(b, lenOctet(2+len(p.Data)), t)
 		b = append(b, p.Data...)
 	}
 	return b

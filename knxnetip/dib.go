@@ -234,7 +234,7 @@ func (s ServiceFamilies) Version(id ServiceFamilyID) (uint8, bool) {
 
 // AppendTo appends the encoded block.
 func (s ServiceFamilies) AppendTo(b []byte) []byte {
-	b = append(b, byte(2+2*len(s.Families)), byte(s.Type()))
+	b = append(b, lenOctet(2+2*len(s.Families)), byte(s.Type()))
 	for _, f := range s.Families {
 		b = append(b, byte(f.ID), f.Version)
 	}
@@ -303,7 +303,7 @@ func (KNXAddresses) Type() DIBType { return DIBKNXAddresses }
 
 // AppendTo appends the encoded block.
 func (k KNXAddresses) AppendTo(b []byte) []byte {
-	b = append(b, byte(2+2*len(k.Addresses)), byte(DIBKNXAddresses))
+	b = append(b, lenOctet(2+2*len(k.Addresses)), byte(DIBKNXAddresses))
 	for _, a := range k.Addresses {
 		b = binary.BigEndian.AppendUint16(b, uint16(a))
 	}
@@ -331,7 +331,7 @@ func (TunnellingInfo) Type() DIBType { return DIBTunnellingInfo }
 
 // AppendTo appends the encoded block.
 func (t TunnellingInfo) AppendTo(b []byte) []byte {
-	b = append(b, byte(4+4*len(t.Slots)), byte(DIBTunnellingInfo))
+	b = append(b, lenOctet(4+4*len(t.Slots)), byte(DIBTunnellingInfo))
 	b = binary.BigEndian.AppendUint16(b, t.MaxAPDU)
 	for _, s := range t.Slots {
 		b = binary.BigEndian.AppendUint16(b, uint16(s.Address))
@@ -368,7 +368,7 @@ func (ManufacturerData) Type() DIBType { return DIBManufacturerData }
 
 // AppendTo appends the encoded block.
 func (m ManufacturerData) AppendTo(b []byte) []byte {
-	b = append(b, byte(4+len(m.Data)), byte(DIBManufacturerData))
+	b = append(b, lenOctet(4+len(m.Data)), byte(DIBManufacturerData))
 	b = binary.BigEndian.AppendUint16(b, m.Manufacturer)
 	return append(b, m.Data...)
 }
@@ -384,7 +384,7 @@ func (u UnknownDIB) Type() DIBType { return u.DIBType }
 
 // AppendTo appends the encoded block.
 func (u UnknownDIB) AppendTo(b []byte) []byte {
-	b = append(b, byte(2+len(u.Data)), byte(u.DIBType))
+	b = append(b, lenOctet(2+len(u.Data)), byte(u.DIBType))
 	return append(b, u.Data...)
 }
 

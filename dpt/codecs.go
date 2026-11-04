@@ -263,7 +263,7 @@ func encodeText(t *Type, s string, n int) ([]byte, error) {
 		if r > 0xFF || (t.ID.Sub == 0 && t.ID.Main == 16 && r > 0x7F) || (t.ID.Main == 4 && t.ID.Sub == 1 && r > 0x7F) {
 			return nil, errValue("character %q is not in the character set of %s", r, t.ID)
 		}
-		out = append(out, byte(r))
+		out = append(out, byte(r&0xFF)) // r <= 0xFF: checked above
 	}
 	if len(out) > n {
 		return nil, errValue("%d characters, at most %d", len(out), n)
@@ -361,20 +361,42 @@ func intCodec(octets int, signed bool, scale float64) codec {
 	} else {
 		lo, hi = 0, math.Ldexp(1, int(bits))-1
 	}
+	// put and putU return the low octets of raw, big endian: two's
+	// complement for a negative raw.
 	put := func(raw int64) []byte {
-		b := make([]byte, 8)
-		binary.BigEndian.PutUint64(b, uint64(raw))
-		return b[8-octets:]
+		b := make([]byte, octets)
+		for i := octets - 1; i >= 0; i-- {
+			b[i] = byte(raw & 0xFF)
+			raw >>= 8
+		}
+		return b
 	}
-	get := func(b []byte) int64 {
+	putU := func(u uint64) []byte {
+		b := make([]byte, octets)
+		for i := octets - 1; i >= 0; i-- {
+			b[i] = byte(u & 0xFF)
+			u >>= 8
+		}
+		return b
+	}
+	getU := func(b []byte) uint64 {
 		var u uint64
 		for _, c := range b {
 			u = u<<8 | uint64(c)
 		}
-		if signed && bits < 64 && u&(1<<(bits-1)) != 0 {
-			u |= ^uint64(0) << bits
+		return u
+	}
+	// get returns the octets as a two's complement (signed) or plain
+	// number; int64 shifts wrap, so 8 octets reinterpret as int64.
+	get := func(b []byte) int64 {
+		var v int64
+		for _, c := range b {
+			v = v<<8 | int64(c)
 		}
-		return int64(u)
+		if signed && bits < 64 && v&(1<<(bits-1)) != 0 {
+			v -= 1 << bits
+		}
+		return v
 	}
 	return codec{
 		encode: func(t *Type, v any) ([]byte, error) {
@@ -384,7 +406,7 @@ func intCodec(octets int, signed bool, scale float64) codec {
 						if float64(u) > hi || (t.HasRange && float64(u) > t.Max) {
 							return nil, errValue("%d out of range", u)
 						}
-						return put(int64(u)), nil
+						return putU(u), nil
 					}
 				}
 				n, err := toInt(v)
@@ -418,7 +440,7 @@ func intCodec(octets int, signed bool, scale float64) codec {
 				if signed {
 					return raw, nil
 				}
-				return uint64(raw), nil
+				return getU(b), nil
 			}
 			return float64(raw) * scale, nil
 		},
@@ -501,7 +523,7 @@ func EncodeFloat16(f float64) (uint16, error) {
 	for e := 0; e <= 15; e++ {
 		m := math.Round(v / math.Ldexp(1, e))
 		if m >= -2048 && m <= 2047 {
-			raw := uint16(e)<<11 | uint16(int16(m))&0x07FF
+			raw := uint16(e)<<11 | uint16(int(m)&0x07FF)
 			if m < 0 {
 				raw |= 0x8000
 			}
@@ -643,7 +665,8 @@ func parseClock(s string) (h, m, sec uint8, err error) {
 	if v[1] > 59 || v[2] > 59 {
 		return 0, 0, 0, errValue("%q", s)
 	}
-	return uint8(v[0]), uint8(v[1]), uint8(v[2]), nil
+	// ParseUint with bit size 8 bounds each value to 0..255.
+	return uint8(v[0] & 0xFF), uint8(v[1] & 0xFF), uint8(v[2] & 0xFF), nil
 }
 
 // ---- DPT 11: date ----

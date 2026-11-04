@@ -8,24 +8,41 @@ package ccm
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/subtle"
 	"encoding/binary"
 )
 
-// MAC returns the CBC-MAC (zero IV) of b0 || len(ad) || ad || payload,
-// padded with zeros to whole blocks. b0 must hold 16 octets.
+// MaxAD is the largest associated data MAC takes: its length is encoded
+// in 2 octets. KNX frames carry far less (a KNXnet/IP frame is at most
+// 1024 octets, a cEMI APDU at most 255).
+const MaxAD = 0xFEFF
+
+// MAC returns the CBC-MAC of b0 || len(ad) || ad || payload, padded with
+// zeros to whole blocks: X_1 = E(B_0), X_i+1 = E(X_i XOR B_i), as in
+// RFC 3610 §2.2. b0 must hold 16 octets. It panics when ad exceeds
+// MaxAD, which no caller passes.
 func MAC(key, b0, ad, payload []byte) [16]byte {
-	b := make([]byte, 0, 16+2+len(ad)+len(payload)+15)
+	n := len(ad)
+	if n > MaxAD {
+		panic("ccm: associated data too long")
+	}
+	b := make([]byte, 0, 16+2+n+len(payload)+15)
 	b = append(b, b0...)
-	b = binary.BigEndian.AppendUint16(b, uint16(len(ad)))
+	b = binary.BigEndian.AppendUint16(b, uint16(n))
 	b = append(b, ad...)
 	b = append(b, payload...)
 	if r := len(b) % 16; r != 0 {
 		b = append(b, make([]byte, 16-r)...)
 	}
-	cipher.NewCBCEncrypter(newBlock(key), make([]byte, 16)).CryptBlocks(b, b)
-	var mac [16]byte
-	copy(mac[:], b[len(b)-16:])
-	return mac
+	// Chaining by hand is CBC encryption with a zero IV, whose last
+	// block is the MAC.
+	blk := newBlock(key)
+	var x [16]byte
+	for i := 0; i < len(b); i += 16 {
+		subtle.XORBytes(x[:], x[:], b[i:i+16])
+		blk.Encrypt(x[:], x[:])
+	}
+	return x
 }
 
 // CTR applies AES-CTR from ctr0: the first key stream block to mac, the

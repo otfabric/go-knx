@@ -420,6 +420,9 @@ func runClient(op string, argv []string) int {
 
 var errUnsupported = errors.New("unsupported")
 
+// errOption reports an option value out of range.
+var errOption = errors.New("invalid option")
+
 func do(ctx context.Context, op string, a *args, p *profile) (map[string]any, error) {
 	switch op {
 	case "discover":
@@ -465,6 +468,14 @@ func do(ctx context.Context, op string, a *args, p *profile) (map[string]any, er
 	case "answer":
 		return answer(ctx, a, p)
 	case "property":
+		object, err := u16Arg("object", a.object)
+		if err != nil {
+			return nil, err
+		}
+		pid, err := u8Arg("pid", a.pid)
+		if err != nil {
+			return nil, err
+		}
 		opts, err := a.tunnelOptions(p)
 		if err != nil {
 			return nil, err
@@ -474,7 +485,7 @@ func do(ctx context.Context, op string, a *args, p *profile) (map[string]any, er
 			return nil, err
 		}
 		defer func() { _ = c.Close() }()
-		b, err := c.PropRead(ctx, uint16(a.object), 1, uint8(a.pid), 1, 1)
+		b, err := c.PropRead(ctx, object, 1, pid, 1, 1)
 		if err != nil {
 			return nil, err
 		}
@@ -673,6 +684,22 @@ func remoteProperty(ctx context.Context, a *args, p *profile) (map[string]any, e
 	if err != nil {
 		return nil, err
 	}
+	object, err := u16Arg("object", a.object)
+	if err != nil {
+		return nil, err
+	}
+	pid, err := u8Arg("pid", a.pid)
+	if err != nil {
+		return nil, err
+	}
+	start, err := u16Arg("start", a.start)
+	if err != nil {
+		return nil, err
+	}
+	count, err := u8Arg("count", a.count)
+	if err != nil {
+		return nil, err
+	}
 	topts, err := a.tunnelOptions(p)
 	if err != nil {
 		return nil, err
@@ -698,7 +725,7 @@ func remoteProperty(ctx context.Context, a *args, p *profile) (map[string]any, e
 	defer func() { _ = d.Close() }()
 	rctx, cancel := context.WithTimeout(ctx, a.wait()+5*time.Second)
 	defer cancel()
-	index, err := objectIndex(rctx, d, uint16(a.object))
+	index, err := objectIndex(rctx, d, object)
 	if err != nil {
 		return nil, err
 	}
@@ -708,11 +735,11 @@ func remoteProperty(ctx context.Context, a *args, p *profile) (map[string]any, e
 		if err != nil {
 			return nil, err
 		}
-		b, err = d.PropertyWrite(rctx, index, uint8(a.pid), uint16(a.start), uint8(a.count), v)
+		b, err = d.PropertyWrite(rctx, index, pid, start, count, v)
 		if err != nil {
 			return nil, err
 		}
-	} else if b, err = d.PropertyRead(rctx, index, uint8(a.pid), uint16(a.start), uint8(a.count)); err != nil {
+	} else if b, err = d.PropertyRead(rctx, index, pid, start, count); err != nil {
 		return nil, err
 	}
 	return map[string]any{"data": strings.ToUpper(hex.EncodeToString(b)), "object": index}, nil
@@ -728,17 +755,44 @@ func objectIndex(ctx context.Context, d *client.Device, objType uint16) (uint8, 
 	if err != nil {
 		return 0, fmt.Errorf("interface object list: %w", err)
 	}
+	if n > 255 {
+		return 0, fmt.Errorf("interface object list of %d entries: an object index has one octet", n)
+	}
 	for start := 1; start <= n; start += 15 {
 		count := min(15, n-start+1)
-		b, err := d.PropertyRead(ctx, 0, 71, uint16(start), uint8(count))
+		b, err := d.PropertyRead(ctx, 0, 71, uint16(start), uint8(count&0xFF))
 		if err != nil {
 			return 0, fmt.Errorf("interface object list: %w", err)
 		}
 		for i := 0; i+1 < len(b); i += 2 {
 			if uint16(b[i])<<8|uint16(b[i+1]) == objType {
-				return uint8(start - 1 + i/2), nil
+				return uint8((start - 1 + i/2) & 0xFF), nil // < n <= 255
 			}
 		}
 	}
 	return 0, fmt.Errorf("no interface object of type %d on %s", objType, d.Address())
+}
+
+// u8Arg returns option name's value v as an octet, or an error when it
+// does not fit.
+func u8Arg(name string, v int) (uint8, error) {
+	if v < 0 {
+		return 0, fmt.Errorf("%w: --%s %d is not in 0..255", errOption, name, v)
+	}
+	if v > 0xFF {
+		return 0, fmt.Errorf("%w: --%s %d is not in 0..255", errOption, name, v)
+	}
+	return uint8(v), nil
+}
+
+// u16Arg returns option name's value v as 16 bits, or an error when it
+// does not fit.
+func u16Arg(name string, v int) (uint16, error) {
+	if v < 0 {
+		return 0, fmt.Errorf("%w: --%s %d is not in 0..65535", errOption, name, v)
+	}
+	if v > 0xFFFF {
+		return 0, fmt.Errorf("%w: --%s %d is not in 0..65535", errOption, name, v)
+	}
+	return uint16(v), nil
 }

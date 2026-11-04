@@ -211,3 +211,13 @@ func TestTimerNotify(t *testing.T) {
 		t.Errorf("tampered timer: %v", err)
 	}
 }
+
+// TestOpenTooLong: a SECURE_WRAPPER built by a caller with more than
+// MaxFrameLen octets is refused; its length used to wrap in block 0.
+func TestOpenTooLong(t *testing.T) {
+	var k Key
+	w := &knxnetip.SecureWrapper{Encrypted: make([]byte, knxnetip.MaxFrameLen)}
+	if _, err := Open(k, w); !errors.Is(err, knx.ErrMalformed) {
+		t.Errorf("oversized wrapper: %v", err)
+	}
+}

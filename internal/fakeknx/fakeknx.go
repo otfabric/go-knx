@@ -260,7 +260,7 @@ func RequireMulticast(t testing.TB) {
 func Group(t testing.TB) netip.AddrPort {
 	t.Helper()
 	port := FreePort(t)
-	return netip.AddrPortFrom(netip.AddrFrom4([4]byte{239, 255, byte(port >> 8), byte(port)}), port)
+	return netip.AddrPortFrom(netip.AddrFrom4([4]byte{239, 255, byte(port >> 8), byte(port & 0xFF)}), port)
 }
 
 // FreePort returns a UDP port that was free a moment ago.
@@ -271,7 +271,23 @@ func FreePort(t testing.TB) uint16 {
 		t.Fatal(err)
 	}
 	defer func() { _ = c.Close() }()
-	return uint16(c.LocalAddr().(*net.UDPAddr).Port)
+	p, err := udpPort(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// udpPort returns the local port of c.
+func udpPort(c *net.UDPConn) (uint16, error) {
+	p := c.LocalAddr().(*net.UDPAddr).Port
+	if p < 0 {
+		return 0, fmt.Errorf("fakeknx: port %d", p)
+	}
+	if p > 0xFFFF {
+		return 0, fmt.Errorf("fakeknx: port %d", p)
+	}
+	return uint16(p), nil
 }
 
 // MulticastInterface returns the name of the loopback interface when it
@@ -301,8 +317,11 @@ func probeMulticast() error {
 	if err != nil {
 		return err
 	}
-	port := uint16(tmp.LocalAddr().(*net.UDPAddr).Port)
+	port, err := udpPort(tmp)
 	_ = tmp.Close()
+	if err != nil {
+		return err
+	}
 	group := netip.AddrPortFrom(netip.AddrFrom4([4]byte{239, 255, 77, 1}), port)
 	var ifi *net.Interface
 	if name := MulticastInterface(); name != "" {

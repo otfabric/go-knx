@@ -90,7 +90,7 @@ func (c CRI) AppendTo(b []byte) []byte {
 		}
 		return append(b, 4, byte(c.Type), byte(c.Layer), 0)
 	default:
-		b = append(b, byte(2+len(c.Data)), byte(c.Type))
+		b = append(b, lenOctet(2+len(c.Data)), byte(c.Type))
 		return append(b, c.Data...)
 	}
 }
@@ -138,7 +138,7 @@ func (c CRD) AppendTo(b []byte) []byte {
 		b = append(b, 4, byte(c.Type))
 		return binary.BigEndian.AppendUint16(b, uint16(c.Address))
 	}
-	b = append(b, byte(2+len(c.Data)), byte(c.Type))
+	b = append(b, lenOctet(2+len(c.Data)), byte(c.Type))
 	return append(b, c.Data...)
 }
 

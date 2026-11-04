@@ -77,7 +77,7 @@ func (h HPAI) AppendTo(b []byte) []byte {
 	if a.Is4() {
 		ip = a.As4()
 	}
-	return append(b, HPAILen, byte(h.Protocol), ip[0], ip[1], ip[2], ip[3], byte(h.Addr.Port()>>8), byte(h.Addr.Port()))
+	return append(b, HPAILen, byte(h.Protocol), ip[0], ip[1], ip[2], ip[3], byte(h.Addr.Port()>>8), byte(h.Addr.Port()&0xFF))
 }
 
 // ParseHPAI decodes an HPAI at the start of b and returns the remaining

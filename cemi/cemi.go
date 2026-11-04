@@ -43,18 +43,47 @@ const (
 	MPropReadReq          MessageCode = 0xFC
 )
 
-var codeNames = map[MessageCode]string{
-	LRawReq: "L_Raw.req", LDataReq: "L_Data.req", LPollDataReq: "L_Poll_Data.req", LPollDataCon: "L_Poll_Data.con",
-	LDataInd: "L_Data.ind", LBusmonInd: "L_Busmon.ind", LRawInd: "L_Raw.ind", LDataCon: "L_Data.con", LRawCon: "L_Raw.con",
-	MResetInd: "M_Reset.ind", MResetReq: "M_Reset.req", MPropWriteCon: "M_PropWrite.con", MPropWriteReq: "M_PropWrite.req",
-	MPropInfoInd: "M_PropInfo.ind", MFuncPropCommandReq: "M_FuncPropCommand.req", MFuncPropStateReadReq: "M_FuncPropStateRead.req",
-	MFuncPropCon: "M_FuncProp.con", MPropReadCon: "M_PropRead.con", MPropReadReq: "M_PropRead.req",
-}
-
 // String names the message code, such as "L_Data.ind".
 func (c MessageCode) String() string {
-	if n, ok := codeNames[c]; ok {
-		return n
+	switch c {
+	case LRawReq:
+		return "L_Raw.req"
+	case LDataReq:
+		return "L_Data.req"
+	case LPollDataReq:
+		return "L_Poll_Data.req"
+	case LPollDataCon:
+		return "L_Poll_Data.con"
+	case LDataInd:
+		return "L_Data.ind"
+	case LBusmonInd:
+		return "L_Busmon.ind"
+	case LRawInd:
+		return "L_Raw.ind"
+	case LDataCon:
+		return "L_Data.con"
+	case LRawCon:
+		return "L_Raw.con"
+	case MResetInd:
+		return "M_Reset.ind"
+	case MResetReq:
+		return "M_Reset.req"
+	case MPropWriteCon:
+		return "M_PropWrite.con"
+	case MPropWriteReq:
+		return "M_PropWrite.req"
+	case MPropInfoInd:
+		return "M_PropInfo.ind"
+	case MFuncPropCommandReq:
+		return "M_FuncPropCommand.req"
+	case MFuncPropStateReadReq:
+		return "M_FuncPropStateRead.req"
+	case MFuncPropCon:
+		return "M_FuncProp.con"
+	case MPropReadCon:
+		return "M_PropRead.con"
+	case MPropReadReq:
+		return "M_PropRead.req"
 	}
 	return fmt.Sprintf("0x%02X", uint8(c))
 }
@@ -133,7 +162,11 @@ func appendAddInfo(b []byte, infos []AdditionalInfo) ([]byte, error) {
 	}
 	b = append(b, byte(n))
 	for _, a := range infos {
-		b = append(b, a.Type, byte(len(a.Data)))
+		l := len(a.Data)
+		if l > 255 {
+			return nil, fmt.Errorf("%w: cemi: additional information of %d octets", knx.ErrInvalidValue, l)
+		}
+		b = append(b, a.Type, byte(l))
 		b = append(b, a.Data...)
 	}
 	return b, nil

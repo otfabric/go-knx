@@ -137,3 +137,33 @@ func TestRoutingTimerUpdateSent(t *testing.T) {
 	default:
 	}
 }
+
+// TestRoutingTimerSaturates: a timer at the 48-bit maximum stays there.
+// It used to wrap to the milliseconds elapsed since, values every peer
+// refuses as outdated.
+func TestRoutingTimerSaturates(t *testing.T) {
+	var k Key
+	r := NewRoutingTimer(k, [6]byte{1}, 0, func(*knxnetip.TimerNotify) {})
+	defer r.Stop()
+	if !r.HandleNotify(NewTimerNotify(k, MaxSequence, [6]byte{2}, 1)) {
+		t.Fatal("notify refused")
+	}
+	time.Sleep(5 * time.Millisecond)
+	if v := r.Next(); v != MaxSequence {
+		t.Fatalf("timer %d after MaxSequence, want %d", v, uint64(MaxSequence))
+	}
+	if timerUint(-1) != 0 || timerInt(MaxSequence+1) != MaxSequence {
+		t.Error("timer conversions out of range")
+	}
+}
+
+func TestJitter(t *testing.T) {
+	if jitter(0) != 0 || jitter(-1) != 0 {
+		t.Error("jitter of an empty span")
+	}
+	for range 100 {
+		if d := jitter(10 * time.Millisecond); d < 0 || d > 10*time.Millisecond {
+			t.Fatalf("jitter %v outside [0, 10ms]", d)
+		}
+	}
+}
