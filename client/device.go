@@ -5,6 +5,7 @@ package client
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,6 +21,13 @@ import (
 // the repetitions of a data PDU, and the idle time after which the
 // device has closed the connection (6 s at the device).
 var ackTimeout = 3 * time.Second
+
+// MaxPropertyData is the most property data PropertyWrite sends: the
+// TPDU of an A_PropertyValue_Write (2 octets of TPCI and APCI, 4 of
+// object, property, count and start, then the data) fits a cEMI NPDU of
+// 255 octets. Secured access (tool key) adds Data Secure octets, so a
+// smaller write can still be refused with knx.ErrInvalidValue at send.
+const MaxPropertyData = 250
 
 const (
 	maxRepetitions = 3
@@ -140,6 +148,9 @@ func (d *Device) PropertyElements(ctx context.Context, object, pid uint8) (int, 
 // and returns the value the device answers with (the elements after the
 // write).
 func (d *Device) PropertyWrite(ctx context.Context, object, pid uint8, start uint16, count uint8, data []byte) ([]byte, error) {
+	if n := len(data); n > MaxPropertyData {
+		return nil, fmt.Errorf("%w: client: property data of %d octets (at most %d)", knx.ErrInvalidValue, n, MaxPropertyData)
+	}
 	p := mgmt.Property{Object: object, PID: pid, Start: start, Count: count, Data: data}
 	return d.property(ctx, p, apdu.PropertyValueWriteService)
 }
@@ -284,7 +295,10 @@ func (d *Device) exchange(ctx context.Context, build func(apdu.TPCI) (*cemi.LDat
 			if d.connected {
 				d.open = false
 			}
-			return fmt.Errorf("%w: client: no answer from %s", knx.ErrTimeout, d.addr)
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf("%w: client: no answer from %s: %w", knx.ErrTimeout, d.addr, ctx.Err())
+			}
+			return fmt.Errorf("client: waiting for %s: %w", d.addr, ctx.Err())
 		case <-timer.C:
 			if acked {
 				timer.Reset(ackTimeout)

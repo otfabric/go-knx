@@ -41,13 +41,22 @@ type options struct {
 	extended bool
 	params   []knxnetip.SearchParam
 	unicast  string
+	// maxResults bounds the results of Search.
+	maxResults int
+	// searchTo replaces the multicast group as the target of a
+	// (not directed) search; set by tests only.
+	searchTo netip.AddrPort
 	nat      bool
 	repeat   int
 	logger   knx.Logger
 }
 
+// DefaultMaxResults is the number of servers Search returns at most
+// unless WithMaxResults sets another.
+const DefaultMaxResults = 256
+
 func defaults() options {
-	return options{timeout: DefaultTimeout, repeat: 1, logger: knx.NopLogger()}
+	return options{timeout: DefaultTimeout, repeat: 1, maxResults: DefaultMaxResults, logger: knx.NopLogger()}
 }
 
 func invalid(format string, a ...any) error {
@@ -97,6 +106,19 @@ func WithRepeat(n int) Option {
 			return invalid("repeat %d (1..3)", n)
 		}
 		o.repeat = n
+		return nil
+	}
+}
+
+// WithMaxResults sets how many distinct servers Search collects (1 or
+// more; DefaultMaxResults without it). Search returns as soon as it has
+// that many: a flood of answers does not grow memory.
+func WithMaxResults(n int) Option {
+	return func(o *options) error {
+		if n < 1 {
+			return invalid("max results %d", n)
+		}
+		o.maxResults = n
 		return nil
 	}
 }
@@ -205,6 +227,8 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 		}
 	} else if o.nat {
 		return nil, invalid("NAT applies to directed search only")
+	} else if o.searchTo.IsValid() {
+		remote = o.searchTo
 	}
 	s, err := open(ctx, o, remote)
 	if err != nil {
@@ -281,6 +305,10 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 		results = append(results, r)
 		if o.unicast != "" {
 			break // a directed search has one answer
+		}
+		if len(results) >= o.maxResults {
+			o.logger.Debugf("discovery: %d servers, the limit: stop collecting", len(results))
+			break
 		}
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].Endpoint().Compare(results[j].Endpoint()) < 0 })

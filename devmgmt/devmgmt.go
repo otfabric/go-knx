@@ -12,7 +12,9 @@ package devmgmt
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/cemi"
@@ -49,6 +51,10 @@ const (
 	PIDRoutingMulticast          uint8 = 66
 	PIDFriendlyName              uint8 = 76
 )
+
+// DefaultTimeout bounds a property access whose context has no deadline:
+// a server that never confirms must not block the caller for ever.
+const DefaultTimeout = 3 * time.Second
 
 // PropertyError is a negative confirmation: the server refused the
 // access with a cEMI error code.
@@ -146,12 +152,20 @@ func (c *Conn) PropWrite(ctx context.Context, objType uint16, instance, pid uint
 }
 
 func (c *Conn) roundTrip(ctx context.Context, req *cemi.Property, want cemi.MessageCode) (*cemi.Property, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultTimeout)
+		defer cancel()
+	}
 	if err := c.t.Send(ctx, req); err != nil {
 		return nil, err
 	}
 	for {
 		f, err := c.t.Receive(ctx)
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil, fmt.Errorf("%w: devmgmt: no %s for object 0x%04X property %d: %w", knx.ErrTimeout, want, req.ObjectType, req.PropertyID, err)
+			}
 			return nil, err
 		}
 		con, ok := f.(*cemi.Property)

@@ -37,6 +37,10 @@ import (
 // DefaultReadTimeout bounds GroupRead when the context has no deadline.
 const DefaultReadTimeout = 3 * time.Second
 
+// DefaultMaxResponses is the number of responses GroupReadAll keeps
+// unless WithMaxResponses sets another.
+const DefaultMaxResponses = 1000
+
 // Link carries cEMI frames: *tunnel.Conn and *routing.Conn implement it.
 type Link interface {
 	Send(ctx context.Context, f cemi.Frame) error
@@ -177,7 +181,21 @@ func (c *Client) Close() error {
 type WriteOption func(*wopts) error
 
 type wopts struct {
-	t *dpt.Type
+	t       *dpt.Type
+	maxResp int
+}
+
+// WithMaxResponses sets how many responses GroupReadAll keeps (1 or
+// more; DefaultMaxResponses without it). GroupReadAll returns as soon as
+// it has that many: a flood of responses does not grow memory.
+func WithMaxResponses(n int) WriteOption {
+	return func(o *wopts) error {
+		if n < 1 {
+			return fmt.Errorf("%w: client: max responses %d", knx.ErrInvalidOption, n)
+		}
+		o.maxResp = n
+		return nil
+	}
 }
 
 // WithDPT sets the datapoint type of the value ("9.001").
@@ -218,7 +236,7 @@ func groupValue(v any, o wopts) (apdu.GroupValue, error) {
 }
 
 func options(opts []WriteOption) (wopts, error) {
-	var o wopts
+	o := wopts{maxResp: DefaultMaxResponses}
 	for _, f := range opts {
 		if err := f(&o); err != nil {
 			return o, err
@@ -307,7 +325,8 @@ func (c *Client) GroupRead(ctx context.Context, g knx.GroupAddress, opts ...Writ
 }
 
 // GroupReadAll sends A_GroupValue_Read to g and returns every response to
-// g received during window (possibly none).
+// g received during window (possibly none), up to WithMaxResponses
+// (DefaultMaxResponses): it returns early once it has that many.
 func (c *Client) GroupReadAll(ctx context.Context, g knx.GroupAddress, window time.Duration, opts ...WriteOption) ([]Response, error) {
 	ctx, cancel := context.WithTimeout(ctx, window)
 	defer cancel()
@@ -349,7 +368,7 @@ func (c *Client) read(ctx context.Context, g knx.GroupAddress, first bool, opts 
 				r.Decoded = v
 			}
 			out = append(out, r)
-			if first {
+			if first || len(out) >= o.maxResp {
 				return out, nil
 			}
 		case <-ctx.Done():

@@ -34,6 +34,21 @@ Every exported package, its main types, and how to construct, use and close them
 | `devmgmt` | `Dial(ctx, addr, opts...)` returns a `*Conn` (uses `tunnel` options) | reads and writes interface object properties; `*PropertyError` | `Conn.Close` |
 | `mgmt` | `ParseProperty(tpdu)`, `DescriptorTPDU(tpci)` | services of remote device management | no connection of its own |
 
+## Bounds
+
+Calls that wait for a peer, or collect its answers, are bounded even when the caller gives no deadline or limit:
+
+| Call | Bound | Option |
+|---|---|---|
+| `client.GroupRead` | `DefaultReadTimeout` (3 s) without a context deadline | the context |
+| `client.GroupReadAll` | `DefaultMaxResponses` (1000) responses, then it returns | `WithMaxResponses(n)` |
+| `discovery.Search` | `DefaultMaxResults` (256) servers, then it returns | `WithMaxResults(n)` |
+| `devmgmt` `PropRead`, `PropWrite` | `DefaultTimeout` (3 s) without a context deadline, then `knx.ErrTimeout` | the context |
+| `client.Device.PropertyWrite` | `MaxPropertyData` (250) octets, refused before sending | none |
+| `tunnel.Conn.Send` | a frame too long for one KNXnet/IP datagram (once secured, too) returns `knx.ErrInvalidValue`; the connection stays up | none |
+
+A cancelled context ends a call with an error matching `context.Canceled`; an expired deadline with one matching `knx.ErrTimeout` (and `context.DeadlineExceeded`).
+
 ## Security
 
 | Package | Construct | Use |

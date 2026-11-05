@@ -345,11 +345,16 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 		}()
 	}
 
-	drain(c.ackCh)
 	var req knxnetip.Message = &knxnetip.TunnellingRequest{Channel: ch, Seq: seq, CEMI: b}
 	if c.o.devmgmt {
 		req = &knxnetip.DeviceConfigurationRequest{Channel: ch, Seq: seq, CEMI: b}
 	}
+	// A frame too long for a KNXnet/IP datagram is the caller's error, not
+	// a lost connection: refuse it before it reaches the socket.
+	if _, err := knxnetip.Marshal(req); err != nil {
+		return err
+	}
+	drain(c.ackCh)
 	acked := false
 	if c.tr.stream() {
 		// TCP is reliable: tunnelling requests are not acknowledged.
@@ -426,8 +431,14 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 // Close an error matching knx.ErrClosed; when the connection was lost (the
 // socket closed under Send, or the write itself failed) one matching
 // knx.ErrConnectionLost. Both wrap the write error. A failed write on a
-// connection that is still up counts as losing it.
+// connection that is still up counts as losing it, except a frame that
+// could not be encoded (knx.ErrInvalidValue), which is returned as is.
 func (c *Conn) sendError(gen uint64, err error) error {
+	if errors.Is(err, knx.ErrInvalidValue) {
+		// The frame could not be encoded (e.g. too long once secured):
+		// nothing was sent and the connection is fine.
+		return err
+	}
 	select {
 	case <-c.closing:
 		c.mu.Lock()
