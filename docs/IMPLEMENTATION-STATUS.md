@@ -98,5 +98,5 @@ restart; both are fixed in the knx-interop harness.
 
 ## Next steps
 
-1. General point to point Data Secure (device management with the tool
-   key) and asking peers by S-A_Sync when a sequence number is unknown.
+1. Point to point Data Secure between devices (link keys) and secure
+   commissioning with the FDSK.
