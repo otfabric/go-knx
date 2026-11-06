@@ -46,6 +46,32 @@ func TestDescribeProperty(t *testing.T) {
 	}
 }
 
+// The datatype of every property described has the element size of the
+// property.
+func TestDescribedTypeSizes(t *testing.T) {
+	s, err := New(WithToolKey([16]byte{1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := s.props
+	n := 0
+	for i, obj := range p.objects() {
+		for pid, pr := range p.properties(obj) {
+			d, ok := p.DescribeProperty(uint8(i), pid, 0)
+			if !ok {
+				t.Fatalf("object %d PID %d not described", i, pid)
+			}
+			if size, ok := d.Type.Size(); !ok || size != pr.size {
+				t.Errorf("object %d PID %d: %s of %d octets (%v), elements of %d", i, pid, d.Type, size, ok, pr.size)
+			}
+			n++
+		}
+	}
+	if n == 0 {
+		t.Fatal("no properties")
+	}
+}
+
 // Element 0 of a property is its current element count.
 func TestReadElementCount(t *testing.T) {
 	s, err := New()

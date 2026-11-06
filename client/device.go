@@ -59,8 +59,8 @@ func WithToolKey(k datasecure.Key) DeviceOption {
 }
 
 // Device is the remote management of one device, its individual
-// address, through the client's link: property values and the device
-// descriptor. Requests are sent one at a time. Close it to end its
+// address, through the client's link: property values and descriptions
+// and the device descriptor. Requests are sent one at a time. Close it to end its
 // transport connection.
 type Device struct {
 	c         *Client
@@ -183,6 +183,34 @@ func (d *Device) property(ctx context.Context, p mgmt.Property, svc apdu.APCI) (
 	}
 	if out == nil {
 		return nil, &mgmt.PropertyError{Device: d.addr, Object: p.Object, PID: p.PID}
+	}
+	return out, nil
+}
+
+// PropertyDescription reads the description of property pid of the
+// interface object at index object: its datatype, whether it is
+// writable, its maximum number of elements and its access levels. With
+// pid 0 the property is named by index, its position in the object. A
+// negative answer (no such object or property) returns a
+// *mgmt.PropertyError.
+func (d *Device) PropertyDescription(ctx context.Context, object, pid, index uint8) (mgmt.Description, error) {
+	var out mgmt.Description
+	err := d.request(ctx, func(tpci apdu.TPCI) []byte { return mgmt.DescriptionReadTPDU(tpci, object, pid, index) }, func(t apdu.TPDU) bool {
+		if t.APCI != apdu.PropertyDescriptionResponseService {
+			return false
+		}
+		r, err := mgmt.ParseDescription(t)
+		if err != nil || r.Object != object || (pid != 0 && r.PID != pid) || (pid == 0 && r.Index != index) {
+			return false
+		}
+		out = r
+		return true
+	})
+	if err != nil {
+		return mgmt.Description{}, err
+	}
+	if out.MaxElements == 0 {
+		return mgmt.Description{}, &mgmt.PropertyError{Device: d.addr, Object: object, PID: pid}
 	}
 	return out, nil
 }

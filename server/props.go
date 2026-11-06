@@ -291,9 +291,8 @@ func (p *propStore) WriteProperty(object, pid uint8, start uint16, count uint8, 
 	return int(object) < len(o) && p.write(o[object], pid, start, count, data) == 0
 }
 
-// Property datatypes (PDT) by element size: unsigned char, unsigned
-// int, unsigned long, generic 6 octets.
-var pdts = map[int]uint8{1: 0x02, 2: 0x04, 4: 0x09, 6: 0x16}
+// Property datatypes by element size.
+var pdts = map[int]mgmt.PDT{1: mgmt.PDTUnsignedChar, 2: mgmt.PDTUnsignedInt, 4: mgmt.PDTUnsignedLong, 6: mgmt.PDTGeneric06}
 
 // DescribeProperty implements mgmt.Describer: the datatype follows the
 // element size; the maximum is the current number of elements. Read

@@ -27,21 +27,6 @@ type Properties interface {
 	WriteProperty(object, pid uint8, start uint16, count uint8, data []byte) bool
 }
 
-// Description is a property description (A_PropertyDescription_Response).
-type Description struct {
-	PID   uint8
-	Index uint8 // the property's index in its object
-	// Type is the property datatype (PDT); Writable sets the write enable
-	// bit.
-	Type     uint8
-	Writable bool
-	// MaxElements is 12 bits on the wire (0..4095); a larger value is
-	// sent as 4095.
-	MaxElements uint16
-	// Access is the read level (high nibble) and the write level (low).
-	Access uint8
-}
-
 // Describer describes properties, by PID or, with pid 0, by their index
 // in the object. A [Responder] whose Properties implement it answers
 // A_PropertyDescription_Read, which tools such as Calimero send before a
@@ -218,16 +203,13 @@ func (r *Responder) service(t apdu.TPDU, tpci apdu.TPCI) []byte {
 			return nil
 		}
 		object, pid, index := t.Data[0], t.Data[1], t.Data[2]
-		data := []byte{object, pid, index, 0, 0, 0, 0}
-		if d, ok := ds.DescribeProperty(object, pid, index); ok {
-			typ := d.Type & 0x3F
-			if d.Writable {
-				typ |= 0x80
-			}
-			maxElems := min(d.MaxElements, 0x0FFF)
-			data = []byte{object, d.PID, d.Index, typ, byte(maxElems >> 8), byte(maxElems & 0xFF), d.Access}
+		d, ok := ds.DescribeProperty(object, pid, index)
+		if !ok {
+			// A negative response: no type, no elements, no access.
+			d = Description{PID: pid, Index: index}
 		}
-		return apdu.TPDU{TPCI: tpci, APCI: apdu.PropertyDescriptionResponseService, Data: data}.Bytes()
+		d.Object = object
+		return d.TPDU(tpci)
 	case apdu.DeviceDescriptorReadService:
 		if t.Short != 0 {
 			// Descriptor types other than 0: the error response, type 63.

@@ -65,6 +65,82 @@ func manage(t *testing.T, d *client.Device, objects int) {
 	if _, err := d.PropertyWrite(ctx(t), 0, 11, 1, 1, make([]byte, 6)); !errors.Is(err, knx.ErrRejected) {
 		t.Fatalf("read only property: %v", err)
 	}
+	describe(t, d)
+}
+
+// describe reads property descriptions of the server's device: by PID,
+// by index, and missing ones.
+func describe(t *testing.T, d *client.Device) {
+	t.Helper()
+	name, err := d.PropertyDescription(ctx(t), 2, 76, 0)
+	if err != nil || name.Object != 2 || name.PID != 76 || !name.Writable || name.Type != mgmt.PDTUnsignedChar || name.MaxElements != 30 {
+		t.Fatalf("friendly name %+v %v", name, err)
+	}
+	if n, ok := name.Type.Size(); !ok || n != 1 {
+		t.Fatalf("friendly name element size %d %v", n, ok)
+	}
+	serial, err := d.PropertyDescription(ctx(t), 0, 11, 0)
+	if err != nil || serial.Writable || serial.Type != mgmt.PDTGeneric06 || serial.MaxElements != 1 || serial.ReadLevel() != 15 || serial.WriteLevel() != 0 {
+		t.Fatalf("serial number %+v %v", serial, err)
+	}
+	byIndex, err := d.PropertyDescription(ctx(t), 0, 0, serial.Index)
+	if err != nil || byIndex != serial {
+		t.Fatalf("by index %d: %+v %v, want %+v", serial.Index, byIndex, err, serial)
+	}
+	var pe *mgmt.PropertyError
+	for _, c := range []struct{ object, pid, index uint8 }{{0, 200, 0}, {9, 11, 0}, {0, 0, 250}} {
+		if _, err := d.PropertyDescription(ctx(t), c.object, c.pid, c.index); !errors.As(err, &pe) || !errors.Is(err, knx.ErrRejected) || pe.Object != c.object || pe.PID != c.pid {
+			t.Fatalf("missing %+v: %v", c, err)
+		}
+	}
+}
+
+// PropertyDescription ignores answers that are malformed or describe
+// another property, and maps a negative answer to a PropertyError.
+func TestDevicePropertyDescription(t *testing.T) {
+	l := newLink()
+	c := client.New(l, client.WithSource(src))
+	defer c.Close()
+	want := mgmt.Description{Object: 1, PID: 56, Index: 4, Type: mgmt.PDTUnsignedInt, Writable: true, MaxElements: 2, Access: 0x32}
+	answer := func(d mgmt.Description) *cemi.LData {
+		return from(apdu.TPDU{APCI: apdu.PropertyDescriptionResponseService, Data: d.Data()})
+	}
+	scripted(l, func(l *link, tp apdu.TPDU, _ int) {
+		if tp.APCI != apdu.PropertyDescriptionReadService || len(tp.Data) != 3 {
+			return
+		}
+		switch tp.Data[1] {
+		case 56, 0:
+			// Short, another service, another object, another property,
+			// then the answer.
+			l.in <- from(apdu.TPDU{APCI: apdu.PropertyDescriptionResponseService, Data: want.Data()[:5]})
+			l.in <- from(apdu.TPDU{APCI: apdu.PropertyValueResponseService, Data: want.Data()})
+			l.in <- answer(mgmt.Description{Object: 2, PID: 56, Index: 4, Type: mgmt.PDTChar, MaxElements: 1})
+			l.in <- answer(mgmt.Description{Object: 1, PID: 57, Index: 5, Type: mgmt.PDTChar, MaxElements: 1})
+			l.in <- answer(want)
+		case 99:
+			l.in <- answer(mgmt.Description{Object: 1, PID: 99})
+		case 98:
+			l.in <- from(apdu.TPDU{APCI: apdu.PropertyDescriptionResponseService, Data: []byte{1, 98, 0}})
+		}
+	})
+	d := c.Device(serverAddress)
+	for _, req := range []struct{ pid, index uint8 }{{56, 0}, {0, 4}} {
+		got, err := d.PropertyDescription(ctx(t), 1, req.pid, req.index)
+		if err != nil || got != want {
+			t.Fatalf("%+v: %+v %v, want %+v", req, got, err, want)
+		}
+	}
+	var pe *mgmt.PropertyError
+	if _, err := d.PropertyDescription(ctx(t), 1, 99, 0); !errors.As(err, &pe) || pe.PID != 99 || pe.Device != serverAddress {
+		t.Fatalf("negative: %v", err)
+	}
+	// Only a malformed answer: no answer.
+	short, cancel := context.WithTimeout(ctx(t), 200*time.Millisecond)
+	defer cancel()
+	if _, err := d.PropertyDescription(short, 1, 98, 0); !errors.Is(err, knx.ErrTimeout) {
+		t.Fatalf("malformed answer: %v", err)
+	}
 }
 
 func TestDevicePlain(t *testing.T) {
