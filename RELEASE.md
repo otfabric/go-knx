@@ -33,6 +33,7 @@ Gaps found by comparing go-knx with xknx 4.1.1 (otfabric/knx-interop#19): routin
 
 - Routing flow control (Routing, ROUTING_BUSY): the client only waited out the last busy frame's wait time and could send 50 indications back to back; the server ignored ROUTING_BUSY. Both now count busy frames (more than 10 ms apart, the first included), wait the wait time plus a random 0..N x 50 ms, slow down afterwards and keep a minimum gap of 1/rate between indications.
 - The server closed a TCP connection, and the client a KNX IP Secure tunnel over TCP, on one frame whose body did not parse, although its valid header framed it. Such a frame is now dropped and the connection kept.
+- The server freed a TCP connection's slot of its connection limit only after closing the socket, so a client that saw the close could still be refused for a moment (`TestHostileTCP` failed now and then in CI). The slot is now freed first.
 - The tunnel client ignored a DISCONNECT_REQUEST for another channel; it now answers E_CONNECTION_ID and keeps the tunnel.
 - The server expired idle KNX IP Secure sessions after the 120 s tunnelling alive time instead of the 60 s session timeout.
 

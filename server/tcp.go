@@ -94,10 +94,7 @@ func (s *Server) acceptLoop(ln *net.TCPListener) {
 		s.tcpConns[t] = struct{}{}
 		s.mu.Unlock()
 		s.wg.Add(1)
-		go func() {
-			defer func() { <-sem }()
-			s.serveTCP(t)
-		}()
+		go s.serveTCP(t, func() { <-sem })
 	}
 }
 
@@ -106,10 +103,13 @@ func (s *Server) acceptLoop(ln *net.TCPListener) {
 func (s *Server) maxTCP() int { return len(s.o.tunnels) + 4 }
 
 // serveTCP reads the frames of one TCP connection until it closes, then
-// ends the connections it opened.
-func (s *Server) serveTCP(t *tcpConn) {
+// ends the connections it opened. release frees the connection's slot of
+// the TCP limit; it runs before the socket is closed, so a peer that sees
+// the close finds the slot free.
+func (s *Server) serveTCP(t *tcpConn, release func()) {
 	defer s.wg.Done()
 	defer func() {
+		release()
 		t.close()
 		s.mu.Lock()
 		delete(s.tcpConns, t)
