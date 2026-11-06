@@ -277,8 +277,8 @@ func WithRequestTimeout(d time.Duration) Option {
 }
 
 // WithQueueSize bounds the telegrams queued for each tunnelling
-// connection (default 128); when a queue is full, telegrams to that
-// client are dropped.
+// connection and, with routing, the routing indications waiting to be
+// sent (default 128); when a queue is full, telegrams are dropped.
 func WithQueueSize(n int) Option {
 	return func(o *options) error {
 		if n < 1 || n > 1<<16 {
@@ -290,8 +290,10 @@ func WithQueueSize(n int) Option {
 }
 
 // WithRoutingRate bounds the routing indications sent per second
-// (default 50; 0 disables the limit). Telegrams over the limit are
-// dropped and counted.
+// (default 50; 0 disables the limit): consecutive indications are at
+// least 1/n apart. Indications wait in a queue of WithQueueSize
+// telegrams for their turn and for the pause of a ROUTING_BUSY; when the
+// queue is full they are dropped and counted (OnDropped "routing_rate").
 func WithRoutingRate(n int) Option {
 	return func(o *options) error {
 		if n < 0 {

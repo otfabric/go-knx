@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/apdu"
@@ -87,10 +88,11 @@ func TestRoutingInbound(t *testing.T) {
 
 func TestRoutingOutbound(t *testing.T) {
 	leak.Check(t)
-	s, m, _, _ := startRouter(t, server.WithRoutingRate(2), server.WithMulticastTTL(1))
+	s, m, _, _ := startRouter(t, server.WithRoutingRate(10), server.WithMulticastTTL(1), server.WithQueueSize(2))
 	sent := func() int {
 		return m.get(func(m *metrics) int { return m.sent[uint16(knxnetip.RoutingIndicationType)] })
 	}
+	dropped := func() int { return m.get(func(m *metrics) int { return m.dropped["routing_rate"] }) }
 	c := dialTunnel(t, s)
 	if err := c.Send(ctx(t), write(ga, 1)); err != nil {
 		t.Fatal(err)
@@ -102,14 +104,70 @@ func TestRoutingOutbound(t *testing.T) {
 	if err := s.Send(f); err != nil {
 		t.Fatal(err)
 	}
+	time.Sleep(150 * time.Millisecond)
 	if sent() != 1 {
 		t.Fatal("hop count 0 routed")
 	}
-	// The rate limit (2/s, burst 2) drops the third.
-	_ = s.GroupWrite(ga, apdu.GroupValue{Data: []byte{3}})
-	_ = s.GroupWrite(ga, apdu.GroupValue{Data: []byte{4}})
-	if sent() != 2 || m.get(func(m *metrics) int { return m.dropped["routing_rate"] }) != 1 {
-		t.Fatalf("sent %d dropped %d", sent(), m.dropped["routing_rate"])
+	// At 10/s indications are 100 ms apart: a burst is queued, not sent
+	// back to back, and what does not fit in the queue (2, plus the one
+	// the sender holds, plus at most one sent at once) is dropped and
+	// counted.
+	start := time.Now()
+	for v := range 6 {
+		_ = s.GroupWrite(ga, apdu.GroupValue{Data: []byte{byte(v)}})
+	}
+	if d := dropped(); d < 2 {
+		t.Fatalf("dropped %d of a burst of 6 with a queue of 2", d)
+	}
+	eventually(t, "queued indications", func() bool { return sent()+dropped() == 7 })
+	if d := time.Since(start); d < 150*time.Millisecond {
+		t.Fatalf("%d queued indications sent within %v at 10/s", sent()-1, d)
+	}
+}
+
+// TestRoutingBusyPausesServer: a peer's ROUTING_BUSY holds the server's
+// own routing indications for the wait time; they are queued, not
+// dropped.
+func TestRoutingBusyPausesServer(t *testing.T) {
+	leak.Check(t)
+	s, m, _, local := startRouter(t, server.WithRoutingRate(0))
+	sent := func() int {
+		return m.get(func(m *metrics) int { return m.sent[uint16(knxnetip.RoutingIndicationType)] })
+	}
+	p := fakeknx.Listen(t)
+	p.Send(local, &knxnetip.RoutingBusy{WaitTime: 300})
+	// The busy frame is handled by the reader; a description request
+	// behind it tells when it has been.
+	p.Send(local, &knxnetip.DescriptionRequest{Control: p.HPAI()})
+	fakeknx.Expect[*knxnetip.DescriptionResponse](p, wait)
+	start := time.Now()
+	for v := range 3 {
+		if err := s.GroupWrite(ga, apdu.GroupValue{Data: []byte{byte(v)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(150 * time.Millisecond)
+	if n := sent(); n != 0 {
+		t.Fatalf("%d indications sent during ROUTING_BUSY", n)
+	}
+	eventually(t, "indications after the pause", func() bool { return sent() == 3 })
+	if d := time.Since(start); d < 250*time.Millisecond {
+		t.Fatalf("indications sent %v after ROUTING_BUSY with a wait of 300 ms", d)
+	}
+	if n := m.get(func(m *metrics) int { return m.dropped["routing_rate"] }); n != 0 {
+		t.Fatalf("%d indications dropped", n)
+	}
+	// Close ends a sender that waits for a pause.
+	p.Send(local, &knxnetip.RoutingBusy{WaitTime: 60000})
+	p.Send(local, &knxnetip.DescriptionRequest{Control: p.HPAI()})
+	fakeknx.Expect[*knxnetip.DescriptionResponse](p, wait)
+	_ = s.GroupWrite(ga, apdu.GroupValue{Data: []byte{9}})
+	done := make(chan struct{})
+	go func() { s.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(wait):
+		t.Fatal("Close blocked by a paused routing sender")
 	}
 }
 

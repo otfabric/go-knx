@@ -49,6 +49,7 @@ the implementation versions. Nothing here is a conformance claim
 | Topic | Decision | Basis |
 |---|---|---|
 | NAT clients | A client that sends route back HPAIs gets the route back data endpoint 0.0.0.0:0 in CONNECT_RESPONSE | Behind NAT the server's own address is unreachable; found with Calimero tools and xknx through Docker port mappings |
+| Routing flow control | ROUTING_BUSY counted when more than 10 ms after the previous one; pause of wait time + random 0 … N × 50 ms; N kept for N × 100 ms after the pause, then decremented every 5 ms; gap × (N + 1) while N > 0; minimum gap 1/rate, no bursts; client and server alike (`internal/flowctl`) | our reading of 3/8/5 §2.3.5 and of the inter-frame gap of 3/2/6 §2.1; the reduced-rate factor and the 20 ms unit at an unlimited rate are our choice; deterministic unit tests, e2e with a peer sending ROUTING_BUSY |
 | Routing source 0.0.0 | Replaced by 15.15.255 (`routing.WithIndividualAddress`) | knxd drops telegrams from 0.0.0 |
 | DPT 9 rounding ties | half away from zero (xknx: half to even) | no rule found in the public sources; vectors avoid ties |
 | DPT 9 maximum | 670 433.28 (0x7FFF is "invalid data") | the format; matches xknx |

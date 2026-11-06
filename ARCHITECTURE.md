@@ -61,7 +61,7 @@
 | `tunnel.Conn` | reader, heartbeat, supervisor (reconnect) | `Close`, or a lost connection without reconnect |
 | `routing.Conn` | reader | `Close` |
 | `client.Client` | reader of its link | `Close` (closes the link) or link failure |
-| `server.Server` | reader per socket, janitor, one sender per tunnelling connection (bounded by the number of tunnelling addresses) | `Close` |
+| `server.Server` | reader per socket, janitor, one sender per tunnelling connection (bounded by the number of tunnelling addresses), one routing sender with routing | `Close` |
 
 Every queue is bounded (inbound telegrams, per-connection sends,
 subscriptions); when one is full the telegram is dropped and
@@ -132,5 +132,16 @@ waits for its L_Data.con (3 s) unless `WithConfirm(false)`.
   value is 670 433.28: 0x7FFF means "invalid data".
 - **Standard and extended frames**: an L_Data whose NPDU exceeds 15 octets
   must be an extended frame, on encode and on decode.
-- **Routing safety**: 50 indications per second by default, ROUTING_BUSY
-  respected, hop count 0 never routed.
+- **Routing safety**: hop count 0 is never routed. Outgoing indications
+  of `routing.Conn` and of the server are paced by `internal/flowctl`
+  (KNX 3/8/5 §2.3.5 flow control): consecutive indications are at least
+  1/rate apart (50 per second by default, no bursts). A ROUTING_BUSY
+  increments a busy counter N when it arrives more than 10 ms after the
+  previous one (the first always counts) and pauses sending until the
+  frame's wait time plus a random 0 … N × 50 ms has passed. After the
+  pause N stays for N × 100 ms and then drops by one every 5 ms; while
+  N > 0 the gap between indications is N + 1 times the normal one (one
+  TP1 telegram time, 20 ms, as the unit when the rate is unlimited).
+  `routing.Conn.Send` waits for its turn; the server queues indications
+  in a bounded queue (`WithQueueSize`) drained by one sender goroutine and
+  drops what does not fit (`OnDropped` "routing_rate").

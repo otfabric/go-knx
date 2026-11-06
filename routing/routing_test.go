@@ -197,14 +197,21 @@ func TestSend(t *testing.T) {
 func TestRateLimit(t *testing.T) {
 	leak.Check(t)
 	c, _, _, _ := listen(t, routing.WithRate(20))
+	// No burst: consecutive indications are at least 1/20 s apart.
+	var last time.Time
 	start := time.Now()
-	for i := range 30 { // a burst of 20, then 10 at 20/s
+	for i := range 10 {
 		if err := c.Send(ctx(t), frame(byte(i))); err != nil {
 			t.Fatal(err)
 		}
+		now := time.Now()
+		if i > 0 && now.Sub(last) < 45*time.Millisecond {
+			t.Fatalf("indication %d sent %v after the previous one, want ≥ 50 ms", i, now.Sub(last))
+		}
+		last = now
 	}
-	if d := time.Since(start); d < 400*time.Millisecond || d > 2*time.Second {
-		t.Fatalf("30 sends at 20/s took %v, want about 500 ms", d)
+	if d := time.Since(start); d < 450*time.Millisecond || d > 2*time.Second {
+		t.Fatalf("10 sends at 20/s took %v, want about 450 ms", d)
 	}
 	// A context ends the wait.
 	short, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -251,6 +258,21 @@ func TestRoutingBusy(t *testing.T) {
 	if d := time.Since(start); d < 150*time.Millisecond {
 		t.Fatalf("Send during ROUTING_BUSY returned after %v", d)
 	}
+	// A ROUTING_BUSY that arrives while Send waits extends the wait.
+	p.Send(local, &knxnetip.RoutingBusy{WaitTime: 100})
+	<-c.Events()
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		p.Send(local, &knxnetip.RoutingBusy{WaitTime: 200})
+	}()
+	start = time.Now()
+	if err := c.Send(ctx(t), frame(4)); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d < 200*time.Millisecond {
+		t.Fatalf("Send returned %v after a second ROUTING_BUSY of 200 ms at 50 ms", d)
+	}
+	<-c.Events()
 	// A shorter wait does not shorten a pending one; the wait can be
 	// interrupted.
 	p.Send(local, &knxnetip.RoutingBusy{WaitTime: 60000})
