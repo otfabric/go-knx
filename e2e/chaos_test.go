@@ -189,7 +189,8 @@ func TestChaosExactlyOnce(t *testing.T) {
 			leak.Check(t)
 			s, addr := startServer(t, server.WithRequestTimeout(100*time.Millisecond))
 			delivered := countDeliveries(t, s)
-			p := newChaosProxy(t, addr, seed, chaos{drop: 10, dup: 10, reorder: 10, delay: 15 * time.Millisecond})
+			const delay = 15 * time.Millisecond
+			p := newChaosProxy(t, addr, seed, chaos{drop: 10, dup: 10, reorder: 10, delay: delay})
 			c := ctx(t)
 			var cl *client.Client
 			var err error
@@ -224,6 +225,12 @@ func TestChaosExactlyOnce(t *testing.T) {
 				cancel()
 			}
 			p.set(chaos{})
+			// Datagrams of the chaos are still in flight for up to four
+			// times the delay (a reordered one waits delay + up to 3 x
+			// delay). One of them can be a stale DISCONNECT_REQUEST of a
+			// channel number the server has since given to the client
+			// again, which the client rightly obeys: let them land first.
+			time.Sleep(4*delay + 50*time.Millisecond)
 			// A DISCONNECT_REQUEST the proxy dropped leaves the client on a
 			// channel the server has closed: the first write afterwards may
 			// fail and reconnect. Then the path is clean.
