@@ -87,4 +87,13 @@ make interop-matrix   # knx-interop's matrix with go-knx's node; writes bin/inte
 ```
 
 `KNX_INTEROP_IMAGE_<ADAPTER>` overrides an image (for example
-`KNX_INTEROP_IMAGE_XKNX=ghcr.io/otfabric/knx-interop-xknx:dev`).
+`KNX_INTEROP_IMAGE_XKNX=ghcr.io/otfabric/knx-interop-xknx:dev`), and
+`KNX_INTEROP_ADAPTERS=calimero-server,xknx` runs those peers only.
+
+The Self-interop workflow, run by hand, runs a commit against the latest
+published go-knx (`ghcr.io/otfabric/knx-interop-otfabric:latest`, from
+knx-interop's `own/go-knx`), as a server and a client of the host-based
+tests, plain and secure (`KNX_INTEROP_OTFABRIC_IMAGE`; without it the
+`otfabric` peer never runs). It finds a change on the wire that breaks an
+earlier release. A pass is not independent verification: it is go-knx on
+both sides, and its results are not in the tables above.

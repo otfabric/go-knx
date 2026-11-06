@@ -16,6 +16,14 @@
 // the pinned image of an adapter. KNX_REQUIRE_INTEROP=1 turns a missing
 // Docker into a failure. KNX_INTEROP_REPORT=<file> writes the results as
 // JSON.
+//
+// The adapter otfabric is go-knx itself, a published release in
+// ghcr.io/otfabric/knx-interop-otfabric (knx-interop's own/go-knx): it runs
+// as server and client of the generic tests only when
+// KNX_INTEROP_OTFABRIC_IMAGE names an image, never by default, and it is not
+// independent evidence. KNX_INTEROP_ADAPTERS=a,b restricts a run to those
+// peers (the Self-interop workflow: otfabric); the observers and responders
+// (xknx) still run.
 package interop
 
 import (
@@ -44,11 +52,51 @@ var images = map[string]string{
 }
 
 func image(adapter string) string {
+	if adapter == "otfabric" {
+		return os.Getenv("KNX_INTEROP_OTFABRIC_IMAGE")
+	}
 	key := "KNX_INTEROP_IMAGE_" + strings.ToUpper(strings.ReplaceAll(adapter, "-", "_"))
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return images[adapter]
+}
+
+// selected reports whether a run includes peer: otfabric only with its
+// image, and only the peers of KNX_INTEROP_ADAPTERS when it is set.
+func selected(peer string) bool {
+	if image(peer) == "" {
+		return false
+	}
+	list := os.Getenv("KNX_INTEROP_ADAPTERS")
+	if list == "" {
+		return true
+	}
+	for _, a := range strings.Split(list, ",") {
+		if strings.TrimSpace(a) == peer {
+			return true
+		}
+	}
+	return false
+}
+
+// peers are the selected ones of names.
+func peers(names ...string) []string {
+	var out []string
+	for _, n := range names {
+		if selected(n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// requirePeer skips a test of one fixed peer that the run does not include.
+func requirePeer(t *testing.T, peer string) {
+	t.Helper()
+	if !selected(peer) {
+		t.Skipf("%s is not in this run (KNX_INTEROP_ADAPTERS, KNX_INTEROP_OTFABRIC_IMAGE)", peer)
+	}
 }
 
 func requireDocker(t *testing.T) {

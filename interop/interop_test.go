@@ -43,7 +43,7 @@ func runQuiet(args ...string) error { return execDocker(args...) }
 // KNXnet/IP servers.
 func TestGoKNXClient(t *testing.T) {
 	requireDocker(t)
-	for _, peer := range []string{"calimero-server", "knxd"} {
+	for _, peer := range peers("calimero-server", "knxd", "otfabric") {
 		t.Run(peer, func(t *testing.T) {
 			net := network(t)
 			id := docker(t, "run", "-d", "--network", net, "-p", "127.0.0.1::3671/udp", image(peer), "server", "--name", serverName)
@@ -183,7 +183,7 @@ func TestGoKNXServer(t *testing.T) {
 	host := []string{"--add-host", "host.docker.internal:host-gateway"}
 	target := []string{"--target", "host.docker.internal", "--port", fmt.Sprint(port), "--nat"}
 
-	for _, peer := range []string{"xknx", "calimero-tools", "knxd"} {
+	for _, peer := range peers("xknx", "calimero-tools", "knxd", "otfabric") {
 		t.Run(peer, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()
@@ -216,7 +216,7 @@ func TestGoKNXServer(t *testing.T) {
 			// Contract 1.1: TCP, device management, busmonitor, where the
 			// adapter offers them.
 			tcpTarget := []string{"--target", "host.docker.internal", "--port", fmt.Sprint(port), "--tcp"}
-			if peer == "xknx" || peer == "calimero-tools" {
+			if peer == "xknx" || peer == "calimero-tools" || peer == "otfabric" {
 				drain(seen)
 				_, err = runClient(ctx, peer, host, "write", append(tcpTarget, "--group", "1/0/1", "--dpt", "1.001", "--value", "off", "--data", "00")...)
 				if err == nil {
@@ -229,7 +229,7 @@ func TestGoKNXServer(t *testing.T) {
 				}
 				record(t, peer, "group read of a go-knx device over TCP", err, "")
 			}
-			if peer == "calimero-tools" {
+			if peer == "calimero-tools" || peer == "otfabric" {
 				d, err := runClient(ctx, peer, host, "property", append(target, "--object", "0", "--pid", "11")...)
 				if err == nil && !strings.EqualFold(fmt.Sprint(d.Data["data"]), "00FA00000001") {
 					err = fmt.Errorf("serial %v", d.Data)

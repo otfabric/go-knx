@@ -98,7 +98,7 @@ func TestGoKNXSecureServer(t *testing.T) {
 	host2 := []string{"--add-host", "host.docker.internal:host-gateway"}
 	target := []string{"--target", "host.docker.internal", "--port", fmt.Sprint(port), "--secure", "--user", "2"}
 
-	for _, peer := range []string{"xknx", "calimero-tools"} {
+	for _, peer := range peers("xknx", "calimero-tools", "otfabric") {
 		t.Run(peer, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()
@@ -121,7 +121,7 @@ func TestGoKNXSecureServer(t *testing.T) {
 			}
 			record(t, peer, "secure group read of a go-knx device", err, "")
 
-			if peer == "xknx" {
+			if peer == "xknx" || peer == "otfabric" {
 				// Data Secure: the server forwards S-A_Data; the profile's
 				// key decrypts it to the written value.
 				drain(seen)
@@ -131,7 +131,7 @@ func TestGoKNXSecureServer(t *testing.T) {
 				}
 				record(t, peer, "Data Secure group write through go-knx (decrypted with the profile key)", err, "")
 			}
-			if peer == "calimero-tools" {
+			if peer == "calimero-tools" || peer == "otfabric" {
 				d, err := runClient(ctx, peer, host2, "property", "--target", "host.docker.internal", "--port", fmt.Sprint(port), "--secure", "--user", "1", "--object", "0", "--pid", "11")
 				if err == nil && !strings.EqualFold(fmt.Sprint(d.Data["data"]), "00FA00000001") {
 					err = fmt.Errorf("serial %v", d.Data)
@@ -175,6 +175,7 @@ func waitSecureWrite(seen chan server.Telegram, tab *datasecure.Table, g string,
 // server.
 func TestGoKNXSecureClient(t *testing.T) {
 	requireDocker(t)
+	requirePeer(t, "calimero-server")
 	kr := profileKeyring(t)
 	net := network(t)
 	id := docker(t, "run", "-d", "--network", net, "-p", "127.0.0.1::3671/tcp", "-p", "127.0.0.1::3671/udp", image("calimero-server"), "server", "--name", serverName, "--secure")
