@@ -47,7 +47,8 @@ A KNXnet/IP network is part of a building's control system.
 
 Implemented from public sources (xknx's MIT implementation and the KNX
 keyring article; the KNX application notes 158/159 were not available) and
-verified for interoperability with xknx 4.0.0 and Calimero 3.0-M1 — **not**
+verified for interoperability with xknx 4.1.1, Calimero 3.0-M1 and cB-Sigma
+knx v0.2.0 (and its simulator knx-sim's secure-session faults) — **not**
 verified for conformance, and not certified
 ([SPECIFICATIONS](docs/standards/SPECIFICATIONS.md#knx-secure-sources)).
 

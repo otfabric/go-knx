@@ -15,6 +15,7 @@
 //	               [--group G] [--dpt D] [--value V] [--data HEX]
 //	               [--count N] [--timeout SECONDS] [--device IA]
 //	               [--start N] [--connected] [--tool-access]
+//	               [--file F] [--password P]
 //
 // Each client operation prints one result document as the last line of
 // stdout and exits 0 (pass), 1 (fail) or 3 (unsupported).
@@ -30,6 +31,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -112,7 +114,7 @@ func capabilities() {
 			"discover": true, "describe": true, "tunnel": true, "routing": true, "nat": true, "answer": true,
 			"tcp": true, "property": true, "busmonitor": true,
 			"secure": true, "dataSecure": true, "secureUdp": true, "surrogate": true,
-			"remoteProperty": true, "toolAccess": true,
+			"remoteProperty": true, "toolAccess": true, "keyring": true,
 			"server": map[string]bool{"tcp": true, "property": true, "busmonitor": true, "secure": true, "secureUdp": true, "secureRouting": true,
 				"remoteProperty": true, "toolAccess": true},
 		},
@@ -132,6 +134,7 @@ type args struct {
 	device                            string
 	start                             int
 	connected, toolAccess             bool
+	file, password                    string
 }
 
 func parse(fs *flag.FlagSet, a *args, argv []string) error {
@@ -156,6 +159,8 @@ func parse(fs *flag.FlagSet, a *args, argv []string) error {
 	fs.IntVar(&a.start, "start", 1, "")
 	fs.BoolVar(&a.connected, "connected", false, "")
 	fs.BoolVar(&a.toolAccess, "tool-access", false, "")
+	fs.StringVar(&a.file, "file", "", "")
+	fs.StringVar(&a.password, "password", "", "")
 	return fs.Parse(argv)
 }
 
@@ -494,6 +499,8 @@ func do(ctx context.Context, op string, a *args, p *profile) (map[string]any, er
 		return busmonitor(ctx, a, p)
 	case "remote-property":
 		return remoteProperty(ctx, a, p)
+	case "keyring":
+		return keyringSummary(a)
 	}
 	return nil, fmt.Errorf("%w: operation %q", errUnsupported, op)
 }
@@ -795,4 +802,52 @@ func u16Arg(name string, v int) (uint16, error) {
 		return 0, fmt.Errorf("%w: --%s %d is not in 0..65535", errOption, name, v)
 	}
 	return uint16(v), nil
+}
+
+// keyringSummary reads the ETS keyring --file with --password (contract
+// 1.6): the tunnelling interfaces, the devices, the backbone and the Data
+// Secure group keys with their senders, for comparison across stacks.
+func keyringSummary(a *args) (map[string]any, error) {
+	if a.file == "" {
+		return nil, errors.New("--file is required")
+	}
+	k, err := keyring.LoadFile(a.file, a.password)
+	if err != nil {
+		return nil, err
+	}
+	interfaces := []map[string]any{}
+	senders := map[string]map[string]bool{}
+	for _, in := range k.Interfaces {
+		if in.UserID != 0 {
+			interfaces = append(interfaces, map[string]any{"address": in.IndividualAddress.String(), "userId": int(in.UserID), "password": in.Password})
+		}
+		for g, ss := range in.Groups {
+			if senders[g.String()] == nil {
+				senders[g.String()] = map[string]bool{}
+			}
+			for _, s := range ss {
+				senders[g.String()][s.String()] = true
+			}
+		}
+	}
+	sort.Slice(interfaces, func(i, j int) bool { return interfaces[i]["userId"].(int) < interfaces[j]["userId"].(int) })
+	devices := []map[string]any{}
+	for _, d := range k.Devices {
+		devices = append(devices, map[string]any{"address": d.IndividualAddress.String(), "managementPassword": d.ManagementPassword, "toolKey": d.HasToolKey})
+	}
+	sort.Slice(devices, func(i, j int) bool { return devices[i]["address"].(string) < devices[j]["address"].(string) })
+	groups := map[string]any{}
+	for g, key := range k.GroupKeys {
+		ss := []string{}
+		for s := range senders[g.String()] {
+			ss = append(ss, s)
+		}
+		sort.Strings(ss)
+		groups[g.String()] = map[string]any{"key": hex.EncodeToString(key[:]), "senders": ss}
+	}
+	out := map[string]any{"interfaces": interfaces, "devices": devices, "groups": groups}
+	if k.Backbone != nil {
+		out["backbone"] = map[string]any{"key": hex.EncodeToString(k.Backbone.Key[:]), "latencyMs": k.Backbone.Latency.Milliseconds()}
+	}
+	return out, nil
 }

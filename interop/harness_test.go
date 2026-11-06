@@ -4,8 +4,8 @@
 
 // Package interop tests go-knx against independent KNX implementations
 // packaged by otfabric/knx-interop: go-knx as the client of Calimero's and
-// knxd's KNXnet/IP servers, and go-knx's server with Calimero, knxd and
-// xknx as clients. The scenarios are unicast: the host reaches the
+// knxd's KNXnet/IP servers, and go-knx's server with Calimero, knxd, xknx
+// and cB-Sigma knx as clients. The scenarios are unicast: the host reaches the
 // containers through published UDP ports and the containers reach the host
 // through host.docker.internal, with route back (NAT) endpoints, so the
 // suite runs the same on Linux and macOS. Multicast scenarios (discovery,
@@ -39,16 +39,17 @@ import (
 	"time"
 )
 
-// images are the knx-interop v0.7.1 adapter images. The MIT ones are
+// images are the knx-interop v0.9.1 adapter images. The MIT ones are
 // published and pinned by digest; the ones with GPL binaries (Calimero,
 // knxd) are never published: make interop-images builds them from the
-// knx-interop v0.7.1 tag as :dev.
+// knx-interop v0.9.1 tag as :dev.
 var images = map[string]string{
 	"calimero-server": "ghcr.io/otfabric/knx-interop-calimero-server:dev",
 	"calimero-tools":  "ghcr.io/otfabric/knx-interop-calimero-tools:dev",
 	"knxd":            "ghcr.io/otfabric/knx-interop-knxd:dev",
-	"xknx":            "ghcr.io/otfabric/knx-interop-xknx:0.7.1@sha256:5e4ec7395e0988bb03c48836a5cdae20a6ec71b26fe4c310fcf62c2dcf7bb577",
-	"knxultimate":     "ghcr.io/otfabric/knx-interop-knxultimate:0.7.1@sha256:41409bb2597b4dba2ae5fc3601c7367c63238cb364634cca3c2f50ef24a5bb32",
+	"xknx":            "ghcr.io/otfabric/knx-interop-xknx:0.9.1@sha256:a194f49c9ae9fc6e4d20f70dc7b824fc4ec343006a84b221adf5c19cd68aab9d",
+	"cbsigma":         "ghcr.io/otfabric/knx-interop-cbsigma:0.9.1@sha256:0f820255fb37722cdc0102f4d3c6ecbf58ecc28aa4f2a92cb1d1b38fae0f28f1",
+	"knxultimate":     "ghcr.io/otfabric/knx-interop-knxultimate:0.9.1@sha256:2f06b30101650905cb943cbd276cd9767d42c550c02b496841a1e5bbbf6d39c1",
 }
 
 func image(adapter string) string {

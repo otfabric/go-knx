@@ -25,7 +25,7 @@ make check          # format, lint, vet, vuln, race tests, coverage gate, exampl
 make test-multicast # Linux: the multicast tests must run, not skip
 make fuzz           # every fuzz target, FUZZTIME=30s each
 make interop-images # build the knx-interop adapter images (Docker)
-make interop        # go-knx against Calimero, knxd, xknx, KNXUltimate
+make interop        # go-knx against Calimero, knxd, xknx, cB-Sigma knx
 
 # Some peers only, or another build of an image
 KNX_INTEROP_ADAPTERS=calimero-server,xknx make interop

@@ -46,7 +46,7 @@ The code was written from:
    orientation; the authors did not have access to the members-only
    v3.0.3/3.0.4 deltas.
 2. Behaviour observed on independent implementations in the knx-interop
-   matrix (Calimero, knxd, xknx, KNXUltimate). Where the code follows an
+   matrix (Calimero, knxd, xknx, KNXUltimate, cB-Sigma knx). Where the code follows an
    observation rather than a cited clause, the code comment or
    IMPLEMENTATION-STATUS.md says so (for example the status codes 0x2D and
    0x2E of tunnelling v2, confirmed against xknx's list, and the DPT 9

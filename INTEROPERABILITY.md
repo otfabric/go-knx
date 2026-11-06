@@ -6,8 +6,10 @@ go-knx is tested against independent KNX implementations in two places:
    docs/INTEROPERABILITY.md) with go-knx's own adapter (`make
    interop-matrix`): every client against every server and every routing
    peer against every other, inside one Docker network, including
-   multicast discovery and routing, 12 DPT vectors, a negative suite and
-   KNX Secure. go-knx takes part through `interop/node`, a command built
+   multicast discovery and routing, 12 DPT vectors, a negative suite,
+   KNX Secure, remote management, the sim suite (cB-Sigma knx-sim's
+   gateway and router with fault switches and flow control frames) and an
+   offline check of ETS keyring import. go-knx takes part through `interop/node`, a command built
    from this repository's sources that implements knx-interop's container
    contract on the library; knx-interop holds third-party stacks only and
    does not depend on go-knx.
@@ -15,31 +17,45 @@ go-knx is tested against independent KNX implementations in two places:
    go-knx used as a library from the host, against the knx-interop images,
    through published UDP ports with route back (NAT) endpoints.
 
-## Results (2026-10-29)
+## Results (2026-11-06, knx-interop v0.9.0)
+
+`make interop-matrix` on arm64: 599 pass, 13 known differences of other
+stacks, 120 unsupported, 0 fail; of the results with go-knx in a role, 446
+pass, 2 known differences (Calimero tools' Data Secure through a tunnel,
+which needs a surrogate) and 36 unsupported. `make interop` (host-based): 67
+of 67 pass.
 
 | Peer (version) | go-knx as client | go-knx as server | Routing with go-knx |
 |---|---|---|---|
 | Calimero server 3.0-M1 | discovery, description, connect, confirmed write, read, inbound telegrams, 12 DPT vectors: pass | — | — |
 | Calimero tools 3.0-M1 | — | discovery, description, connect, write, read, 12 DPT vectors: pass (also through NAT) | both directions: pass |
 | knxd 0.14.73 | discovery, description, connect, confirmed write, read (answered by xknx through knxd), inbound telegrams, 12 DPT vectors: pass | connect, write, read, 12 DPT vectors: pass (also through NAT) | both directions: pass |
-| xknx 4.0.0 | observer and responder in every scenario | discovery, description, connect, write, read, 12 DPT vectors: pass (also through NAT) | both directions: pass |
-| KNXUltimate 6.3.1 | — | discovery, connect, write, read, 12 DPT vectors: pass; description: known difference of KNXUltimate | both directions: pass |
-| knx-interop probe | — | 23 of 23 negative checks pass | — |
+| xknx 4.1.1 | observer and responder in every scenario | discovery, description, connect, write, read, 12 DPT vectors: pass (also through NAT) | both directions: pass |
+| KNXUltimate 6.3.2 | — | discovery, description, connect, write, read, 12 DPT vectors: pass | both directions: pass |
+| cB-Sigma knx v0.2.0 | — (client only) | discovery, description, connect, write, read, 12 DPT vectors, TCP write and read, busmonitor: pass (also through NAT, `interop/`); secure session with bound address, secure write and read, Data Secure write: pass | both directions, plain and secure (with Data Secure): pass |
+| cB-Sigma knx-sim v0.2.0 | gateway: write and read over UDP and TCP, repeated indication delivered once, unacknowledged request reported, secure write and read, Data Secure both ways, replayed and tampered wrappers discarded, SESSION_STATUS close ends the session, idle secure session kept past 60 s; router: ROUTING_BUSY wait honoured (answer 518 ms after a 500 ms wait), answers go on after ROUTING_LOST_MESSAGE — all pass | — (no client) | — |
+| knx-interop probe | — | 24 of 24 negative checks pass | — |
+
+ETS keyrings (knx-interop files suite, offline): go-knx reads the test
+profile's keyring and the same profile written by knx-sim, with the same
+interfaces, devices, backbone and Data Secure keys as cB-Sigma knx reads,
+and refuses a wrong password.
 
 The matrix, the known differences of the other stacks and the reports
 filed upstream are in knx-interop's docs/INTEROPERABILITY.md.
 
 ## KNX Secure (2026-10-30)
 
-First verified by hand, now automated: knx-interop's `secure` suite
+First verified by hand, now automated (re-run 2026-11-06 with knx-interop
+v0.9.0 and xknx 4.1.1: the same results): knx-interop's `secure` suite
 (container contract 1.3 since v0.4.0: also secure sessions over UDP, the
 servers' secure routing and Calimero tools' Data Secure through go-knx as
 the surrogate; 0 failures)
-and this repository's `interop/secure_test.go` (xknx and Calimero tools
-against go-knx's secure server, go-knx's secure client against Calimero's
+and this repository's `interop/secure_test.go` (xknx, Calimero tools and
+cB-Sigma knx against go-knx's secure server, go-knx's secure client against Calimero's
 secure server, with the knx-interop test profile).
 
-| Scenario | xknx 4.0.0 | Calimero 3.0-M1 |
+| Scenario | xknx 4.1.1 | Calimero 3.0-M1 |
 |---|---|---|
 | Secure tunnelling: peer client → go-knx server (session, device authentication verified by the client, write, read) | pass | tools: pass |
 | Secure tunnelling: go-knx client → peer server (session, device authentication, user bound address, write, read; wrong password and plain connection refused) | — (no server) | server: pass |
@@ -57,7 +73,7 @@ Automated in knx-interop's `management` suite (container contract 1.4,
 since v0.6.0): the remote property services of a server's device, through
 a tunnel; with tool access, secured with the device's tool key.
 
-| Scenario | Calimero 3.0-M1 | xknx 4.0.0 |
+| Scenario | Calimero 3.0-M1 | xknx 4.1.1 |
 |---|---|---|
 | Peer tool → go-knx's device: property read, read in a transport connection, write | tools: pass | read and write in a connection: pass (no connectionless management) |
 | Peer tool → go-knx's device with tool access (S-A_Sync, S-A_Data): read, read in a connection, write | tools: pass | — (no tool key access) |

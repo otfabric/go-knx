@@ -46,8 +46,9 @@ tests against independent stacks live in
 | ETS keyrings (.knxkeys): verify, decrypt, write test keyrings (`keyring`) | ✅ |
 | KNX TP/RF media, ETS project import, KNX IoT | ❌ out of scope |
 
-Interoperability, verified both ways against Calimero 3.0-M1, knxd 0.14.73,
-xknx 4.0.0 and KNXUltimate 6.3.1: [INTEROPERABILITY.md](INTEROPERABILITY.md).
+Interoperability, verified against Calimero 3.0-M1, knxd 0.14.73, xknx
+4.1.1, KNXUltimate 6.3.2 and cB-Sigma knx v0.2.0 with its simulator knx-sim
+(knx-interop v0.9.1): [INTEROPERABILITY.md](INTEROPERABILITY.md).
 
 ## Install
 
