@@ -22,6 +22,7 @@ func init() {
 		{ID: ID{12, 0}, Name: "DPT_12", Description: "4-octet unsigned value", Bits: 32, Kind: KindUnsigned, codec: intCodec(4, false, 1)},
 		{ID: ID{13, 0}, Name: "DPT_13", Description: "4-octet signed value", Bits: 32, Kind: KindSigned, codec: intCodec(4, true, 1)},
 		{ID: ID{14, 0}, Name: "DPT_14", Description: "4-octet float value (IEEE 754)", Bits: 32, Kind: KindFloat, codec: float32Codec},
+		{ID: ID{15, 0}, Name: "DPT_15", Description: "access data (6 BCD digits, flags, index)", Bits: 32, Kind: KindAccess, codec: accessCodec},
 		{ID: ID{16, 0}, Name: "DPT_String_ASCII", Description: "character string, 14 ASCII octets", Bits: 112, Kind: KindString, codec: stringCodec},
 		{ID: ID{17, 0}, Name: "DPT_17", Description: "scene number", Bits: 8, Kind: KindScene, codec: sceneCodec},
 		{ID: ID{18, 0}, Name: "DPT_18", Description: "scene control", Bits: 8, Kind: KindSceneControl, codec: sceneControlCodec},
@@ -30,10 +31,15 @@ func init() {
 		{ID: ID{21, 0}, Name: "DPT_21", Description: "8-bit set", Bits: 8, Kind: KindBits, codec: bitsCodec(1)},
 		{ID: ID{22, 0}, Name: "DPT_22", Description: "16-bit set", Bits: 16, Kind: KindBits, codec: bitsCodec(2)},
 		{ID: ID{26, 0}, Name: "DPT_26", Description: "scene information (bit set)", Bits: 8, Kind: KindBits, codec: bitsCodec(1)},
+		{ID: ID{27, 0}, Name: "DPT_27", Description: "combined on/off information (16-bit mask, 16-bit state)", Bits: 32, Kind: KindOnOffInfo, codec: onOffInfoCodec},
 		{ID: ID{29, 0}, Name: "DPT_29", Description: "8-octet signed value", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)},
+		{ID: ID{217, 0}, Name: "DPT_217", Description: "version (magic, version, revision)", Bits: 16, Kind: KindVersion, codec: versionCodec},
+		{ID: ID{222, 0}, Name: "DPT_222", Description: "3 × 2-octet float", Bits: 48, Kind: KindSetpoints, Min: Float16Min, Max: Float16Max, HasRange: true, codec: setpointsCodec(3)},
 		{ID: ID{232, 0}, Name: "DPT_232", Description: "3 × 8-bit colour", Bits: 24, Kind: KindRGB, codec: rgbCodec},
+		{ID: ID{234, 0}, Name: "DPT_234", Description: "two ASCII letters", Bits: 16, Kind: KindString, codec: alpha2Codec},
 		{ID: ID{242, 0}, Name: "DPT_242", Description: "colour xyY", Bits: 48, Kind: KindXYY, codec: xyyCodec},
 		{ID: ID{251, 0}, Name: "DPT_251", Description: "colour RGBW", Bits: 48, Kind: KindRGBW, codec: rgbwCodec},
+		{ID: ID{275, 0}, Name: "DPT_275", Description: "4 × 2-octet float", Bits: 64, Kind: KindSetpoints, Min: Float16Min, Max: Float16Max, HasRange: true, codec: setpointsCodec(4)},
 	} {
 		mains[m.ID.Main] = m
 	}
@@ -106,6 +112,7 @@ func init() {
 		{5, "DPT_DecimalFactor", "ratio", ""},
 		{6, "DPT_Tariff", "tariff 0..254", ""},
 		{10, "DPT_Value_1_Ucount", "counter pulses", "pulses"},
+		{100, "DPT_FanStage", "fan stage 0..255", ""},
 	} {
 		t := &Type{ID: ID{5, u.sub}, Name: u.name, Description: u.desc, Unit: u.unit, Bits: 8, Kind: KindUnsigned, codec: intCodec(1, false, 1)}
 		if u.sub == 6 {
@@ -332,6 +339,9 @@ func init() {
 		register(&Type{ID: ID{14, uint16(i)}, Name: q.name, Description: q.desc, Unit: q.unit, Bits: 32, Kind: KindFloat, codec: float32Codec})
 	}
 
+	// DPT 15.
+	register(&Type{ID: ID{15, 0}, Name: "DPT_Access_Data", Description: "access data (6 BCD digits, flags, index)", Bits: 32, Kind: KindAccess, codec: accessCodec})
+
 	// DPT 16.
 	register(&Type{ID: ID{16, 0}, Name: "DPT_String_ASCII", Description: "character string, 14 ASCII octets", Bits: 112, Kind: KindString, codec: stringCodec})
 	register(&Type{ID: ID{16, 1}, Name: "DPT_String_8859_1", Description: "character string, 14 ISO 8859-1 octets", Bits: 112, Kind: KindString, codec: stringCodec})
@@ -355,20 +365,65 @@ func init() {
 			0: "auto", 1: "heat", 2: "morning warmup", 3: "cool", 4: "night purge", 5: "precool", 6: "off", 7: "test",
 			8: "emergency heat", 9: "fan only", 10: "free cool", 11: "ice", 12: "maximum heating mode", 13: "economic heat/cool mode",
 			14: "dehumidification", 15: "calibration mode", 16: "emergency cool mode", 17: "emergency steam mode", 20: "NoDem"}},
+		{107, "DPT_ChangeoverMode", "changeover mode", map[uint8]string{0: "auto", 1: "cooling only", 2: "heating only"}},
 	} {
 		register(&Type{ID: ID{20, e.sub}, Name: e.name, Description: e.desc, Bits: 8, Kind: KindEnum, Enum: e.values, codec: enumCodec})
 	}
 
 	// DPT 21, 22: status bit sets (the bits are kept as a number).
-	register(&Type{ID: ID{21, 1}, Name: "DPT_StatusGen", Description: "general status (bit set)", Bits: 8, Kind: KindBits, codec: bitsCodec(1)})
+	// The individual bits are not named and reserved bits are not checked.
+	for _, b := range []struct {
+		main, sub  uint16
+		name, desc string
+	}{
+		{21, 1, "DPT_StatusGen", "general status (bit set)"},
+		{21, 2, "DPT_Device_Control", "device control (bit set)"},
+		{21, 100, "DPT_ForceSign", "forcing signal (bit set)"},
+		{21, 101, "DPT_ForceSignCool", "forcing signal cool (bit set)"},
+		{21, 102, "DPT_StatusRHC", "room heating controller status (bit set)"},
+		{21, 103, "DPT_StatusSDHWC", "solar DHW controller status (bit set)"},
+		{21, 104, "DPT_FuelTypeSet", "fuel type set (bit set)"},
+		{21, 105, "DPT_StatusRCC", "room cooling controller status (bit set)"},
+		{21, 106, "DPT_StatusAHU", "air handling unit status (bit set)"},
+		{21, 601, "DPT_LightActuatorErrorInfo", "lighting actuator error information (bit set)"},
+		{21, 1000, "DPT_RF_ModeInfo", "RF communication mode information (bit set)"},
+		{21, 1001, "DPT_RF_FilterInfo", "RF filter information (bit set)"},
+		{21, 1010, "DPT_Channel_Activation_8", "activation of 8 channels (bit set)"},
+		{21, 1200, "DPT_VirtualDryContact", "virtual dry contacts (bit set)"},
+		{21, 1201, "DPT_Phases_Status", "phase status (bit set)"},
+		{22, 100, "DPT_StatusDHWC", "DHW controller status (16-bit set)"},
+		{22, 101, "DPT_StatusRHCC", "room heating/cooling controller status (16-bit set)"},
+		{22, 103, "DPT_CombinedStatus_RTC", "room temperature controller combined status (16-bit set)"},
+		{22, 1000, "DPT_Media", "supported media (16-bit set)"},
+		{22, 1010, "DPT_Channel_Activation_16", "activation of 16 channels (16-bit set)"},
+	} {
+		register(&Type{ID: ID{b.main, b.sub}, Name: b.name, Description: b.desc, Bits: 8 * int(b.main-20), Kind: KindBits, codec: bitsCodec(int(b.main - 20))})
+	}
 
 	// DPT 26.
 	register(&Type{ID: ID{26, 1}, Name: "DPT_SceneInfo", Description: "scene information (bit 6: inactive)", Bits: 8, Kind: KindBits, codec: bitsCodec(1)})
+
+	// DPT 27.
+	register(&Type{ID: ID{27, 1}, Name: "DPT_CombinedInfoOnOff", Description: "on/off state of 16 outputs with validity mask", Bits: 32, Kind: KindOnOffInfo, codec: onOffInfoCodec})
 
 	// DPT 29.
 	register(&Type{ID: ID{29, 10}, Name: "DPT_ActiveEnergy_V64", Description: "active energy", Unit: "Wh", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)})
 	register(&Type{ID: ID{29, 11}, Name: "DPT_ApparantEnergy_V64", Description: "apparent energy", Unit: "VAh", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)})
 	register(&Type{ID: ID{29, 12}, Name: "DPT_ReactiveEnergy_V64", Description: "reactive energy", Unit: "VARh", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)})
+
+	// DPT 217.
+	register(&Type{ID: ID{217, 1}, Name: "DPT_Version", Description: "version (magic 0..31, version 0..31, revision 0..63)", Bits: 16, Kind: KindVersion, codec: versionCodec})
+
+	// DPT 222, 275: room temperature setpoints (comfort, standby, economy
+	// and, for 275, building protection), each a DPT 9 value.
+	register(&Type{ID: ID{222, 100}, Name: "DPT_TempRoomSetpSetF16[3]", Description: "room temperature setpoints comfort, standby, economy", Unit: "°C", Bits: 48, Kind: KindSetpoints, Min: -273, Max: max9, HasRange: true, codec: setpointsCodec(3)})
+	register(&Type{ID: ID{222, 101}, Name: "DPT_TempRoomSetpSetShiftF16[3]", Description: "room temperature setpoint shifts comfort, standby, economy", Unit: "K", Bits: 48, Kind: KindSetpoints, Min: -670760, Max: max9, HasRange: true, codec: setpointsCodec(3)})
+	register(&Type{ID: ID{275, 100}, Name: "DPT_TempRoomSetpSetF16[4]", Description: "room temperature setpoints comfort, standby, economy, building protection", Unit: "°C", Bits: 64, Kind: KindSetpoints, Min: -273, Max: max9, HasRange: true, codec: setpointsCodec(4)})
+	register(&Type{ID: ID{275, 101}, Name: "DPT_TempRoomSetpSetShiftF16[4]", Description: "room temperature setpoint shifts comfort, standby, economy, building protection", Unit: "K", Bits: 64, Kind: KindSetpoints, Min: -670760, Max: max9, HasRange: true, codec: setpointsCodec(4)})
+
+	// DPT 234.
+	register(&Type{ID: ID{234, 1}, Name: "DPT_LanguageCodeAlpha2_ASCII", Description: "language code (ISO 639-1, two letters)", Bits: 16, Kind: KindString, codec: alpha2Codec})
+	register(&Type{ID: ID{234, 2}, Name: "DPT_RegionCodeAlpha2_ASCII", Description: "region code (ISO 3166-1 alpha-2, two letters)", Bits: 16, Kind: KindString, codec: alpha2Codec})
 
 	// Colours.
 	register(&Type{ID: ID{232, 600}, Name: "DPT_Colour_RGB", Description: "RGB colour", Bits: 24, Kind: KindRGB, codec: rgbCodec})

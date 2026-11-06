@@ -5,8 +5,11 @@
 // default), with flow control.
 //
 // Safety: a Conn never forwards what it receives; it only sends what the
-// application gives it. Outgoing indications are rate limited (default 50
-// per second) and paused for the wait time of a ROUTING_BUSY. Telegrams
+// application gives it. Outgoing indications are paced (at most one per
+// 1/rate, default 50 per second, no bursts) and follow the flow control
+// of KNXnet/IP routing on ROUTING_BUSY: a pause of the frame's wait time
+// plus a random extension that grows with the number of busy frames,
+// then a reduced rate until that number has decayed. Telegrams
 // with hop count 0 are not sent. With multicast loopback enabled, the
 // Conn's own indications are recognised and not delivered back.
 //
@@ -28,8 +31,8 @@ import (
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/cemi"
+	"github.com/otfabric/go-knx/internal/flowctl"
 	"github.com/otfabric/go-knx/internal/mcast"
-	"github.com/otfabric/go-knx/internal/ratelimit"
 	"github.com/otfabric/go-knx/internal/udp"
 	"github.com/otfabric/go-knx/knxnetip"
 	"github.com/otfabric/go-knx/secure"
@@ -110,7 +113,8 @@ func WithInterface(name string) Option { return func(o *options) error { o.iface
 func WithGroup(addr string) Option { return func(o *options) error { o.group = addr; return nil } }
 
 // WithRate bounds the indications sent per second (default 50; 0: no
-// limit). Sends over the limit wait.
+// limit): consecutive indications are at least 1/n apart, and sends wait
+// for their turn. ROUTING_BUSY is honoured at any rate.
 func WithRate(n int) Option {
 	return func(o *options) error {
 		if n < 0 {
@@ -180,13 +184,12 @@ type Conn struct {
 	o     options
 	sock  *net.UDPConn
 	group netip.AddrPort
-	rate  *ratelimit.Bucket
+	flow  *flowctl.Controller
 
-	sendMu    sync.Mutex
-	mu        sync.Mutex
-	busyUntil time.Time
-	echoes    map[[32]byte]time.Time
-	timer     *secure.RoutingTimer
+	sendMu sync.Mutex
+	mu     sync.Mutex
+	echoes map[[32]byte]time.Time
+	timer  *secure.RoutingTimer
 
 	inbound chan cemi.Frame
 	events  chan Event
@@ -226,7 +229,7 @@ func Listen(ctx context.Context, opts ...Option) (*Conn, error) {
 	if ifIP.IsValid() {
 		_ = mcast.Configure(sock, &ifIP, o.loopback, o.ttl)
 	}
-	c := &Conn{o: o, sock: sock, group: group, rate: ratelimit.New(o.rate), echoes: map[[32]byte]time.Time{},
+	c := &Conn{o: o, sock: sock, group: group, flow: flowctl.New(o.rate), echoes: map[[32]byte]time.Time{},
 		inbound: make(chan cemi.Frame, o.queueSize), events: make(chan Event, 16), closing: make(chan struct{})}
 	if o.secure != nil {
 		c.timer = secure.NewRoutingTimer(o.secure.key, o.serial, o.secure.latency, c.sendNotify)
@@ -259,8 +262,8 @@ func (c *Conn) Group() netip.AddrPort { return c.group }
 
 // Send sends a cEMI frame (an L_Data.ind) as a ROUTING_INDICATION; a
 // source of 0.0.0 is replaced by the Conn's individual address. It
-// waits for the rate limit and for a pending ROUTING_BUSY wait time, and
-// refuses frames with hop count 0.
+// waits for the pause after the previous indication and for the flow
+// control of a ROUTING_BUSY, and refuses frames with hop count 0.
 func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	if ld, ok := f.(*cemi.LData); ok {
 		if ld.HopCount() == 0 {
@@ -281,16 +284,9 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	}
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
-	for !c.rate.Allow() {
-		if err := sleep(ctx, c.closing, 5*time.Millisecond); err != nil {
-			return err
-		}
-	}
-	c.mu.Lock()
-	wait := time.Until(c.busyUntil)
-	c.mu.Unlock()
-	if wait > 0 {
-		if err := sleep(ctx, c.closing, wait); err != nil {
+	// A ROUTING_BUSY received while waiting extends the wait.
+	for d := c.flow.Delay(); d > 0; d = c.flow.Delay() {
+		if err := sleep(ctx, c.closing, d); err != nil {
 			return err
 		}
 	}
@@ -307,6 +303,7 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 			return err
 		}
 	}
+	c.flow.Sent()
 	return c.transmit(ctx, frame, knxnetip.RoutingIndicationType)
 }
 
@@ -426,11 +423,7 @@ func (c *Conn) readLoop() {
 				c.o.metrics.OnDropped(fa, "queue_full")
 			}
 		case *knxnetip.RoutingBusy:
-			c.mu.Lock()
-			if until := time.Now().Add(time.Duration(m.WaitTime) * time.Millisecond); until.After(c.busyUntil) {
-				c.busyUntil = until
-			}
-			c.mu.Unlock()
+			c.flow.Busy(time.Duration(m.WaitTime) * time.Millisecond)
 			c.event(Event{From: from, Busy: m})
 		case *knxnetip.RoutingLostMessage:
 			c.event(Event{From: from, Lost: m})

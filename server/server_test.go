@@ -723,6 +723,7 @@ func TestOptionsAndStartErrors(t *testing.T) {
 		"duplicate":    server.WithTunnelAddresses(slot1, slot1),
 		"ttl":          server.WithMulticastTTL(0),
 		"alive":        server.WithConnectionAliveTime(0),
+		"session":      server.WithSecureSessionTimeout(-time.Second),
 		"request":      server.WithRequestTimeout(0),
 		"queue":        server.WithQueueSize(0),
 		"routing rate": server.WithRoutingRate(-1),

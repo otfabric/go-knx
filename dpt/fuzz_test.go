@@ -25,6 +25,14 @@ func FuzzDecode(f *testing.F) {
 	for i, t := range fuzzTypes {
 		f.Add(uint16(i), make([]byte, t.Size()))
 		f.Add(uint16(i), bytes.Repeat([]byte{0xFF}, t.Size()))
+		// A valid encoding of each sample, so that types whose all-zero
+		// and all-ones octets do not decode (BCD digits, letter codes)
+		// start from a value.
+		for _, v := range samples(t) {
+			if b, err := t.Encode(v); err == nil {
+				f.Add(uint16(i), b)
+			}
+		}
 	}
 	f.Add(uint16(0), []byte{})
 	f.Fuzz(func(tt *testing.T, idx uint16, data []byte) {
@@ -68,6 +76,13 @@ func outOfRange(t *Type, v any) bool {
 		f = float64(x)
 	case int64:
 		f = float64(x)
+	case RoomSetpoints:
+		for _, c := range [...]float64{x.Comfort, x.Standby, x.Economy, x.Protection} {
+			if t.HasRange && (c < t.Min || c > t.Max) {
+				return true
+			}
+		}
+		return false
 	default:
 		return false
 	}

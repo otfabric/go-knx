@@ -21,7 +21,7 @@ protocol path:
 | `OnFrameSent(remote, service, size)` / `OnFrameReceived` | every KNXnet/IP frame |
 | `OnDecodeError(remote, err)` | a datagram or cEMI frame that did not decode |
 | `OnRetransmit(remote, channel)` | a tunnelling request repeated for a missing ACK |
-| `OnDropped(remote, reason)` | a telegram dropped: `queue_full`, `duplicate`, `sequence`, `foreign_source`, `unknown_channel`, `routing_rate` |
+| `OnDropped(remote, reason)` | a telegram dropped: `queue_full`, `duplicate`, `sequence`, `foreign_source`, `unknown_channel`, `routing_rate` (the server's routing send queue is full: rate or ROUTING_BUSY) |
 
 ## State
 

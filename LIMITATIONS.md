@@ -31,6 +31,11 @@ What go-knx does not do, or does with restrictions. Feature status:
 - **Virtual devices** are application layer only.
 - **Server properties**: the friendly name is writable; the other properties
   of the device management connection are read only.
+- **Routing flow control** is honoured, not generated: go-knx never sends
+  ROUTING_BUSY (the server drops routing indications its queue cannot hold
+  and counts them), ROUTING_BUSY is applied whatever device its control
+  field names, and ROUTING_LOST_MESSAGE is only reported. The pacing has
+  not been checked against a third-party router that sends ROUTING_BUSY.
 - **Standard frames** carry an NPDU of at most 15 octets, enforced on encode
   and decode.
 

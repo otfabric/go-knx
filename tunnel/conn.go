@@ -149,7 +149,7 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		hpai = knxnetip.NewHPAI(netip.AddrPortFrom(ip, bound.Port()))
 	}
 	if o.secure != nil {
-		st, err := handshake(tr, server, hpai, *o.secure, o.connectTimeout)
+		st, err := handshake(tr, server, hpai, *o.secure, o.connectTimeout, o.sessionKeepAlive)
 		if err != nil {
 			_ = tr.close()
 			return nil, err
@@ -312,6 +312,14 @@ func drain[T any](ch chan T) {
 // connection is considered lost. For an L_Data.req Send also waits for
 // the L_Data.con (unless WithConfirm(false)) and returns an error
 // matching knx.ErrNotConfirmed if it reports an error or does not arrive.
+//
+// Send never repeats a frame on its own beyond that one TUNNELLING_REQUEST
+// repetition. An error matching knx.ErrConnectionLost (or ErrNotConfirmed)
+// does not tell whether the frame reached the bus: the server may have
+// received it before the tunnel was lost. With WithReconnect the tunnel
+// comes back on a new channel, but the frame is not resent there; the
+// caller decides whether repeating it is safe (a read is, a toggle may not
+// be).
 func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	b, err := cemi.Marshal(f)
 	if err != nil {
@@ -580,12 +588,18 @@ func (c *Conn) dispatch(from netip.AddrPort, m knxnetip.Message) {
 		c.mu.Lock()
 		ch, gen, state := c.channel, c.gen, c.state
 		c.mu.Unlock()
-		if m.Channel != ch || state != knx.StateConnected {
-			return
-		}
 		to := c.server
 		if !c.o.nat && !m.Control.IsRouteBack() {
 			to = m.Control.Addr
+		}
+		if m.Channel != ch {
+			// Not our channel: answer E_CONNECTION_ID and keep the tunnel
+			// (Core, disconnect of an unknown communication channel).
+			_ = c.write(to, &knxnetip.DisconnectResponse{Channel: m.Channel, Status: knxnetip.StatusConnectionID})
+			return
+		}
+		if state != knx.StateConnected {
+			return
 		}
 		_ = c.write(to, &knxnetip.DisconnectResponse{Channel: ch, Status: knxnetip.StatusNoError})
 		c.mu.Lock()

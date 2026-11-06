@@ -32,8 +32,8 @@ import (
 	"github.com/otfabric/go-knx/cemi"
 	"github.com/otfabric/go-knx/datasecure"
 	"github.com/otfabric/go-knx/device"
+	"github.com/otfabric/go-knx/internal/flowctl"
 	"github.com/otfabric/go-knx/internal/mcast"
-	"github.com/otfabric/go-knx/internal/ratelimit"
 	"github.com/otfabric/go-knx/internal/udp"
 	"github.com/otfabric/go-knx/knxnetip"
 	"github.com/otfabric/go-knx/mgmt"
@@ -74,12 +74,13 @@ type Connection struct {
 
 // Server is a KNXnet/IP server.
 type Server struct {
-	o       options
-	main    *net.UDPConn
-	disc    *net.UDPConn // multicast listener when main cannot join
-	group   netip.AddrPort
-	ifIP    netip.Addr
-	routing *ratelimit.Bucket
+	o      options
+	main   *net.UDPConn
+	disc   *net.UDPConn // multicast listener when main cannot join
+	group  netip.AddrPort
+	ifIP   netip.Addr
+	flow   *flowctl.Controller // routing flow control
+	routeQ chan []byte         // routing indications to send
 
 	tcpLn     *net.TCPListener
 	tcpConns  map[*tcpConn]struct{}
@@ -135,7 +136,11 @@ func New(opts ...Option) (*Server, error) {
 	if o.secureRouting != nil && !o.routing {
 		return nil, invalid("WithSecureRouting needs WithRouting(true)")
 	}
-	s := &Server{o: o, usessions: map[uint16]*udpSession{}, conns: map[uint8]*tconn{}, tcpConns: map[*tcpConn]struct{}{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), routing: ratelimit.New(o.routingRate), startTime: time.Now()}
+	s := &Server{o: o, usessions: map[uint16]*udpSession{}, conns: map[uint8]*tconn{}, tcpConns: map[*tcpConn]struct{}{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), startTime: time.Now()}
+	if o.routing {
+		s.flow = flowctl.New(o.routingRate)
+		s.routeQ = make(chan []byte, o.queueSize)
+	}
 	s.props = &propStore{s: s}
 	s.name = o.name
 	s.mgmt = &mgmt.Responder{Address: o.address, Descriptor: DeviceDescriptor, Properties: s.props}
@@ -266,6 +271,9 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.tcpLn != nil {
 		s.wg.Add(1)
 	}
+	if s.o.routing {
+		s.wg.Add(1)
+	}
 	s.mu.Unlock()
 	s.o.logger.Infof("server: listening on %s (tcp %t, discovery %t, routing %t)", main.LocalAddr(), s.o.tcp, s.o.discovery, s.o.routing)
 	if s.o.routing && s.o.secureRouting != nil {
@@ -282,7 +290,35 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.tcpLn != nil {
 		go s.acceptLoop(s.tcpLn)
 	}
+	if s.o.routing {
+		go s.routingSender()
+	}
 	return nil
+}
+
+// routingSender sends the queued routing indications, paced by the flow
+// control: the minimum gap between indications and the pause and
+// reduced rate after a ROUTING_BUSY.
+func (s *Server) routingSender() {
+	defer s.wg.Done()
+	for {
+		select {
+		case b := <-s.routeQ:
+			for d := s.flow.Delay(); d > 0; d = s.flow.Delay() {
+				t := time.NewTimer(d)
+				select {
+				case <-t.C:
+				case <-s.closing:
+					t.Stop()
+					return
+				}
+			}
+			s.flow.Sent()
+			s.writeRouting(&knxnetip.RoutingIndication{CEMI: b})
+		case <-s.closing:
+			return
+		}
+	}
 }
 
 // listenUDPTCP opens the UDP socket and, with tcp, the TCP listener on the
@@ -587,7 +623,11 @@ func (s *Server) handle(p peer, m knxnetip.Message) {
 		if ld, ok := f.(*cemi.LData); ok && ld.MsgCode == cemi.LDataInd {
 			s.distribute(Telegram{Origin: FromRouting, Frame: ld}, nil)
 		}
-	case *knxnetip.RoutingBusy, *knxnetip.RoutingLostMessage:
+	case *knxnetip.RoutingBusy:
+		// Without routing the controller is nil and nothing is paused.
+		s.flow.Busy(time.Duration(m.WaitTime) * time.Millisecond)
+		s.o.logger.Debugf("server: %s from %s (wait %d ms)", m.Service(), from, m.WaitTime)
+	case *knxnetip.RoutingLostMessage:
 		s.o.logger.Debugf("server: %s from %s", m.Service(), from)
 	default:
 		s.o.logger.Debugf("server: ignore %s from %s", m.Service(), from)
@@ -986,7 +1026,7 @@ func (s *Server) disconnect(c *tconn, notify bool, cause error) {
 // janitor closes connections without heartbeat.
 func (s *Server) janitor() {
 	defer s.wg.Done()
-	tick := max(min(s.o.aliveTime/10, time.Second),
+	tick := max(min(min(s.o.aliveTime, s.o.sessionTimeout)/10, time.Second),
 		// NewTicker panics on 0
 		time.Millisecond)
 	t := time.NewTicker(tick)
@@ -1097,9 +1137,10 @@ func (s *Server) distribute(t Telegram, origin *tconn) {
 		}
 	}
 	if s.o.routing && t.Origin != FromRouting && ind.HopCount() > 0 {
-		if s.routing.Allow() {
-			s.writeRouting(&knxnetip.RoutingIndication{CEMI: b})
-		} else {
+		select {
+		case s.routeQ <- b:
+		default:
+			// The queue is full: the rate or a ROUTING_BUSY holds it.
 			s.o.metrics.OnDropped(net.UDPAddrFromAddrPort(s.group), "routing_rate")
 		}
 	}

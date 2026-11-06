@@ -14,7 +14,7 @@ Every exported package, its main types, and how to construct, use and close them
 | Package | Construct | Use | Close |
 |---|---|---|---|
 | `client` | `DialTunnel(ctx, addr, topts, opts...)`, `ListenRouting(ctx, ropts, opts...)`, or `New(link, opts...)` over a `client.Link` | `GroupWrite`, `GroupRead`, `GroupReadAll`, `GroupRespond`, `Subscribe` (returns a `*Subscription` with channel `C()`); `Done`, `Err` report the end of the link | `Client.Close` |
-| `client` | `Client.Device(addr, opts...)` returns a `*client.Device` | access to one device through the client; the `Connected()` option uses a transport-layer connection | `Device.Close` |
+| `client` | `Client.Device(addr, opts...)` returns a `*client.Device` | access to one device through the client: `PropertyRead`, `PropertyWrite`, `PropertyElements`, `PropertyDescription` (returns a `mgmt.Description`), `DescriptorRead`; the `Connected()` option uses a transport-layer connection | `Device.Close` |
 | `tunnel` | `Dial(ctx, addr, opts...)` returns a `*Conn`, UDP or TCP | tunnelling, busmonitor and feature services | `Conn.Close` |
 | `routing` | `Listen(ctx, opts...)` returns a `*Conn` | routing indications on the multicast group | `Conn.Close` |
 | `device` | `New(name, addr)`; `NewGroupObject(name, id, flags, addresses...)` | a virtual device: `Add`, `OnChange`, and `Handle`, `Transmit` on `cemi.LData` frames | nothing to close: it holds no socket |
@@ -32,7 +32,7 @@ Every exported package, its main types, and how to construct, use and close them
 |---|---|---|---|
 | `discovery` | package functions `Search(ctx, opts...)`, `Describe(ctx, addr, opts...)` | finds KNXnet/IP servers; returns `[]Result` and `knxnetip.DIBs` | nothing to close |
 | `devmgmt` | `Dial(ctx, addr, opts...)` returns a `*Conn` (uses `tunnel` options) | reads and writes interface object properties; `*PropertyError` | `Conn.Close` |
-| `mgmt` | `ParseProperty(tpdu)`, `DescriptorTPDU(tpci)` | services of remote device management | no connection of its own |
+| `mgmt` | `ParseProperty(tpdu)`, `ParseDescription(tpdu)`, `DescriptionReadTPDU(tpci, object, pid, index)`, `DescriptorTPDU(tpci)` | services of remote device management; `Description` (encodes with `Data`, `TPDU`), `PDT` (property datatype: `Size`, `String`) | no connection of its own |
 
 ## Bounds
 
@@ -69,4 +69,4 @@ Pure encode and decode, with no I/O and nothing to close.
 | `knxnetip` | KNXnet/IP frames: header, HPAI, DIBs, core, tunnelling, routing and secure bodies |
 | `cemi` | cEMI frames, `LData` |
 | `apdu` | TPCI and APCI, `TPDU` |
-| `dpt` | Datapoint types: `Get(id)` returns a `*Type`, which encodes and decodes application values |
+| `dpt` | Datapoint types: `Get(id)` returns a `*Type`, which encodes and decodes application values; composite values are `Control`, `Step`, `TimeOfDay`, `Date`, `DateTime`, `SceneControl`, `Enum`, `RGB`, `RGBW`, `XYY`, `AccessData` (DPT 15), `OnOffInfo` (27), `Version` (217) and `RoomSetpoints` (222, 275) |

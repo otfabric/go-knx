@@ -238,3 +238,15 @@ func TestSecureSessionErrors(t *testing.T) {
 		t.Errorf("plain UDP connect: %+v", m)
 	}
 }
+
+// A frame with a valid header but an unparsable body is skipped: the
+// connection stays open and the next frame is answered.
+func TestTCPSkipsUnparsableFrame(t *testing.T) {
+	_, addr := startSecure(t)
+	r := dialSecure(t, addr)
+	// SESSION_REQUEST with a two-octet body.
+	if _, err := r.c.Write([]byte{6, 0x10, 0x09, 0x51, 0, 8, 0, 0}); err != nil {
+		t.Fatal(err)
+	}
+	r.open()
+}

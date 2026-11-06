@@ -3,6 +3,7 @@
 package mgmt_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/otfabric/go-knx"
@@ -97,6 +98,34 @@ func FuzzResponder(f *testing.F) {
 					}
 				}
 			}
+		}
+	})
+}
+
+// FuzzParseDescription decodes arbitrary A_PropertyDescription_Response
+// data: nothing may panic, and a decoded description encodes to the same
+// data except for the reserved bits and decodes to itself.
+func FuzzParseDescription(f *testing.F) {
+	f.Add([]byte{2, 76, 9, 0x82, 0x00, 0x1E, 0x31})
+	f.Add([]byte{0, 11, 3, 0x16, 0x0A, 0xBC, 0xF0})
+	f.Add([]byte{0, 50, 0, 0, 0, 0, 0})
+	f.Add([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	f.Add([]byte{0, 1, 2})
+	f.Fuzz(func(t *testing.T, b []byte) {
+		d, err := mgmt.ParseDescription(apdu.TPDU{APCI: apdu.PropertyDescriptionResponseService, Data: b})
+		if err != nil {
+			return
+		}
+		enc := d.Data()
+		want := append([]byte(nil), b...)
+		want[3] &^= 0x40
+		want[4] &= 0x0F
+		if !bytes.Equal(enc, want) {
+			t.Fatalf("% X encodes as % X", b, enc)
+		}
+		back, err := mgmt.ParseDescription(apdu.TPDU{Data: enc})
+		if err != nil || back != d {
+			t.Fatalf("%+v: %+v %v", d, back, err)
 		}
 	})
 }

@@ -5,6 +5,44 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.8.0
+
+**Date:** 2026-11-06
+**Previous release:** v0.7.0
+
+## Summary
+
+Gaps found by comparing go-knx with xknx 4.1.1 (otfabric/knx-interop#19): routing flow control, TCP frame resynchronisation, a foreign-channel DISCONNECT_REQUEST, KNX IP Secure session timers, PropertyDescription and 30 more datapoint types.
+
+**Upgrade notes:** `mgmt.Description.Type` is now `mgmt.PDT` (was `uint8`), and `Description` has an `Object` field: code that assigns a typed `uint8` to `Type` needs a conversion. A go-knx server now ends KNX IP Secure sessions idle for 60 s (was the 120 s connection alive time; `server.WithSecureSessionTimeout`). Routing senders are paced at the configured rate instead of in bursts, so a burst of indications now takes rate-limited time.
+
+## Changes
+
+### Added
+
+- `client.Device.PropertyDescription` (A_PropertyDescription_Read), connectionless, connected and with the tool key. `mgmt.PDT` with the property datatypes, `Size` and `String`; `mgmt.ParseDescription`, `mgmt.DescriptionReadTPDU`, `Description.Data`, `TPDU`, `ReadLevel`, `WriteLevel`.
+- Datapoint types 5.100, 15.000, 20.107, 21.002, 21.100-21.106, 21.601, 21.1000, 21.1001, 21.1010, 21.1200, 21.1201, 22.100, 22.101, 22.103, 22.1000, 22.1010, 27.001, 217.001, 222.100, 222.101, 234.001, 234.002, 275.100, 275.101, with the values `AccessData`, `OnOffInfo`, `Version` and `RoomSetpoints`. The new encodings decode to the same values in xknx 4.1.1.
+- `server.WithSecureSessionTimeout` (default 60 s, `DefaultSecureSessionTimeout`) and `tunnel.WithSessionKeepAlive` (default 30 s, `DefaultSessionKeepAlive`).
+
+### Changed
+
+- The tunnel client sends its KNX IP Secure keep alive after 30 s idle (was a fixed 45 s).
+- The server queues its outgoing routing indications (bounded by `WithQueueSize`) and paces them, instead of dropping what exceeded the rate; a full queue is still counted as `OnDropped("routing_rate")`.
+
+### Fixed
+
+- Routing flow control (Routing, ROUTING_BUSY): the client only waited out the last busy frame's wait time and could send 50 indications back to back; the server ignored ROUTING_BUSY. Both now count busy frames (more than 10 ms apart, the first included), wait the wait time plus a random 0..N x 50 ms, slow down afterwards and keep a minimum gap of 1/rate between indications.
+- The server closed a TCP connection, and the client a KNX IP Secure tunnel over TCP, on one frame whose body did not parse, although its valid header framed it. Such a frame is now dropped and the connection kept.
+- The server freed a TCP connection's slot of its connection limit only after closing the socket, so a client that saw the close could still be refused for a moment (`TestHostileTCP` failed now and then in CI). The slot is now freed first.
+- The tunnel client ignored a DISCONNECT_REQUEST for another channel; it now answers E_CONNECTION_ID and keeps the tunnel.
+- The server expired idle KNX IP Secure sessions after the 120 s tunnelling alive time instead of the 60 s session timeout.
+
+### Documentation
+
+- `tunnel.Conn.Send` and ERRORS.md: a frame lost with the tunnel is not resent after a reconnect; the caller decides whether to repeat it.
+
+---
+
 ## v0.7.0
 
 **Date:** 2026-11-05

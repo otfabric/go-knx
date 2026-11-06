@@ -94,10 +94,7 @@ func (s *Server) acceptLoop(ln *net.TCPListener) {
 		s.tcpConns[t] = struct{}{}
 		s.mu.Unlock()
 		s.wg.Add(1)
-		go func() {
-			defer func() { <-sem }()
-			s.serveTCP(t)
-		}()
+		go s.serveTCP(t, func() { <-sem })
 	}
 }
 
@@ -106,10 +103,13 @@ func (s *Server) acceptLoop(ln *net.TCPListener) {
 func (s *Server) maxTCP() int { return len(s.o.tunnels) + 4 }
 
 // serveTCP reads the frames of one TCP connection until it closes, then
-// ends the connections it opened.
-func (s *Server) serveTCP(t *tcpConn) {
+// ends the connections it opened. release frees the connection's slot of
+// the TCP limit; it runs before the socket is closed, so a peer that sees
+// the close finds the slot free.
+func (s *Server) serveTCP(t *tcpConn, release func()) {
 	defer s.wg.Done()
 	defer func() {
+		release()
 		t.close()
 		s.mu.Lock()
 		delete(s.tcpConns, t)
@@ -126,16 +126,25 @@ func (s *Server) serveTCP(t *tcpConn) {
 	}()
 	ta := net.TCPAddrFromAddrPort(t.remote)
 	for {
-		// A client without traffic or heartbeat for the alive time is gone.
-		_ = t.c.SetReadDeadline(time.Now().Add(s.o.aliveTime))
+		// A client without traffic or heartbeat for the alive time is
+		// gone; a secure session ends after the session timeout.
+		idle := s.o.aliveTime
+		if s.o.secure != nil {
+			idle = min(idle, s.o.sessionTimeout)
+		}
+		_ = t.c.SetReadDeadline(time.Now().Add(idle))
 		b, err := knxnetip.ReadFrame(t.c)
 		if err != nil {
 			return
 		}
 		m, err := knxnetip.Parse(b)
 		if err != nil {
+			// ReadFrame consumed the frame by the total length of its
+			// valid header, so the stream is still aligned: drop the
+			// frame and read on. A bad header ends the connection above.
 			s.o.metrics.OnDecodeError(ta, err)
-			return // a stream cannot resynchronise
+			s.o.logger.Debugf("server: drop frame from %s: %v", t.remote, err)
+			continue
 		}
 		s.o.metrics.OnFrameReceived(ta, uint16(m.Service()), len(b))
 		if s.o.secure != nil {

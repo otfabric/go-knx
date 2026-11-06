@@ -31,7 +31,7 @@ tests against independent stacks live in
 | KNXnet/IP frames: header, HPAI, DIB (all standard types), CRI/CRD, core, device management, tunnelling, routing and secure service bodies | ✅ encode/decode, fuzzed |
 | cEMI: L_Data.req/.ind/.con, L_Busmon, L_Raw, M_PropRead/Write/Info, M_FuncProp*, M_Reset; additional info; standard and extended frames | ✅ |
 | TPCI and APCI (all application services named; group values with small values) | ✅ |
-| Datapoint types: 1–14, 16–22, 26, 29, 232, 242, 251 (209 subtypes), ranges, units, text format/parse | ✅ |
+| Datapoint types: 1–22, 26, 27, 29, 217, 222, 232, 234, 242, 251, 275 (239 subtypes), ranges, units, text format/parse | ✅ |
 | Discovery: multicast and directed search, extended search with parameters, description | ✅ |
 | Tunnelling client over UDP (sequence handling, ACK and retransmission, L_Data.con, heartbeat, NAT, reconnect) and TCP (tunnelling v2), tunnelling v2 address request and feature services | ✅ |
 | Device management client (`devmgmt`: M_PropRead/M_PropWrite of interface object properties) | ✅ |

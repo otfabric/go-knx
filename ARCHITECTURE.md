@@ -40,7 +40,9 @@
   link (the `mgmt` services, connectionless or in a transport
   connection); the client's read loop hands it the frames of that device.
   `mgmt.Responder` is the device side, which the server runs for its own
-  individual address.
+  individual address. Both sides use the same codecs in `mgmt`
+  (`Property`, `Description`); `mgmt.PDT` gives the element size of a
+  property datatype, which a tool needs before it reads a table property.
 - **Server** (`server`, `device`) is the other side: a KNXnet/IP server
   with a virtual network behind it.
 - **Security** (`secure`, `datasecure`, `keyring`) is layered in, not
@@ -59,7 +61,7 @@
 | `tunnel.Conn` | reader, heartbeat, supervisor (reconnect) | `Close`, or a lost connection without reconnect |
 | `routing.Conn` | reader | `Close` |
 | `client.Client` | reader of its link | `Close` (closes the link) or link failure |
-| `server.Server` | reader per socket, janitor, one sender per tunnelling connection (bounded by the number of tunnelling addresses) | `Close` |
+| `server.Server` | reader per socket, janitor, one sender per tunnelling connection (bounded by the number of tunnelling addresses), one routing sender with routing | `Close` |
 
 Every queue is bounded (inbound telegrams, per-connection sends,
 subscriptions); when one is full the telegram is dropped and
@@ -104,7 +106,10 @@ waits for its L_Data.con (3 s) unless `WithConfirm(false)`.
 - TCP: the same port accepts KNXnet/IP over TCP; a TCP connection carries
   the frames of one client, its tunnelling or device management
   connections end when it closes, and at most (tunnelling addresses + 4)
-  TCP connections are open at a time.
+  TCP connections are open at a time. A frame whose header is valid but
+  whose body does not parse is dropped and the connection kept; a bad
+  header closes it. Secure sessions without a frame for 60 s end
+  (`WithSecureSessionTimeout`).
 - Busmonitor connections receive L_Busmon.ind (TP1 frame, status,
   timestamp) of every standard frame. Busmonitor and link layer
   tunnelling exclude each other (E_NO_MORE_CONNECTIONS), as the standard
@@ -127,5 +132,16 @@ waits for its L_Data.con (3 s) unless `WithConfirm(false)`.
   value is 670 433.28: 0x7FFF means "invalid data".
 - **Standard and extended frames**: an L_Data whose NPDU exceeds 15 octets
   must be an extended frame, on encode and on decode.
-- **Routing safety**: 50 indications per second by default, ROUTING_BUSY
-  respected, hop count 0 never routed.
+- **Routing safety**: hop count 0 is never routed. Outgoing indications
+  of `routing.Conn` and of the server are paced by `internal/flowctl`
+  (KNX 3/8/5 §2.3.5 flow control): consecutive indications are at least
+  1/rate apart (50 per second by default, no bursts). A ROUTING_BUSY
+  increments a busy counter N when it arrives more than 10 ms after the
+  previous one (the first always counts) and pauses sending until the
+  frame's wait time plus a random 0 … N × 50 ms has passed. After the
+  pause N stays for N × 100 ms and then drops by one every 5 ms; while
+  N > 0 the gap between indications is N + 1 times the normal one (one
+  TP1 telegram time, 20 ms, as the unit when the rate is unlimited).
+  `routing.Conn.Send` waits for its turn; the server queues indications
+  in a bounded queue (`WithQueueSize`) drained by one sender goroutine and
+  drops what does not fit (`OnDropped` "routing_rate").

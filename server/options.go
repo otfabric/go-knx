@@ -18,6 +18,9 @@ const (
 	// connection without a CONNECTIONSTATE_REQUEST for this long is
 	// closed.
 	DefaultConnectionAliveTime = 120 * time.Second
+	// DefaultSecureSessionTimeout is SESSION_TIMEOUT: a KNX IP Secure
+	// session without a frame for this long is ended.
+	DefaultSecureSessionTimeout = 60 * time.Second
 	// DefaultQueueSize bounds the telegrams queued for each tunnelling
 	// connection.
 	DefaultQueueSize = 128
@@ -46,6 +49,7 @@ type options struct {
 	routing          bool
 	group            string
 	aliveTime        time.Duration
+	sessionTimeout   time.Duration
 	reqTimeout       time.Duration
 	queueSize        int
 	routingRate      int
@@ -58,22 +62,23 @@ type options struct {
 
 func defaultOptions() options {
 	return options{
-		listen:      fmt.Sprintf(":%d", knxnetip.Port),
-		name:        "go-knx server",
-		address:     knx.MustParseIndividualAddress("15.15.0"),
-		tunnels:     []knx.IndividualAddress{knx.MustParseIndividualAddress("15.15.250")},
-		serial:      [6]byte{0x00, 0xFA, 0x00, 0x00, 0x00, 0x01},
-		mac:         [6]byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01},
-		discovery:   true,
-		tcp:         true,
-		group:       "224.0.23.12:3671",
-		aliveTime:   DefaultConnectionAliveTime,
-		reqTimeout:  time.Second,
-		queueSize:   DefaultQueueSize,
-		routingRate: DefaultRoutingRate,
-		logger:      knx.NopLogger(),
-		metrics:     knx.NopMetrics{},
-		ttl:         16,
+		listen:         fmt.Sprintf(":%d", knxnetip.Port),
+		name:           "go-knx server",
+		address:        knx.MustParseIndividualAddress("15.15.0"),
+		tunnels:        []knx.IndividualAddress{knx.MustParseIndividualAddress("15.15.250")},
+		serial:         [6]byte{0x00, 0xFA, 0x00, 0x00, 0x00, 0x01},
+		mac:            [6]byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01},
+		discovery:      true,
+		tcp:            true,
+		group:          "224.0.23.12:3671",
+		aliveTime:      DefaultConnectionAliveTime,
+		sessionTimeout: DefaultSecureSessionTimeout,
+		reqTimeout:     time.Second,
+		queueSize:      DefaultQueueSize,
+		routingRate:    DefaultRoutingRate,
+		logger:         knx.NopLogger(),
+		metrics:        knx.NopMetrics{},
+		ttl:            16,
 	}
 }
 
@@ -246,6 +251,19 @@ func WithConnectionAliveTime(d time.Duration) Option {
 	}
 }
 
+// WithSecureSessionTimeout sets how long a KNX IP Secure session
+// ([WithSecure], [WithSecureRouting] unicast sessions included) may stay
+// without a frame before the server ends it (default 60 s).
+func WithSecureSessionTimeout(d time.Duration) Option {
+	return func(o *options) error {
+		if d <= 0 {
+			return invalid("secure session timeout %v", d)
+		}
+		o.sessionTimeout = d
+		return nil
+	}
+}
+
 // WithRequestTimeout sets the wait for a client's TUNNELLING_ACK
 // (default 1 s).
 func WithRequestTimeout(d time.Duration) Option {
@@ -259,8 +277,8 @@ func WithRequestTimeout(d time.Duration) Option {
 }
 
 // WithQueueSize bounds the telegrams queued for each tunnelling
-// connection (default 128); when a queue is full, telegrams to that
-// client are dropped.
+// connection and, with routing, the routing indications waiting to be
+// sent (default 128); when a queue is full, telegrams are dropped.
 func WithQueueSize(n int) Option {
 	return func(o *options) error {
 		if n < 1 || n > 1<<16 {
@@ -272,8 +290,10 @@ func WithQueueSize(n int) Option {
 }
 
 // WithRoutingRate bounds the routing indications sent per second
-// (default 50; 0 disables the limit). Telegrams over the limit are
-// dropped and counted.
+// (default 50; 0 disables the limit): consecutive indications are at
+// least 1/n apart. Indications wait in a queue of WithQueueSize
+// telegrams for their turn and for the pause of a ROUTING_BUSY; when the
+// queue is full they are dropped and counted (OnDropped "routing_rate").
 func WithRoutingRate(n int) Option {
 	return func(o *options) error {
 		if n < 0 {
