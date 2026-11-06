@@ -216,6 +216,15 @@ func TestRoomSetpoints(t *testing.T) {
 	if s := p.Format(RoomSetpoints{Comfort: 1, Standby: -1, Economy: -2, Protection: -5}); s != "comfort=1 standby=-1 economy=-2 protection=-5 K" {
 		t.Errorf("275.101 Format = %q", s)
 	}
+	// Another value type is formatted the generic way.
+	if s := ty.Format(21.5); s != "21.5 °C" {
+		t.Errorf("Format(float64) = %q", s)
+	}
+	// The main type has no range: a value beyond the 2-octet float fails
+	// in its encoding.
+	if _, err := MustLookup("222").Encode(RoomSetpoints{Comfort: 1e9}); !errors.Is(err, knx.ErrInvalidValue) {
+		t.Errorf("222 Encode(1e9): %v", err)
+	}
 	if s := (RoomSetpoints{Comfort: 21, Standby: 19, Economy: 17}).String(); s != "comfort=21 standby=19 economy=17 protection=0" {
 		t.Errorf("String = %q", s)
 	}

@@ -180,10 +180,7 @@ func setpointsCodec(n int) codec {
 			}
 			out := make([]byte, 0, 2*n)
 			for i, f := range fields(&r) {
-				if err := checkRange(t, *f); err != nil {
-					return nil, fmt.Errorf("%s: %w", names[i], err)
-				}
-				raw, err := EncodeFloat16(*f)
+				raw, err := encodeFloat16In(t, *f)
 				if err != nil {
 					return nil, fmt.Errorf("%s: %w", names[i], err)
 				}

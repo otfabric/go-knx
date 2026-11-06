@@ -907,6 +907,10 @@ func TestReconnect(t *testing.T) {
 	if f.c.State() != knx.StateReconnecting {
 		t.Fatalf("state %s while reconnecting", f.c.State())
 	}
+	// A repeated DISCONNECT_REQUEST of the old channel while reconnecting
+	// is not answered again.
+	f.p.Send(f.client, &knxnetip.DisconnectRequest{Channel: f.ch, Control: f.p.HPAI()})
+	fakeknx.ExpectNone[*knxnetip.DisconnectResponse](p, 50*time.Millisecond)
 	if err := f.c.Send(ctx(t), groupWrite(1)); !errors.Is(err, knx.ErrConnectionLost) {
 		t.Fatalf("Send while reconnecting: %v", err)
 	}

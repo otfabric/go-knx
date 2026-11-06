@@ -553,16 +553,21 @@ func DecodeFloat16(raw uint16) (float64, error) {
 	return float64(m) * math.Ldexp(1, e) / 100, nil
 }
 
+// encodeFloat16In encodes f as a 2-octet float within the range of t.
+func encodeFloat16In(t *Type, f float64) (uint16, error) {
+	if err := checkRange(t, f); err != nil {
+		return 0, err
+	}
+	return EncodeFloat16(f)
+}
+
 var float16Codec = codec{
 	encode: func(t *Type, v any) ([]byte, error) {
 		f, err := toFloat(v)
 		if err != nil {
 			return nil, err
 		}
-		if err := checkRange(t, f); err != nil {
-			return nil, err
-		}
-		raw, err := EncodeFloat16(f)
+		raw, err := encodeFloat16In(t, f)
 		if err != nil {
 			return nil, err
 		}
