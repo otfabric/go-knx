@@ -33,6 +33,11 @@ const (
 	DefaultConfirmTimeout = 3 * time.Second
 	// DefaultQueueSize bounds the inbound telegram queue.
 	DefaultQueueSize = 256
+	// DefaultSessionKeepAlive is the idle time after which a KNX IP
+	// Secure session sends a SESSION_STATUS keep alive. Servers end a
+	// session idle for 60 s (SESSION_TIMEOUT); 30 s leaves room for one
+	// lost keep alive.
+	DefaultSessionKeepAlive = 30 * time.Second
 )
 
 // Option configures a [Conn].
@@ -61,6 +66,7 @@ type options struct {
 	reconnect         bool
 	reconnectMin      time.Duration
 	reconnectMax      time.Duration
+	sessionKeepAlive  time.Duration
 	stateFunc         func(knx.State, error)
 }
 
@@ -79,6 +85,7 @@ func defaultOptions() options {
 		queueSize:         DefaultQueueSize,
 		reconnectMin:      1 * time.Second,
 		reconnectMax:      30 * time.Second,
+		sessionKeepAlive:  DefaultSessionKeepAlive,
 	}
 }
 
@@ -205,6 +212,20 @@ func WithHeartbeat(interval, timeout time.Duration, attempts int) Option {
 			return invalid("heartbeat %v/%v/%d", interval, timeout, attempts)
 		}
 		o.heartbeatInterval, o.heartbeatTimeout, o.heartbeatAttempts = interval, timeout, attempts
+		return nil
+	}
+}
+
+// WithSessionKeepAlive sets the idle time after which a KNX IP Secure
+// session ([WithSecure]) sends a SESSION_STATUS keep alive (default
+// [DefaultSessionKeepAlive]). Servers end a session idle for 60 s, so it
+// must stay well below that.
+func WithSessionKeepAlive(d time.Duration) Option {
+	return func(o *options) error {
+		if d <= 0 {
+			return invalid("session keep alive %v", d)
+		}
+		o.sessionKeepAlive = d
 		return nil
 	}
 }

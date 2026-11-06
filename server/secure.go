@@ -266,20 +266,20 @@ func (s *Server) endSession(us *udpSession, cause error) {
 	}
 }
 
-// expireSessions ends UDP sessions without frames for the alive time.
+// expireSessions ends UDP sessions without frames for the session timeout.
 func (s *Server) expireSessions() {
 	s.mu.Lock()
 	var stale []*udpSession
 	for _, us := range s.usessions {
 		us.ss.mu.Lock()
-		if time.Since(us.ss.lastSeen) > s.o.aliveTime {
+		if time.Since(us.ss.lastSeen) > s.o.sessionTimeout {
 			stale = append(stale, us)
 		}
 		us.ss.mu.Unlock()
 	}
 	s.mu.Unlock()
 	for _, us := range stale {
-		s.endSession(us, fmt.Errorf("%w: secure session idle for %v", knx.ErrConnectionLost, s.o.aliveTime))
+		s.endSession(us, fmt.Errorf("%w: secure session idle for %v", knx.ErrConnectionLost, s.o.sessionTimeout))
 	}
 }
 

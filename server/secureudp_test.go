@@ -103,17 +103,51 @@ func TestSecureSessionUDP(t *testing.T) {
 	eventually(t, "closed session", func() bool { return m.get(func(m *metrics) int { return m.dropped["session"] }) >= 2 })
 }
 
-// TestSecureSessionUDPExpiry: an idle UDP session ends with its tunnel.
+// TestSecureSessionUDPExpiry: a UDP session idle for the session timeout
+// ends with its tunnel, although the tunnel's alive time is longer.
 func TestSecureSessionUDPExpiry(t *testing.T) {
-	s, _ := start(t, secureOptions(), server.WithConnectionAliveTime(300*time.Millisecond))
+	s, _ := start(t, secureOptions(), server.WithConnectionAliveTime(time.Hour),
+		server.WithSecureSessionTimeout(300*time.Millisecond))
 	cred, _ := secure.NewCredentials(2, "pw2", "")
 	c, err := tunnel.Dial(ctx(t), addrOf(s).String(), tunnel.WithSecure(cred), tunnel.WithUDP(),
-		tunnel.WithHeartbeat(time.Hour, time.Second, 1))
+		tunnel.WithHeartbeat(time.Hour, time.Second, 1), tunnel.WithSessionKeepAlive(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
 	eventually(t, "the connection to end", func() bool { return len(s.Connections()) == 0 })
+}
+
+// TestSecureSessionKeepAlive: over TCP and UDP, the client's keep alives
+// hold a session open past the session timeout; without them the
+// session ends.
+func TestSecureSessionKeepAlive(t *testing.T) {
+	for _, udp := range []bool{false, true} {
+		for _, keep := range []time.Duration{100 * time.Millisecond, time.Hour} {
+			s, _ := start(t, secureOptions(), server.WithConnectionAliveTime(time.Hour),
+				server.WithSecureSessionTimeout(400*time.Millisecond))
+			cred, _ := secure.NewCredentials(2, "pw2", "")
+			opts := []tunnel.Option{tunnel.WithSecure(cred), tunnel.WithHeartbeat(time.Hour, time.Second, 1), tunnel.WithSessionKeepAlive(keep)}
+			if udp {
+				opts = append(opts, tunnel.WithUDP())
+			} else {
+				opts = append(opts, tunnel.WithTCP())
+			}
+			c, err := tunnel.Dial(ctx(t), addrOf(s).String(), opts...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if keep == time.Hour {
+				eventually(t, "the idle session to end", func() bool { return len(s.Connections()) == 0 })
+			} else {
+				time.Sleep(time.Second)
+				if n := len(s.Connections()); n != 1 || c.State() != knx.StateConnected {
+					t.Errorf("udp %v: %d connections, tunnel %v", udp, n, c.State())
+				}
+			}
+			_ = c.Close()
+		}
+	}
 }
 
 // TestSecureSessionUDPNoServer: a SESSION_REQUEST nobody answers.

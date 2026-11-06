@@ -58,6 +58,9 @@ func (s *scripted) respond(device secure.Key) {
 	s.write(&knxnetip.SessionResponse{SessionID: 5, PublicKey: s.kp.Public, MAC: secure.ResponseMAC(device, 5, s.req.PublicKey, s.kp.Public)})
 }
 
+// testKeepAlive is the keep alive interval of the sessions of secureDial.
+var testKeepAlive = DefaultSessionKeepAlive
+
 func secureDial(t *testing.T, cred secure.Credentials, script func(s *scripted)) (*secureTransport, error) {
 	t.Helper()
 	st, done, err := secureDialAsync(t, cred, script)
@@ -88,7 +91,7 @@ func secureDialAsync(t *testing.T, cred secure.Credentials, script func(s *scrip
 		t.Fatal(err)
 	}
 	srv := netip.MustParseAddrPort(ln.Addr().String())
-	st, err := handshake(&tcpTransport{c: c, server: srv}, srv, knxnetip.TCPHPAI(), cred, 2*time.Second)
+	st, err := handshake(&tcpTransport{c: c, server: srv}, srv, knxnetip.TCPHPAI(), cred, 2*time.Second, testKeepAlive)
 	if err != nil {
 		_ = c.Close()
 	}
@@ -135,9 +138,8 @@ func TestHandshakeErrors(t *testing.T) {
 }
 
 func TestSecureTransport(t *testing.T) {
-	old := sessionKeepAlive
-	sessionKeepAlive = 50 * time.Millisecond
-	defer func() { sessionKeepAlive = old }()
+	testKeepAlive = 50 * time.Millisecond
+	defer func() { testKeepAlive = DefaultSessionKeepAlive }()
 	dev, _ := secure.DeviceAuthenticationCode("dev")
 	cred, _ := secure.NewCredentials(2, "pw", "dev")
 	got := make(chan knxnetip.Message, 8)
@@ -160,6 +162,9 @@ func TestSecureTransport(t *testing.T) {
 			got <- m
 		}
 		s.writeWrapped(&knxnetip.SessionStatus{Status: knxnetip.SessionKeepAlive})
+		// A frame with a valid header and an unparsable body (a
+		// SECURE_WRAPPER of two octets) is skipped; the stream goes on.
+		_, _ = s.c.Write([]byte{6, 0x10, 0x09, 0x50, 0, 8, 0, 0})
 		// A frame that fails authentication is dropped.
 		bad, _ := s.sess.Wrap([]byte{6, 0x10, 2, 9, 0, 6})
 		bad.MAC[0] ^= 1

@@ -18,6 +18,9 @@ const (
 	// connection without a CONNECTIONSTATE_REQUEST for this long is
 	// closed.
 	DefaultConnectionAliveTime = 120 * time.Second
+	// DefaultSecureSessionTimeout is SESSION_TIMEOUT: a KNX IP Secure
+	// session without a frame for this long is ended.
+	DefaultSecureSessionTimeout = 60 * time.Second
 	// DefaultQueueSize bounds the telegrams queued for each tunnelling
 	// connection.
 	DefaultQueueSize = 128
@@ -46,6 +49,7 @@ type options struct {
 	routing          bool
 	group            string
 	aliveTime        time.Duration
+	sessionTimeout   time.Duration
 	reqTimeout       time.Duration
 	queueSize        int
 	routingRate      int
@@ -58,22 +62,23 @@ type options struct {
 
 func defaultOptions() options {
 	return options{
-		listen:      fmt.Sprintf(":%d", knxnetip.Port),
-		name:        "go-knx server",
-		address:     knx.MustParseIndividualAddress("15.15.0"),
-		tunnels:     []knx.IndividualAddress{knx.MustParseIndividualAddress("15.15.250")},
-		serial:      [6]byte{0x00, 0xFA, 0x00, 0x00, 0x00, 0x01},
-		mac:         [6]byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01},
-		discovery:   true,
-		tcp:         true,
-		group:       "224.0.23.12:3671",
-		aliveTime:   DefaultConnectionAliveTime,
-		reqTimeout:  time.Second,
-		queueSize:   DefaultQueueSize,
-		routingRate: DefaultRoutingRate,
-		logger:      knx.NopLogger(),
-		metrics:     knx.NopMetrics{},
-		ttl:         16,
+		listen:         fmt.Sprintf(":%d", knxnetip.Port),
+		name:           "go-knx server",
+		address:        knx.MustParseIndividualAddress("15.15.0"),
+		tunnels:        []knx.IndividualAddress{knx.MustParseIndividualAddress("15.15.250")},
+		serial:         [6]byte{0x00, 0xFA, 0x00, 0x00, 0x00, 0x01},
+		mac:            [6]byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01},
+		discovery:      true,
+		tcp:            true,
+		group:          "224.0.23.12:3671",
+		aliveTime:      DefaultConnectionAliveTime,
+		sessionTimeout: DefaultSecureSessionTimeout,
+		reqTimeout:     time.Second,
+		queueSize:      DefaultQueueSize,
+		routingRate:    DefaultRoutingRate,
+		logger:         knx.NopLogger(),
+		metrics:        knx.NopMetrics{},
+		ttl:            16,
 	}
 }
 
@@ -242,6 +247,19 @@ func WithConnectionAliveTime(d time.Duration) Option {
 			return invalid("alive time %v", d)
 		}
 		o.aliveTime = d
+		return nil
+	}
+}
+
+// WithSecureSessionTimeout sets how long a KNX IP Secure session
+// ([WithSecure], [WithSecureRouting] unicast sessions included) may stay
+// without a frame before the server ends it (default 60 s).
+func WithSecureSessionTimeout(d time.Duration) Option {
+	return func(o *options) error {
+		if d <= 0 {
+			return invalid("secure session timeout %v", d)
+		}
+		o.sessionTimeout = d
 		return nil
 	}
 }

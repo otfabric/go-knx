@@ -126,16 +126,25 @@ func (s *Server) serveTCP(t *tcpConn) {
 	}()
 	ta := net.TCPAddrFromAddrPort(t.remote)
 	for {
-		// A client without traffic or heartbeat for the alive time is gone.
-		_ = t.c.SetReadDeadline(time.Now().Add(s.o.aliveTime))
+		// A client without traffic or heartbeat for the alive time is
+		// gone; a secure session ends after the session timeout.
+		idle := s.o.aliveTime
+		if s.o.secure != nil {
+			idle = min(idle, s.o.sessionTimeout)
+		}
+		_ = t.c.SetReadDeadline(time.Now().Add(idle))
 		b, err := knxnetip.ReadFrame(t.c)
 		if err != nil {
 			return
 		}
 		m, err := knxnetip.Parse(b)
 		if err != nil {
+			// ReadFrame consumed the frame by the total length of its
+			// valid header, so the stream is still aligned: drop the
+			// frame and read on. A bad header ends the connection above.
 			s.o.metrics.OnDecodeError(ta, err)
-			return // a stream cannot resynchronise
+			s.o.logger.Debugf("server: drop frame from %s: %v", t.remote, err)
+			continue
 		}
 		s.o.metrics.OnFrameReceived(ta, uint16(m.Service()), len(b))
 		if s.o.secure != nil {

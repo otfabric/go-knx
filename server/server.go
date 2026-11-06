@@ -986,7 +986,7 @@ func (s *Server) disconnect(c *tconn, notify bool, cause error) {
 // janitor closes connections without heartbeat.
 func (s *Server) janitor() {
 	defer s.wg.Done()
-	tick := max(min(s.o.aliveTime/10, time.Second),
+	tick := max(min(min(s.o.aliveTime, s.o.sessionTimeout)/10, time.Second),
 		// NewTicker panics on 0
 		time.Millisecond)
 	t := time.NewTicker(tick)

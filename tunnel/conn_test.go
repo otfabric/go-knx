@@ -397,6 +397,7 @@ func TestDialErrors(t *testing.T) {
 		"heartbeat timeout": {"127.0.0.1:1", []tunnel.Option{tunnel.WithHeartbeat(time.Second, 0, 1)}},
 		"confirm":           {"127.0.0.1:1", []tunnel.Option{tunnel.WithConfirm(true, 0)}},
 		"queue":             {"127.0.0.1:1", []tunnel.Option{tunnel.WithQueueSize(0)}},
+		"keep alive":        {"127.0.0.1:1", []tunnel.Option{tunnel.WithSessionKeepAlive(0)}},
 		"queue max":         {"127.0.0.1:1", []tunnel.Option{tunnel.WithQueueSize(1<<16 + 1)}},
 		"reconnect":         {"127.0.0.1:1", []tunnel.Option{tunnel.WithReconnect(time.Second, time.Millisecond)}},
 		"reconnect zero":    {"127.0.0.1:1", []tunnel.Option{tunnel.WithReconnect(0, time.Second)}},
@@ -859,10 +860,18 @@ func TestHeartbeatFailure(t *testing.T) {
 func TestServerDisconnect(t *testing.T) {
 	leak.Check(t)
 	f := dial(t)
-	// Another channel's disconnect is ignored.
+	// Another channel's disconnect is answered with E_CONNECTION_ID and
+	// leaves the tunnel up.
 	f.p.Send(f.client, &knxnetip.DisconnectRequest{Channel: f.ch + 1, Control: f.p.HPAI()})
-	f.p.Send(f.client, &knxnetip.DisconnectRequest{Channel: f.ch, Control: f.p.HPAI()})
 	resp, _ := fakeknx.Expect[*knxnetip.DisconnectResponse](f.p, wait)
+	if resp.Channel != f.ch+1 || resp.Status != knxnetip.StatusConnectionID {
+		t.Fatalf("response to a foreign channel %+v", resp)
+	}
+	if f.c.State() != knx.StateConnected {
+		t.Fatalf("state %v after a foreign disconnect", f.c.State())
+	}
+	f.p.Send(f.client, &knxnetip.DisconnectRequest{Channel: f.ch, Control: f.p.HPAI()})
+	resp, _ = fakeknx.Expect[*knxnetip.DisconnectResponse](f.p, wait)
 	if resp.Channel != f.ch || resp.Status != knxnetip.StatusNoError {
 		t.Fatalf("response %+v", resp)
 	}

@@ -16,10 +16,6 @@ import (
 	"github.com/otfabric/go-knx/secure"
 )
 
-// sessionKeepAlive is the idle time after which the client sends a
-// SESSION_STATUS keep alive; servers end sessions idle for 60 s.
-var sessionKeepAlive = 45 * time.Second
-
 // secureTransport carries the frames of a TCP connection or a UDP socket
 // in a KNX IP Secure session: every frame is sent and received in a
 // SECURE_WRAPPER. Over UDP, frames from other hosts are dropped.
@@ -42,7 +38,7 @@ var errSessionClosed = errors.New("tunnel: the server closed the secure session"
 // endpoint: the key exchange (SESSION_REQUEST with the client's control
 // endpoint hpai, SESSION_RESPONSE), then the user's authentication
 // (SESSION_AUTHENTICATE, SESSION_STATUS).
-func handshake(t transport, server netip.AddrPort, hpai knxnetip.HPAI, cred secure.Credentials, timeout time.Duration) (*secureTransport, error) {
+func handshake(t transport, server netip.AddrPort, hpai knxnetip.HPAI, cred secure.Credentials, timeout, keepAlive time.Duration) (*secureTransport, error) {
 	kp, err := secure.NewKeyPair()
 	if err != nil {
 		return nil, err
@@ -107,7 +103,7 @@ func handshake(t transport, server netip.AddrPort, hpai knxnetip.HPAI, cred secu
 		break
 	}
 	st.mu.Lock()
-	st.idle = sessionKeepAlive
+	st.idle = keepAlive
 	st.keepalive = time.AfterFunc(st.idle, st.sendKeepAlive)
 	st.mu.Unlock()
 	return st, nil
@@ -188,9 +184,9 @@ func (t *secureTransport) readFrom(buf []byte) (int, netip.AddrPort, error) {
 		}
 		m, err := knxnetip.Parse(t.buf[:n])
 		if err != nil {
-			if t.inner.stream() {
-				return 0, from, err
-			}
+			// Over TCP the frame was read by the total length of its
+			// valid header, so the stream stays aligned: drop it like a
+			// datagram. A bad header fails in the transport's read.
 			continue
 		}
 		frame, err := t.open(m)

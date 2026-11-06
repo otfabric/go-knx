@@ -19,6 +19,11 @@ Every error matches one of the sentinels of the root package with
 | `knx.ErrSecurity` | A KNX IP Secure or KNX Data Secure failure: a tag that does not verify, a replayed sequence number, a missing key. Secure connections never fall back to plain ones | secure, datasecure, keyring |
 | `keyring.ErrSignature` | A keyring file whose signature does not verify: the password is wrong or the file was modified. Nothing of the file is used. Matches `knx.ErrSecurity` | `keyring.Parse`, `keyring.LoadFile` |
 
+No operation is retried implicitly. `ErrConnectionLost` or
+`ErrNotConfirmed` from `tunnel.Conn.Send` leaves open whether the frame
+reached the bus; after a reconnect (`tunnel.WithReconnect`) it is not
+resent on the new channel. Repeat it only where that is safe.
+
 `*knxnetip.StatusError` carries the service and the status code
 (`knxnetip.StatusOf(err)`); it matches `ErrRejected`, and `ErrBusy` for the
 connection-exhaustion codes. `dpt.ErrFloat16Invalid` is DPT 9's "invalid

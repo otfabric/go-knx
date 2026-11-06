@@ -104,7 +104,10 @@ waits for its L_Data.con (3 s) unless `WithConfirm(false)`.
 - TCP: the same port accepts KNXnet/IP over TCP; a TCP connection carries
   the frames of one client, its tunnelling or device management
   connections end when it closes, and at most (tunnelling addresses + 4)
-  TCP connections are open at a time.
+  TCP connections are open at a time. A frame whose header is valid but
+  whose body does not parse is dropped and the connection kept; a bad
+  header closes it. Secure sessions without a frame for 60 s end
+  (`WithSecureSessionTimeout`).
 - Busmonitor connections receive L_Busmon.ind (TP1 frame, status,
   timestamp) of every standard frame. Busmonitor and link layer
   tunnelling exclude each other (E_NO_MORE_CONNECTIONS), as the standard

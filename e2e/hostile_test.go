@@ -750,8 +750,9 @@ func TestHostileSecureSession(t *testing.T) {
 
 	t.Run("half-open sessions", func(t *testing.T) {
 		// Two tunnelling addresses: at most 6 sessions over UDP. Peers
-		// that open sessions and go silent hold them until the alive time.
-		_, addr := startServer(t, server.WithConnectionAliveTime(alive), server.WithSecure(dev, users))
+		// that open sessions and go silent hold them until the session
+		// timeout.
+		_, addr := startServer(t, server.WithSecureSessionTimeout(alive), server.WithSecure(dev, users))
 		for range 8 {
 			kp, _ := secure.NewKeyPair()
 			h := udpSocket(t, loopback)
