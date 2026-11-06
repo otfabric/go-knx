@@ -27,7 +27,7 @@ the implementation versions. Nothing here is a conformance claim
 | KNXnet/IP frames (core, device management, tunnelling, routing, secure bodies) | knxnetip | complete | 100 %, 45 golden frames, fuzzed | decoded every peer's frames |
 | cEMI (L_Data, L_Busmon, L_Raw, M_Prop*, M_FuncProp*, M_Reset) | cemi | complete | 100 %, fuzzed | L_Data exchanged with every peer |
 | TPCI/APCI | apdu | complete (all services named; group values decoded) | 100 %, fuzzed | — |
-| Datapoint types (209 subtypes) | dpt | complete for the listed families | 99 %, exhaustive DPT 9, xknx vectors | 12 vectors × every implementation |
+| Datapoint types (239 subtypes: main types 1–22, 26, 27, 29, 217, 222, 232, 234, 242, 251, 275) | dpt | complete for the listed families; of the 3/7/2 v2.2 additions (go-knx#26): 5.100, 15.000, 20.107, 21.002, 21.100–21.106, 21.601, 21.1000, 21.1001, 21.1010, 21.1200, 21.1201, 22.100, 22.101, 22.103, 22.1000, 22.1010, 27.001, 217.001, 222.100/101, 234.001/002, 275.100/101; the others of that issue are not registered yet | 99 %, exhaustive DPT 9, xknx vectors | 12 vectors × every implementation |
 | Discovery: search, extended search, description | discovery | complete | 92 % | Calimero, knxd, go-knx servers; Calimero tools, xknx, KNXUltimate clients find go-knx |
 | Tunnelling client (UDP, v1, NAT, reconnect, v2 address request) | tunnel | complete | 96 % | Calimero 3.0-M1, knxd 0.14.73 |
 | Tunnelling over TCP (v2), feature services | tunnel, server | complete (client and server) | e2e, unit | go-knx client → Calimero server (connect, feature get, write, read); Calimero tools → go-knx server (write, read, describe over TCP) |

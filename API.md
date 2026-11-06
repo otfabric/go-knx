@@ -69,4 +69,4 @@ Pure encode and decode, with no I/O and nothing to close.
 | `knxnetip` | KNXnet/IP frames: header, HPAI, DIBs, core, tunnelling, routing and secure bodies |
 | `cemi` | cEMI frames, `LData` |
 | `apdu` | TPCI and APCI, `TPDU` |
-| `dpt` | Datapoint types: `Get(id)` returns a `*Type`, which encodes and decodes application values |
+| `dpt` | Datapoint types: `Get(id)` returns a `*Type`, which encodes and decodes application values; composite values are `Control`, `Step`, `TimeOfDay`, `Date`, `DateTime`, `SceneControl`, `Enum`, `RGB`, `RGBW`, `XYY`, `AccessData` (DPT 15), `OnOffInfo` (27), `Version` (217) and `RoomSetpoints` (222, 275) |

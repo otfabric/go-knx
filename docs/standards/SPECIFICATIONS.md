@@ -35,7 +35,7 @@ Conformance claims: [CONFORMANCE.md](CONFORMANCE.md).
 | SECURE_WRAPPER, SESSION_*, TIMER_NOTIFY frames | `knxnetip`, `secure` | 3/8/9 KNXnet/IP Secure; AN159 | Encoded, sealed and opened (public sources) |
 | cEMI L_Data, L_Busmon, L_Raw, M_Prop*, M_FuncProp*, M_Reset | `cemi` | 3/6/3 EMI/IMI, cEMI clauses | |
 | TPCI, APCI, group value services | `apdu` | 3/3/4 Transport layer; 3/3/7 Application layer | |
-| Datapoint types 1–29, 232, 242, 251 | `dpt` | 3/7/2 Datapoint Types | Only subtypes with published semantics are registered |
+| Datapoint types 1–22, 26, 27, 29, 217, 222, 232, 234, 242, 251, 275 | `dpt` | 3/7/2 Datapoint Types | Only subtypes with published semantics are registered; the bits of the DPT 21/22 sets are kept as a number, not named |
 
 ## Sources actually used
 

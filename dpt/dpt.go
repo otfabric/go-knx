@@ -22,7 +22,7 @@
 //	KindFloat     float64              DPT 9, 14, scaled 5/7/8/13 subtypes
 //	KindTime      TimeOfDay            DPT 10
 //	KindDate      Date                 DPT 11
-//	KindString    string               DPT 16
+//	KindString    string               DPT 16, 234
 //	KindScene     uint8                DPT 17
 //	KindSceneControl SceneControl      DPT 18
 //	KindDateTime  DateTime             DPT 19
@@ -31,6 +31,10 @@
 //	KindRGB       RGB                  DPT 232
 //	KindRGBW      RGBW                 DPT 251
 //	KindXYY       XYY                  DPT 242
+//	KindAccess    AccessData           DPT 15
+//	KindOnOffInfo OnOffInfo            DPT 27
+//	KindVersion   Version              DPT 217
+//	KindSetpoints RoomSetpoints        DPT 222, 275
 //
 // Encode accepts these types and, where unambiguous, convertible ones (any
 // Go integer or float for a number, a name for an enumeration).
@@ -121,9 +125,13 @@ const (
 	KindRGB
 	KindRGBW
 	KindXYY
+	KindAccess
+	KindOnOffInfo
+	KindVersion
+	KindSetpoints
 )
 
-var kindNames = [...]string{"bool", "control", "step", "char", "unsigned", "signed", "float", "time", "date", "string", "scene", "scene-control", "datetime", "enum", "bits", "rgb", "rgbw", "xyY"}
+var kindNames = [...]string{"bool", "control", "step", "char", "unsigned", "signed", "float", "time", "date", "string", "scene", "scene-control", "datetime", "enum", "bits", "rgb", "rgbw", "xyY", "access", "onoff-info", "version", "setpoints"}
 
 // String names the kind.
 func (k Kind) String() string {

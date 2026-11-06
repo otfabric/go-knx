@@ -56,6 +56,8 @@ var goType = map[Kind]reflect.Type{
 	KindString: reflect.TypeFor[string](), KindScene: reflect.TypeFor[uint8](), KindSceneControl: reflect.TypeFor[SceneControl](),
 	KindDateTime: reflect.TypeFor[DateTime](), KindEnum: reflect.TypeFor[Enum](), KindBits: reflect.TypeFor[uint64](),
 	KindRGB: reflect.TypeFor[RGB](), KindRGBW: reflect.TypeFor[RGBW](), KindXYY: reflect.TypeFor[XYY](),
+	KindAccess: reflect.TypeFor[AccessData](), KindOnOffInfo: reflect.TypeFor[OnOffInfo](), KindVersion: reflect.TypeFor[Version](),
+	KindSetpoints: reflect.TypeFor[RoomSetpoints](),
 }
 
 // samples returns values of t that must survive an encode/decode round
@@ -113,6 +115,9 @@ func samples(t *Type) []any {
 	case KindDate:
 		return []any{Date{1990, 1, 1}, Date{1999, 12, 31}, Date{2000, 1, 1}, Date{2026, 10, 29}, Date{2089, 12, 31}}
 	case KindString:
+		if t.ID.Main == 234 {
+			return []any{"de", "NL", "zz"}
+		}
 		v := []any{"", "KNX is OK", "abcdefghijklmn"}
 		if t.ID.Sub == 1 {
 			v = append(v, "Grüße ÿ")
@@ -146,6 +151,18 @@ func samples(t *Type) []any {
 		return []any{RGBW{}, RGBW{R: 1, G: 2, B: 3, W: 4, ValidR: true, ValidW: true}, RGBW{R: 255, G: 255, B: 255, W: 255, ValidR: true, ValidG: true, ValidB: true, ValidW: true}}
 	case KindXYY:
 		return []any{XYY{}, XYY{X: 1, Y: 1, Brightness: 100, ColorValid: true, BrightnessValid: true}, XYY{X: 0.2, Y: 0.6, Brightness: 20, ColorValid: true}}
+	case KindAccess:
+		return []any{AccessData{}, AccessData{Code: 999999, Error: true, Permission: true, RightToLeft: true, Encrypted: true, Index: 15}, AccessData{Code: 1234, Permission: true, Index: 2}}
+	case KindOnOffInfo:
+		return []any{OnOffInfo{}, OnOffInfo{Valid: 0xFFFF, On: 0xFFFF}, OnOffInfo{Valid: 0x0003, On: 0x0001}}
+	case KindVersion:
+		return []any{Version{}, Version{Magic: 31, Version: 31, Revision: 63}, Version{Version: 1, Revision: 2}}
+	case KindSetpoints:
+		v := []any{RoomSetpoints{}, RoomSetpoints{Comfort: 21, Standby: 19.5, Economy: 17}, RoomSetpoints{Comfort: -3, Standby: -2.5, Economy: 670433.28}}
+		if t.Bits == 64 {
+			v = append(v, RoomSetpoints{Comfort: 22, Standby: 20, Economy: 18, Protection: 7})
+		}
+		return v
 	}
 	return nil
 }
@@ -1149,7 +1166,7 @@ func TestLookup(t *testing.T) {
 			t.Errorf("Lookup(%q) = %v, %v", s, got, err)
 		}
 	}
-	for _, s := range []string{"9.999", "9.000", "99", "99.001", "15.000"} {
+	for _, s := range []string{"9.999", "9.000", "99", "99.001", "15.001"} {
 		if _, err := Lookup(s); !errors.Is(err, knx.ErrUnsupported) {
 			t.Errorf("Lookup(%q): %v, want ErrUnsupported", s, err)
 		}

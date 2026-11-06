@@ -121,3 +121,69 @@ type XYY struct {
 	ColorValid      bool
 	BrightnessValid bool
 }
+
+// AccessData is a DPT 15.000 value: an access identification code of six
+// decimal digits (sent as BCD, most significant digit first) with its
+// detection flags and an index.
+type AccessData struct {
+	// Code is the identification number 0..999999.
+	Code uint32
+	// Error is E: the detection failed.
+	Error bool
+	// Permission is P: access is granted.
+	Permission bool
+	// RightToLeft is D, the reading direction of the code: clear left to
+	// right, set right to left.
+	RightToLeft bool
+	// Encrypted is C: the code is encrypted.
+	Encrypted bool
+	// Index is 0..15.
+	Index uint8
+}
+
+// String returns "012345 index=3", followed by the names of the set flags
+// (error, permission, right-to-left, encrypted).
+func (a AccessData) String() string {
+	s := fmt.Sprintf("%06d index=%d", a.Code, a.Index)
+	for i, set := range [...]bool{a.Error, a.Permission, a.RightToLeft, a.Encrypted} {
+		if set {
+			s += " " + accessFlags[i]
+		}
+	}
+	return s
+}
+
+var accessFlags = [...]string{"error", "permission", "right-to-left", "encrypted"}
+
+// OnOffInfo is a DPT 27.001 value: the on/off state of up to 16 outputs.
+// Bit n of each field is output n+1.
+type OnOffInfo struct {
+	// Valid is the mask: a set bit means the output's On bit is valid.
+	Valid uint16
+	// On is the state: a set bit means the output is on.
+	On uint16
+}
+
+// String returns "valid=0x0003 on=0x0001".
+func (o OnOffInfo) String() string { return fmt.Sprintf("valid=0x%04X on=0x%04X", o.Valid, o.On) }
+
+// Version is a DPT 217.001 value: a magic number (0..31), a version
+// (0..31) and a revision (0..63).
+type Version struct {
+	Magic, Version, Revision uint8
+}
+
+// String returns "magic.version.revision", for example "0.1.2".
+func (v Version) String() string { return fmt.Sprintf("%d.%d.%d", v.Magic, v.Version, v.Revision) }
+
+// RoomSetpoints is a DPT 222 (comfort, standby, economy) or DPT 275
+// (with building protection) value: room temperature setpoints in °C, or
+// setpoint shifts in K, each a 2-octet float. Protection is 0 for DPT 222.
+type RoomSetpoints struct {
+	Comfort, Standby, Economy, Protection float64
+}
+
+// String returns "comfort=21 standby=19 economy=17 protection=7".
+func (r RoomSetpoints) String() string {
+	return fmt.Sprintf("comfort=%v standby=%v economy=%v protection=%v", r.Comfort, r.Standby, r.Economy, r.Protection)
+}
