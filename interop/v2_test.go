@@ -47,6 +47,7 @@ func startPeerServer(t *testing.T, peer, net string) (name, udpAddr, tcpAddr str
 func TestGoKNXClientTCP(t *testing.T) {
 	requireDocker(t)
 	peer := "calimero-server"
+	requirePeer(t, peer)
 	_, _, tcpAddr := startPeerServer(t, peer, network(t))
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -81,6 +82,7 @@ func TestGoKNXClientTCP(t *testing.T) {
 func TestGoKNXDeviceManagement(t *testing.T) {
 	requireDocker(t)
 	peer := "calimero-server"
+	requirePeer(t, peer)
 	_, udpAddr, tcpAddr := startPeerServer(t, peer, network(t))
 	for _, mode := range []struct {
 		name string
@@ -117,6 +119,7 @@ func TestGoKNXDeviceManagement(t *testing.T) {
 func TestGoKNXBusmonitor(t *testing.T) {
 	requireDocker(t)
 	peer := "knxd"
+	requirePeer(t, peer)
 	net := network(t)
 	name, udpAddr, _ := startPeerServer(t, peer, net)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

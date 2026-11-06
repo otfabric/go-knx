@@ -26,6 +26,13 @@ make test-multicast # Linux: the multicast tests must run, not skip
 make fuzz           # every fuzz target, FUZZTIME=30s each
 make interop-images # build the knx-interop adapter images (Docker)
 make interop        # go-knx against Calimero, knxd, xknx, KNXUltimate
+
+# Some peers only, or another build of an image
+KNX_INTEROP_ADAPTERS=calimero-server,xknx make interop
+KNX_INTEROP_IMAGE_XKNX=ghcr.io/otfabric/knx-interop-xknx:dev make interop
+
+# Against the latest published go-knx (the Self-interop workflow, run by hand)
+KNX_INTEROP_ADAPTERS=otfabric KNX_INTEROP_OTFABRIC_IMAGE=ghcr.io/otfabric/knx-interop-otfabric:latest make interop
 ```
 
 ## Rules

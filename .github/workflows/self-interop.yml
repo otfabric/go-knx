@@ -1,0 +1,73 @@
+name: Self-interop
+run-name: "Self-interop against knx-interop-otfabric:latest, by @${{ github.actor }} on ${{ github.ref_name }}"
+
+# Manual only. This commit against the latest published image of go-knx itself
+# (ghcr.io/otfabric/knx-interop-otfabric:latest, from otfabric/knx-interop),
+# in both roles of the generic interop tests (interop/: its client against the
+# image's server, the image's client against this commit's server, plain and
+# secure). The e2e tests run both sides from one commit; this one finds a
+# change on the wire that breaks an earlier release. xknx still observes and
+# answers where the tests need a third party.
+#
+# Not part of the Interop workflow, which runs against the independent references,
+# and never a required check. Nothing is pinned or committed, so it cannot ask for
+# a release. A pass is not independent verification (INTEROPERABILITY.md).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/otfabric/knx-interop-otfabric:latest
+
+jobs:
+  self-interop:
+    name: This commit against knx-interop-otfabric:latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Pull the image
+        run: docker pull "${IMAGE}"
+
+      - name: Versions
+        id: versions
+        env:
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref_name }}
+        run: |
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE}")
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Versions"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| go-knx under test | \`${REF}\` at \`${SHA}\` (\`$(git describe --tags --always)\`) |"
+            echo "| Go | \`$(go env GOVERSION)\` |"
+            echo "| Image | \`${IMAGE}\` |"
+            echo "| Image digest | \`${digest}\` |"
+            docker run --rm "${IMAGE}" capabilities | jq -r '"| go-knx in the image | `\(.upstream.version)` at `\(.upstream.revision)` (adapter \(.adapterVersion)) |"'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Run the interop suite
+        env:
+          KNX_INTEROP_OTFABRIC_IMAGE: ${{ steps.versions.outputs.digest }}
+          KNX_INTEROP_ADAPTERS: otfabric
+          KNX_REQUIRE_INTEROP: "1"
+        run: |
+          set -o pipefail
+          GOWORK=off go test -v -tags interop -count=1 -timeout 25m ./interop/ 2>&1 | tee interop.log
+          {
+            echo "## Result"
+            echo
+            echo "- $(grep -c -- '--- PASS' interop.log) passed, $(grep -c -- '--- SKIP' interop.log) skipped, $(grep -c -- '--- FAIL' interop.log) failed"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
