@@ -48,7 +48,7 @@ tests against independent stacks live in
 
 Interoperability, verified against Calimero 3.0-M1, knxd 0.14.73, xknx
 4.1.1, KNXUltimate 6.3.2 and cB-Sigma knx v0.2.0 with its simulator knx-sim
-(knx-interop v0.9.1): [INTEROPERABILITY.md](INTEROPERABILITY.md).
+(knx-interop v0.9.2): [INTEROPERABILITY.md](INTEROPERABILITY.md).
 
 ## Install
 

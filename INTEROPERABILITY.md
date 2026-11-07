@@ -17,19 +17,21 @@ go-knx is tested against independent KNX implementations in two places:
    go-knx used as a library from the host, against the knx-interop images,
    through published UDP ports with route back (NAT) endpoints.
 
-## Results (2026-11-06, knx-interop v0.9.0)
+## Results (2026-11-07, knx-interop v0.9.2)
 
-`make interop-matrix` on arm64: 599 pass, 13 known differences of other
-stacks, 120 unsupported, 0 fail; of the results with go-knx in a role, 446
+`make interop-matrix` on arm64: 609 pass, 13 known differences of other
+stacks, 110 unsupported, 0 fail; of the results with go-knx in a role, 456
 pass, 2 known differences (Calimero tools' Data Secure through a tunnel,
-which needs a surrogate) and 36 unsupported. `make interop` (host-based): 67
-of 67 pass.
+which needs a surrogate) and 34 unsupported. `make interop` (host-based): 72
+of 72 pass. Since knx-interop v0.9.2, knxd runs its TCP tunnelling server
+(`tcptunsrv`, configured in knxd's config file), and go-knx's TCP client
+passes against it.
 
 | Peer (version) | go-knx as client | go-knx as server | Routing with go-knx |
 |---|---|---|---|
 | Calimero server 3.0-M1 | discovery, description, connect, confirmed write, read, inbound telegrams, 12 DPT vectors: pass | — | — |
 | Calimero tools 3.0-M1 | — | discovery, description, connect, write, read, 12 DPT vectors: pass (also through NAT) | both directions: pass |
-| knxd 0.14.73 | discovery, description, connect, confirmed write, read (answered by xknx through knxd), inbound telegrams, 12 DPT vectors: pass | connect, write, read, 12 DPT vectors: pass (also through NAT) | both directions: pass |
+| knxd 0.14.73 | discovery, description, connect, confirmed write, read (answered by xknx through knxd), inbound telegrams, 12 DPT vectors: pass; over TCP: connect, confirmed write seen by xknx, inbound write, read answered by xknx: pass | connect, write, read, 12 DPT vectors: pass (also through NAT) | both directions: pass |
 | xknx 4.1.1 | observer and responder in every scenario | discovery, description, connect, write, read, 12 DPT vectors: pass (also through NAT) | both directions: pass |
 | KNXUltimate 6.3.2 | — | discovery, description, connect, write, read, 12 DPT vectors: pass | both directions: pass |
 | cB-Sigma knx v0.2.0 | — (client only) | discovery, description, connect, write, read, 12 DPT vectors, TCP write and read, busmonitor: pass (also through NAT, `interop/`); secure session with bound address, secure write and read, Data Secure write: pass | both directions, plain and secure (with Data Secure): pass |
