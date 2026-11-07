@@ -5,21 +5,29 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
-## v0.8.3
+## v0.9.0
 
 **Date:** 2026-11-07
 **Previous release:** v0.8.2
 
 ## Summary
 
-The interop suite pins knx-interop v0.9.2, in which knxd runs its TCP tunnelling server, and tests go-knx's TCP client against knxd. The library is unchanged.
+The server's own device now repeats an answer in a transport connection that the peer misses, as the KNX transport layer does: Calimero tools lost one now and then and timed out. The interop suite pins knx-interop v0.9.2, in which knxd runs its TCP tunnelling server, and tests go-knx's TCP client against knxd.
 
 ## Changes
+
+### Added
+
+- `mgmt.Responder.Repeat`: the frames a responder must send again at a time: an answer in a transport connection not acknowledged within 3 s. The server calls it once a second.
 
 ### Changed
 
 - The interop suite pins the knx-interop v0.9.2 images (xknx, KNXUltimate and cB-Sigma knx by digest; Calimero and knxd built from the tag), and `make interop-images`, `make interop-matrix` and the Interop workflow default to that tag.
 - `interop/`: `TestGoKNXClientTCPKnxd` runs go-knx's TCP tunnel against knxd's TCP tunnelling server: connect, a confirmed write seen by xknx, a write of xknx received, a read answered by xknx.
+
+### Fixed
+
+- `mgmt.Responder` (the server's own device): an answer in a transport connection was sent once. When the peer missed it, the responder answered the peer's next request with the same sequence number, which the peer took for a repetition, and the peer timed out. The responder now repeats an answer that is not acknowledged within 3 s, or that the peer refuses with T_NAK, at most three times, then ends the connection, as the KNX transport layer does. Calimero tools 3.0-M1 misses an answer that closely follows the T_Ack now and then: the Interop workflow failed on Calimero tools' tool access read in a transport connection ("timeout waiting for data response"). In 40 runs of that read against a server that made Calimero miss answers more often, 6 failed without the repetition and none with it.
 
 ### Documentation
 

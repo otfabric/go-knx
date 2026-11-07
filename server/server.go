@@ -1066,6 +1066,10 @@ func (s *Server) janitor() {
 			s.disconnect(c, true, fmt.Errorf("%w: no heartbeat for %v", knx.ErrConnectionLost, s.o.aliveTime))
 		}
 		s.expireSessions()
+		// The own device's transport layer: unacknowledged answers.
+		for _, f := range s.mgmt.Repeat(time.Now()) {
+			s.distribute(Telegram{Origin: FromServer, Frame: f}, nil)
+		}
 	}
 }
 

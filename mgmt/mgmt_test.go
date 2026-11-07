@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/apdu"
@@ -311,5 +312,86 @@ func TestPropertyError(t *testing.T) {
 	}
 	if _, err := mgmt.ParseProperty(apdu.TPDU{APCI: apdu.PropertyValueReadService, Data: []byte{1}}); !errors.Is(err, knx.ErrMalformed) {
 		t.Errorf("short property: %v", err)
+	}
+}
+
+// TestRepeat: an answer in a transport connection that the peer does not
+// acknowledge is repeated after 3 s, unchanged, at most three times; then
+// the connection ends. An acknowledged answer is not repeated.
+func TestRepeat(t *testing.T) {
+	r := &mgmt.Responder{Address: dev, Descriptor: 0x091A, Properties: &props{name: []byte("abcd")}}
+	read := func(seq uint8) *cemi.LData {
+		t.Helper()
+		out := r.Handle(frame(apdu.TPCI{Kind: apdu.TDataConnected, Seq: seq}, apdu.DeviceDescriptorReadService))
+		if len(out) != 2 {
+			t.Fatalf("%d frames, want T_Ack and answer", len(out))
+		}
+		return out[1]
+	}
+	if len(r.Handle(control(apdu.TPCI{Kind: apdu.TConnect}))) != 0 {
+		t.Fatal("answer to T_Connect")
+	}
+	// Times are taken after Handle: Repeat measures from the send time.
+	answer := read(0)
+	now := time.Now()
+	if f := r.Repeat(now.Add(2 * time.Second)); f != nil {
+		t.Fatalf("repeated before 3 s: %v", f)
+	}
+	for i := 1; i <= 3; i++ {
+		now = now.Add(3*time.Second + 100*time.Millisecond)
+		f := r.Repeat(now)
+		if len(f) != 1 || f[0].String() != answer.String() {
+			t.Fatalf("repetition %d: %v, want %v", i, f, answer)
+		}
+	}
+	now = now.Add(3*time.Second + 100*time.Millisecond)
+	f := r.Repeat(now)
+	if len(f) != 1 || parse(t, f[0]).TPCI.Kind != apdu.TDisconnect {
+		t.Fatalf("after three repetitions: %v, want T_Disconnect", f)
+	}
+	if f := r.Repeat(now.Add(10 * time.Second)); f != nil {
+		t.Fatalf("after the disconnect: %v", f)
+	}
+
+	// Acknowledged: nothing to repeat; the next answer has the next number.
+	r.Handle(control(apdu.TPCI{Kind: apdu.TConnect}))
+	read(0)
+	r.Handle(control(apdu.TPCI{Kind: apdu.TAck, Seq: 0}))
+	if f := r.Repeat(time.Now().Add(4 * time.Second)); f != nil {
+		t.Fatalf("acknowledged answer repeated: %v", f)
+	}
+	if a := parse(t, read(1)); a.TPCI.Seq != 1 {
+		t.Fatalf("next answer numbered %d", a.TPCI.Seq)
+	}
+	// A T_NAK of the pending answer repeats it at once, three times; the
+	// fourth ends the connection. A T_NAK of another number is ignored.
+	r.Handle(control(apdu.TPCI{Kind: apdu.TAck, Seq: 1}))
+	pending := read(2)
+	if a := parse(t, pending); a.TPCI.Seq != 2 {
+		t.Fatalf("answer numbered %d", a.TPCI.Seq)
+	}
+	if f := r.Handle(control(apdu.TPCI{Kind: apdu.TNak, Seq: 1})); f != nil {
+		t.Fatalf("T_NAK of another number: %v", f)
+	}
+	for i := 1; i <= 3; i++ {
+		f := r.Handle(control(apdu.TPCI{Kind: apdu.TNak, Seq: 2}))
+		if len(f) != 1 || f[0].String() != pending.String() {
+			t.Fatalf("T_NAK %d: %v, want %v", i, f, pending)
+		}
+	}
+	if f := r.Handle(control(apdu.TPCI{Kind: apdu.TNak, Seq: 2})); len(f) != 1 || parse(t, f[0]).TPCI.Kind != apdu.TDisconnect {
+		t.Fatalf("fourth T_NAK: %v, want T_Disconnect", f)
+	}
+	r.Handle(control(apdu.TPCI{Kind: apdu.TConnect}))
+	read(0)
+	// A T_Disconnect of the peer drops the pending answer.
+	r.Handle(control(apdu.TPCI{Kind: apdu.TDisconnect}))
+	if f := r.Repeat(time.Now().Add(4 * time.Second)); f != nil {
+		t.Fatalf("answer repeated after T_Disconnect: %v", f)
+	}
+	// Connectionless answers are never repeated.
+	r.Handle(frame(data, apdu.DeviceDescriptorReadService))
+	if f := r.Repeat(time.Now().Add(4 * time.Second)); f != nil {
+		t.Fatalf("connectionless answer repeated: %v", f)
 	}
 }
