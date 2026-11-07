@@ -91,7 +91,8 @@ Recorded in knx-interop `tests/known-differences.tsv` and reported upstream
 - calimero-tools 3.0-M1 `describe --json --nat` throws a
   NullPointerException ([calimero-tools#24](https://github.com/calimero-project/calimero-tools/issues/24)).
 - knxd 0.14.73's tunnel client never sends its DISCONNECT_REQUEST, leaving
-  dead connections on servers ([knxd#667](https://github.com/knxd/knxd/issues/667)).
+  dead connections on servers ([knxd#537](https://github.com/knxd/knxd/issues/537);
+  our [knxd#667](https://github.com/knxd/knxd/issues/667) was closed as its duplicate).
 - calimero-server 3.0-M1 restarts its control endpoint (about 10 s without
   answers) after a 3-octet datagram or a CRI of length 0: already fixed on
   master (d276d8a8), not reported.
