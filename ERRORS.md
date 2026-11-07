@@ -26,5 +26,15 @@ resent on the new channel. Repeat it only where that is safe.
 
 `*knxnetip.StatusError` carries the service and the status code
 (`knxnetip.StatusOf(err)`); it matches `ErrRejected`, and `ErrBusy` for the
-connection-exhaustion codes. `dpt.ErrFloat16Invalid` is DPT 9's "invalid
+connection-exhaustion codes. Three more error types carry the detail of
+a refusal and match `ErrRejected`:
+
+- `*tunnel.FeatureError`: a TUNNELLING_FEATURE_RESPONSE with a return
+  code other than E_NO_ERROR (the feature and the return code).
+- `*mgmt.PropertyError`: a negative A_PropertyValue_Response or
+  A_PropertyDescription_Response (the device, object and property).
+- `*devmgmt.PropertyError`: a negative cEMI device management
+  confirmation (the object type, property and cEMI error code).
+
+`dpt.ErrFloat16Invalid` is DPT 9's "invalid
 data" value 0x7FFF.
