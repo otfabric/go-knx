@@ -161,3 +161,58 @@ func TestGoKNXBusmonitor(t *testing.T) {
 func describeNAT(ctx context.Context, addr string) (knxnetip.DIBs, error) {
 	return discovery.Describe(ctx, addr, discovery.WithNAT(true), discovery.WithTimeout(2*time.Second))
 }
+
+// TestGoKNXClientTCPKnxd: go-knx's TCP tunnel against knxd's TCP tunnelling
+// server (tcptunsrv, knx-interop v0.9.2), with xknx over UDP on the same
+// knxd as observer, sender and responder.
+func TestGoKNXClientTCPKnxd(t *testing.T) {
+	requireDocker(t)
+	peer := "knxd"
+	requirePeer(t, peer)
+	net := network(t)
+	name, _, tcpAddr := startPeerServer(t, peer, net)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	c, err := client.DialTunnel(ctx, tcpAddr, []tunnel.Option{tunnel.WithTCP()})
+	record(t, peer, "tunnel connect over TCP", err, "")
+	if err != nil {
+		t.FailNow()
+	}
+	defer c.Close()
+	t.Logf("address %s", c.Link().(*tunnel.Conn).IndividualAddress())
+
+	obs := background(t, "xknx", []string{"--network", net}, "monitor", "--target", name, "--count", "1", "--timeout", "20")
+	err = c.GroupWrite(ctx, knx.MustParseGroupAddress("1/0/1"), true)
+	record(t, peer, "group write over TCP confirmed", err, "")
+	d, oerr := obs()
+	if oerr == nil {
+		oerr = expectTelegram(d, "1/0/1", "write", "01")
+	}
+	record(t, peer, "group write over TCP seen by xknx", oerr, "")
+
+	sub := c.Subscribe(16, knx.MustParseGroupAddress("1/0/3"))
+	_, err = runClient(ctx, "xknx", []string{"--network", net}, "write", "--target", name, "--group", "1/0/3", "--dpt", "9.001", "--value", "-30")
+	if err == nil {
+		select {
+		case tg := <-sub.C():
+			v, derr := tg.Decode("9.001")
+			if derr == nil && v != -30.0 {
+				derr = fmt.Errorf("value %v", v)
+			}
+			err = derr
+		case <-time.After(10 * time.Second):
+			err = fmt.Errorf("no telegram")
+		}
+	}
+	record(t, peer, "group write from xknx received over TCP", err, "")
+
+	ans := background(t, "xknx", []string{"--network", net}, "answer", "--target", name, "--group", "1/0/2", "--dpt", "9.001", "--value", "21.5", "--count", "1", "--timeout", "20")
+	rctx, rcancel := context.WithTimeout(ctx, 8*time.Second)
+	r, err := c.GroupRead(rctx, knx.MustParseGroupAddress("1/0/2"), client.WithDPT("9.001"))
+	rcancel()
+	if err == nil && r.Decoded != 21.5 {
+		err = fmt.Errorf("response %v from %s", r.Decoded, r.Source)
+	}
+	record(t, peer, "group read over TCP answered by xknx", err, "")
+	_, _ = ans()
+}

@@ -5,6 +5,29 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.8.3
+
+**Date:** 2026-11-07
+**Previous release:** v0.8.2
+
+## Summary
+
+The interop suite pins knx-interop v0.9.2, in which knxd runs its TCP tunnelling server, and tests go-knx's TCP client against knxd. The library is unchanged.
+
+## Changes
+
+### Changed
+
+- The interop suite pins the knx-interop v0.9.2 images (xknx, KNXUltimate and cB-Sigma knx by digest; Calimero and knxd built from the tag), and `make interop-images`, `make interop-matrix` and the Interop workflow default to that tag.
+- `interop/`: `TestGoKNXClientTCPKnxd` runs go-knx's TCP tunnel against knxd's TCP tunnelling server: connect, a confirmed write seen by xknx, a write of xknx received, a read answered by xknx.
+
+### Documentation
+
+- INTEROPERABILITY.md: results of knx-interop v0.9.2. Matrix: 609 pass, 13 known differences of other stacks, 110 unsupported, 0 fail; with go-knx in a role, 456 pass (446 before), 2 known differences, 34 unsupported. `make interop`: 72 of 72 pass. go-knx's TCP client passes against knxd's TCP server in both the matrix and `interop/`.
+- README and docs/IMPLEMENTATION-STATUS.md name knx-interop v0.9.2.
+
+---
+
 ## v0.8.2
 
 **Date:** 2026-11-07
