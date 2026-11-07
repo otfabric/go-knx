@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-multicast coverage coverage-check cover bench fuzz check clean coverpkg-check cross e2e interop interop-images interop-matrix
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-multicast coverage coverage-check cover bench fuzz check clean coverpkg-check cross e2e interop interop-images interop-matrix docs-check
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -13,6 +13,9 @@ help: ## This help
 export GOWORK := off
 
 # Format with the gofmt of the Go version in go.mod, as CI does.
+# docsync release of docs-check (DOC-008).
+DOCSYNC_VERSION := v0.2.0
+
 GO_MOD_VERSION := $(shell sed -nE 's/^go ([0-9]+\.[0-9]+).*/\1/p' go.mod | head -n1)
 GOFMT_CI = $(shell GOTOOLCHAIN=go$(GO_MOD_VERSION).0 go env GOROOT)/bin/gofmt
 
@@ -141,7 +144,11 @@ interop: ## Run the interop suite against the knx-interop images (Docker; writes
 	@KNX_REQUIRE_INTEROP=1 KNX_INTEROP_REPORT=$(CURDIR)/$(BIN_DIR)/interop-report.json \
 		go test -tags=interop -count=1 -timeout=60m -v ./interop/...
 
-check: fmt-check lint lint-ci vet vuln test coverage-check coverage-pkg-check examples cross ## Everything CI checks except the interop job
+check: fmt-check lint lint-ci vet vuln test coverage-check coverage-pkg-check examples cross docs-check ## Everything CI checks except the interop job
 
 clean: ## Remove binaries and coverage files
 	@rm -rf $(BIN_DIR) coverage.out coverage.html
+
+# The documents against the code (DOC-008): docsync, as docs-check.yml runs it.
+docs-check: ## Check that the documents agree with the code (docsync)
+	@go run github.com/otfabric/docsync@$(DOCSYNC_VERSION) check .
