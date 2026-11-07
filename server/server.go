@@ -8,14 +8,29 @@
 // other clients, to the virtual devices (package device) and, with
 // routing, to the multicast group.
 //
-// What it implements: core services (search, extended search,
-// description, connect, connection state, disconnect), tunnelling on the
-// link layer over UDP (KNXnet/IP tunnelling v1, including the extended
-// CRI that requests an address) and routing indications. Not implemented
-// (refused with the standard status codes): busmonitor and raw
-// tunnelling, device management connections, KNXnet/IP over TCP,
-// tunnelling feature services, KNX IP Secure. It is not an emulation of
-// a KNX TP line or of a physical device's management.
+// What it implements:
+//   - core services: search, extended search, description, connect,
+//     connection state, disconnect;
+//   - tunnelling over UDP and over TCP ([WithTCP], on by default): the
+//     link layer (including the extended CRI that requests an address and
+//     route back endpoints) and the busmonitor layer
+//     ([WithConcurrentBusmonitor] lets it coexist with tunnels); over TCP
+//     also the tunnelling feature services (tunnelling v2);
+//   - device management connections (local property read and write of
+//     the server's interface objects) and remote device management of the
+//     server's own device through a tunnel (property read, write and
+//     description), with [WithToolKey] secured by KNX Data Secure tool
+//     access;
+//   - routing indications ([WithRouting]), queued and paced by routing
+//     flow control: at most [WithRoutingRate] per second, and a pause
+//     after a ROUTING_BUSY from another router;
+//   - KNX IP Secure: secure tunnelling sessions over TCP and UDP
+//     ([WithSecure], ended after [WithSecureSessionTimeout] idle) and
+//     secure routing ([WithSecureRouting]).
+//
+// Raw tunnelling and other connection types are refused with the standard
+// status codes. It is not an emulation of a KNX TP line or of a physical
+// device's management.
 package server
 
 import (

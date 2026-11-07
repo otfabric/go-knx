@@ -5,6 +5,24 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.8.2
+
+**Date:** 2026-11-07
+**Previous release:** v0.8.1
+
+## Summary
+
+Documentation only: the package comments of `server` and `datasecure` (shown on pkg.go.dev) described the first releases. The code is unchanged.
+
+## Changes
+
+### Documentation
+
+- `server`: the package comment said busmonitor, device management connections, KNXnet/IP over TCP, tunnelling feature services and KNX IP Secure were not implemented. It now lists what the server does: tunnelling over UDP and TCP, busmonitor, feature services, local and remote device management (with tool access), routing flow control, KNX IP Secure tunnelling and routing. Only raw tunnelling is refused.
+- `datasecure`: the package comment said S-A_Sync and tool keys were not implemented. It now says point to point security with a tool key is implemented, and that device-to-device link keys and FDSK are not.
+
+---
+
 ## v0.8.1
 
 **Date:** 2026-11-07
