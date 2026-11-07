@@ -2,14 +2,14 @@ name: Interop
 run-name: "Interop (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
 
 # Runs go-knx against the independent implementations of otfabric/knx-interop
-# (Calimero, knxd, xknx, KNXUltimate): the host-based suite (go-knx's
+# (Calimero, knxd, xknx, KNXUltimate, cB-Sigma knx and knx-sim): the host-based suite (go-knx's
 # tunnelling client against Calimero's and knxd's servers, their clients
 # against go-knx's server), then knx-interop's whole matrix inside one
 # Docker network with go-knx's own adapter (interop/node, built from this
 # commit) as the system under test.
 # Published knx-interop images are pinned by digest (interop/harness_test.go);
 # the Calimero and knxd images are built from knx-interop's source at
-# INTEROP_REF (default v0.7.1).
+# INTEROP_REF (default v0.9.1).
 
 on:
   push:
@@ -22,7 +22,7 @@ on:
     inputs:
       interop-ref:
         description: knx-interop ref to build the adapters from
-        default: v0.7.1
+        default: v0.9.1
 
 permissions:
   contents: read
@@ -44,11 +44,11 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Build the knx-interop adapter images
-        run: make interop-images INTEROP_REF=${{ inputs.interop-ref || 'v0.7.1' }}
+        run: make interop-images INTEROP_REF=${{ inputs.interop-ref || 'v0.9.1' }}
       - name: Interop suite
         run: make interop
       - name: knx-interop matrix with go-knx's node
-        run: make interop-matrix INTEROP_REF=${{ inputs.interop-ref || 'v0.7.1' }}
+        run: make interop-matrix INTEROP_REF=${{ inputs.interop-ref || 'v0.9.1' }}
       - name: Matrix summary
         if: always()
         run: '[ -f bin/interop-matrix.md ] && cat bin/interop-matrix.md >> "$GITHUB_STEP_SUMMARY" || true'

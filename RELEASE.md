@@ -5,6 +5,34 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.8.1
+
+**Date:** 2026-11-07
+**Previous release:** v0.8.0
+
+## Summary
+
+The interop suite pins knx-interop v0.9.1 (contract 1.6) and tests go-knx against a fifth independent implementation, cB-Sigma knx with its simulator knx-sim. The library is unchanged.
+
+## Changes
+
+### Changed
+
+- The interop suite pins the knx-interop v0.9.1 images (xknx 4.1.1, KNXUltimate 6.3.2, cB-Sigma knx v0.2.0 by digest; Calimero and knxd built from the tag), and `make interop-images` and `make interop-matrix` default to that tag.
+- cB-Sigma knx is a client of go-knx's server in `interop/` (plain and over TCP, busmonitor, KNX IP Secure, Data Secure).
+- `interop/node` implements the contract 1.6 `keyring` operation, so the matrix's offline keyring checks include go-knx.
+
+### Fixed
+
+- `TestChaosExactlyOnce` failed now and then in CI ("write 28 without chaos: … reconnecting"): its clean-path writes started while datagrams delayed by the chaos proxy (up to 4 x its 15 ms delay) were still in flight. One of them can be a DISCONNECT_REQUEST of the channel number the server gave the reconnected client again, which the client rightly obeys. The test now waits for them to land. No library change.
+
+### Documentation
+
+- INTEROPERABILITY.md: results of knx-interop v0.9.0 (v0.9.1 changes only the cbsigma capabilities document; `make interop` re-run against the v0.9.1 images). go-knx against cB-Sigma knx-sim's fault switches (replayed and tampered secure wrappers, a session closed by the gateway, an idle session past 60 s, repeated indications, missing acknowledgements) and its router's ROUTING_BUSY and ROUTING_LOST_MESSAGE: all pass. LIMITATIONS.md: the routing client's flow control is now checked against a third-party router.
+- README, SECURITY.md, CONTRIBUTING.md, docs/IMPLEMENTATION-STATUS.md and docs/standards/SPECIFICATIONS.md name the current peers and versions, and the upstream reports from the knx-interop sim suite.
+
+---
+
 ## v0.8.0
 
 **Date:** 2026-11-06

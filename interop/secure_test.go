@@ -98,7 +98,7 @@ func TestGoKNXSecureServer(t *testing.T) {
 	host2 := []string{"--add-host", "host.docker.internal:host-gateway"}
 	target := []string{"--target", "host.docker.internal", "--port", fmt.Sprint(port), "--secure", "--user", "2"}
 
-	for _, peer := range peers("xknx", "calimero-tools", "otfabric") {
+	for _, peer := range peers("xknx", "calimero-tools", "cbsigma", "otfabric") {
 		t.Run(peer, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()
@@ -121,7 +121,7 @@ func TestGoKNXSecureServer(t *testing.T) {
 			}
 			record(t, peer, "secure group read of a go-knx device", err, "")
 
-			if peer == "xknx" || peer == "otfabric" {
+			if peer == "xknx" || peer == "cbsigma" || peer == "otfabric" {
 				// Data Secure: the server forwards S-A_Data; the profile's
 				// key decrypts it to the written value.
 				drain(seen)

@@ -183,7 +183,7 @@ func TestGoKNXServer(t *testing.T) {
 	host := []string{"--add-host", "host.docker.internal:host-gateway"}
 	target := []string{"--target", "host.docker.internal", "--port", fmt.Sprint(port), "--nat"}
 
-	for _, peer := range peers("xknx", "calimero-tools", "knxd", "otfabric") {
+	for _, peer := range peers("xknx", "calimero-tools", "knxd", "cbsigma", "otfabric") {
 		t.Run(peer, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()
@@ -216,7 +216,7 @@ func TestGoKNXServer(t *testing.T) {
 			// Contract 1.1: TCP, device management, busmonitor, where the
 			// adapter offers them.
 			tcpTarget := []string{"--target", "host.docker.internal", "--port", fmt.Sprint(port), "--tcp"}
-			if peer == "xknx" || peer == "calimero-tools" || peer == "otfabric" {
+			if peer == "xknx" || peer == "calimero-tools" || peer == "cbsigma" || peer == "otfabric" {
 				drain(seen)
 				_, err = runClient(ctx, peer, host, "write", append(tcpTarget, "--group", "1/0/1", "--dpt", "1.001", "--value", "off", "--data", "00")...)
 				if err == nil {
@@ -235,6 +235,8 @@ func TestGoKNXServer(t *testing.T) {
 					err = fmt.Errorf("serial %v", d.Data)
 				}
 				record(t, peer, "device management: go-knx serial number", err, "")
+			}
+			if peer == "calimero-tools" || peer == "cbsigma" || peer == "otfabric" {
 				mon := background(t, peer, host, "busmonitor", append(target, "--count", "1", "--timeout", "20")...)
 				err = s.GroupWrite(knx.MustParseGroupAddress("1/0/7"), apdu.GroupValue{Data: []byte{1}, Small: true})
 				if err == nil {

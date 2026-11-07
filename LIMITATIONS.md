@@ -34,8 +34,10 @@ What go-knx does not do, or does with restrictions. Feature status:
 - **Routing flow control** is honoured, not generated: go-knx never sends
   ROUTING_BUSY (the server drops routing indications its queue cannot hold
   and counts them), ROUTING_BUSY is applied whatever device its control
-  field names, and ROUTING_LOST_MESSAGE is only reported. The pacing has
-  not been checked against a third-party router that sends ROUTING_BUSY.
+  field names, and ROUTING_LOST_MESSAGE is only reported. Checked against
+  cB-Sigma knx-sim's router (knx-interop sim suite): go-knx's routing
+  client waits the wait time after a ROUTING_BUSY and keeps going after a
+  ROUTING_LOST_MESSAGE; the server's routing has no such third-party test.
 - **Standard frames** carry an NPDU of at most 15 octets, enforced on encode
   and decode.
 

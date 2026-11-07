@@ -13,11 +13,11 @@ the implementation versions. Nothing here is a conformance claim
 | 1 Protocol foundation (addresses, frames, cEMI, discovery, description) | done | unit/golden/fuzz tests (root, knxnetip, cemi, apdu 100 % coverage); discovery against Calimero, knxd and go-knx servers |
 | 2 Working client (tunnelling, group communication, DPT, CLI) | done | go-knx client → Calimero server and knxd: connect, confirmed write, read, inbound telegrams (interop/ and the matrix) |
 | 3 Working server | done | Calimero tools, xknx, KNXUltimate and knxd clients → go-knx server: discover, describe, connect, write, read (matrix; interop/ through NAT) |
-| 4 Interoperability expansion | done | knx-interop matrix, 4 independent stacks + probe, JSON/Markdown reports |
+| 4 Interoperability expansion | done | knx-interop matrix, 5 independent stacks (cB-Sigma knx with knx-sim since knx-interop v0.9.0) + probe, JSON/Markdown reports |
 | 5 Routing and advanced DPT | done for plain routing | routing between go-knx, xknx, KNXUltimate, Calimero tools and knxd, all directions; DPT matrix of 12 vectors across every implementation |
 | 5b TCP, feature services, device management, busmonitor | done (v0.2.0) | see Features; go-knx server ↔ xknx and Calimero tools over TCP, Calimero tools property read and busmonitor (interop/, v0.2.1) |
 | 6 Security (KNX IP Secure, KNX Data Secure) | done from public sources (v0.3.0) | AN159/AN158 example vectors (via xknx's tests), keyring files exported by ETS (xknx's fixtures), go-knx ↔ xknx and Calimero by hand (INTEROPERABILITY.md); automated with knx-interop contract 1.2 |
-| 7 Release readiness | released | go-knx v0.4.1, knxctl v0.4.0, knx-interop v0.4.0 |
+| 7 Release readiness | released | first: go-knx v0.4.1, knxctl v0.4.0, knx-interop v0.4.0; the interop suite now pins knx-interop v0.9.1 |
 
 ## Features
 
@@ -29,11 +29,11 @@ the implementation versions. Nothing here is a conformance claim
 | TPCI/APCI | apdu | complete (all services named; group values decoded) | 100 %, fuzzed | — |
 | Datapoint types (239 subtypes: main types 1–22, 26, 27, 29, 217, 222, 232, 234, 242, 251, 275) | dpt | complete for the listed families; of the 3/7/2 v2.2 additions: 5.100, 15.000, 20.107, 21.002, 21.100–21.106, 21.601, 21.1000, 21.1001, 21.1010, 21.1200, 21.1201, 22.100, 22.101, 22.103, 22.1000, 22.1010, 27.001, 217.001, 222.100/101, 234.001/002, 275.100/101 (their encodings decode to the same values in xknx 4.1.1). Not registered, as their exact layout is not confirmed from a published source here: 20.116, 21.1002, 22.102, 206.x, 207.x, 219.001, 225.001/002, 229.001, 230.1000, 236.001, 237.600, 238.x, 240.800, 241.800, 244–248.600, 255.001, 272.600, 273.001–007 | 99 %, exhaustive DPT 9, xknx vectors | 12 vectors × every implementation |
 | Discovery: search, extended search, description | discovery | complete | 92 % | Calimero, knxd, go-knx servers; Calimero tools, xknx, KNXUltimate clients find go-knx |
-| Tunnelling client (UDP, v1, NAT, reconnect, v2 address request) | tunnel | complete | 96 % | Calimero 3.0-M1, knxd 0.14.73 |
+| Tunnelling client (UDP, v1, NAT, reconnect, v2 address request) | tunnel | complete | 96 % | Calimero 3.0-M1, knxd 0.14.73; cB-Sigma knx-sim: repeated indication delivered once, unacknowledged request reported, replayed and tampered secure wrappers discarded, session closed by the gateway dropped, idle secure session kept alive past 60 s |
 | Tunnelling over TCP (v2), feature services | tunnel, server | complete (client and server) | e2e, unit | go-knx client → Calimero server (connect, feature get, write, read); Calimero tools → go-knx server (write, read, describe over TCP) |
-| Routing (indication, busy, lost message) | routing | complete | 97 % | xknx, KNXUltimate, Calimero tools, knxd, both directions |
+| Routing (indication, busy, lost message) | routing | complete | 97 % | xknx, KNXUltimate, Calimero tools, knxd, cB-Sigma knx, both directions; flow control against cB-Sigma knx-sim's router (ROUTING_BUSY wait honoured, ROUTING_LOST_MESSAGE tolerated) |
 | Group communication | client | complete | 99 % | as above |
-| KNXnet/IP server (discovery, description, tunnelling, routing) | server | complete | 96 % | Calimero tools, xknx, KNXUltimate, knxd clients; probe negative suite all pass |
+| KNXnet/IP server (discovery, description, tunnelling, routing) | server | complete | 96 % | Calimero tools, xknx, KNXUltimate, knxd and cB-Sigma knx clients (cB-Sigma also over TCP, busmonitor, KNX IP Secure and Data Secure); probe negative suite all pass |
 | Virtual devices (group objects, CRWTUI flags) | device | complete (application layer only) | 99 % | reads answered to every client |
 | Device management connection (M_PropRead, M_PropWrite) | devmgmt, server | complete; the server's friendly name is writable, its other properties read only | e2e, unit | go-knx client → Calimero server (UDP, TCP); Calimero tools `get --local` → go-knx server |
 | Remote device management (A_PropertyValue_Read/_Write, A_PropertyDescription_Read, A_DeviceDescriptor_Read; transport connections) | mgmt, client, server | tool (`client.Device`, including `PropertyDescription`) and device (`mgmt.Responder`, the server's own device); property datatypes (`mgmt.PDT`) with element sizes; no memory, restart or ADC services | 95 %, e2e | Calimero tools and xknx → go-knx server; go-knx → Calimero server (knx-interop management suite; the tool side of A_PropertyDescription_Read only against go-knx so far) |
@@ -69,11 +69,25 @@ the implementation versions. Nothing here is a conformance claim
 ## Known issues found in other implementations
 
 Recorded in knx-interop `tests/known-differences.tsv` and reported upstream
-on 2026-10-29:
+(2026-10-29 and 2026-11-06):
 
-- KNXUltimate 6.3.1 announces port 3671 in its DESCRIPTION_REQUEST HPAI
-  while listening on an ephemeral port; describe fails against every server
-  ([KNXUltimate#117](https://github.com/Supergiovane/KNXUltimate/issues/117)).
+- KNXUltimate 6.3.1 announced port 3671 in its DESCRIPTION_REQUEST HPAI
+  while listening on an ephemeral port
+  ([KNXUltimate#117](https://github.com/Supergiovane/KNXUltimate/issues/117));
+  fixed in 6.3.2.
+- knxd 0.14.73 and KNXUltimate 6.3.2 do not pause after ROUTING_BUSY
+  ([knxd#669](https://github.com/knxd/knxd/issues/669),
+  [KNXUltimate#118](https://github.com/Supergiovane/KNXUltimate/issues/118)).
+- xknx 4.1.1 and KNXUltimate 6.3.2 cannot report an unacknowledged
+  tunnelling write to the application
+  ([xknx#2024](https://github.com/XKNX/xknx/issues/2024),
+  [KNXUltimate#119](https://github.com/Supergiovane/KNXUltimate/issues/119)).
+- Calimero 3.0-M1 ignores a SESSION_STATUS close from the server
+  ([calimero-core#181](https://github.com/calimero-project/calimero-core/issues/181)).
+- cB-Sigma knx-sim v0.2.0 gives tunnels addresses beyond its announced slots,
+  and cB-Sigma knx v0.2.0's plain router pauses on its own ROUTING_BUSY
+  ([knx-sim#1](https://github.com/cB-Sigma/knx-sim/issues/1),
+  [knx#1](https://github.com/cB-Sigma/knx/issues/1)).
 - calimero-tools 3.0-M1 `describe --json --nat` throws a
   NullPointerException ([calimero-tools#24](https://github.com/calimero-project/calimero-tools/issues/24)).
 - knxd 0.14.73's tunnel client never sends its DISCONNECT_REQUEST, leaving
