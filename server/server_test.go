@@ -812,3 +812,66 @@ func TestStartAddressNotAvailable(t *testing.T) {
 		t.Fatal("Start succeeded on an address of TEST-NET-1")
 	}
 }
+
+// TestDeviceRepeatsAnswer: an answer of the server's own device in a
+// transport connection that the client does not acknowledge is repeated
+// after the 3 s acknowledgement timeout, with the same sequence number.
+func TestDeviceRepeatsAnswer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("waits for the 3 s acknowledgement timeout")
+	}
+	leak.Check(t)
+	s, _ := start(t)
+	r := dialRaw(t, s)
+	dev := knx.MustParseIndividualAddress("15.15.0")
+	seq := uint8(0)
+	send := func(tpdu []byte) {
+		t.Helper()
+		r.request(seq, cemi.NewIndividualFrame(cemi.LDataReq, 0, dev, knx.PrioritySystem, tpdu))
+		if a, _ := fakeknx.Expect[*knxnetip.TunnellingAck](r.p, wait); a.Seq != seq {
+			t.Fatalf("ack %+v, want %d", a, seq)
+		}
+		seq++
+	}
+	// next returns the next frame, from the device.
+	next := func() apdu.TPDU {
+		t.Helper()
+		f := r.nextFrame()
+		p, err := apdu.Parse(f.TPDU)
+		if err != nil || f.Source != dev || f.MsgCode != cemi.LDataInd {
+			t.Fatalf("frame %v: %v", f, err)
+		}
+		return p
+	}
+	send(apdu.TPDU{TPCI: apdu.TPCI{Kind: apdu.TConnect}}.Bytes())
+	if f := r.nextFrame(); f.MsgCode != cemi.LDataCon {
+		t.Fatalf("got %v, want the confirmation of T_Connect", f)
+	}
+	send(apdu.TPDU{TPCI: apdu.TPCI{Kind: apdu.TDataConnected, Seq: 0}, APCI: apdu.DeviceDescriptorReadService}.Bytes())
+	if p := next(); p.TPCI.Kind != apdu.TAck {
+		t.Fatalf("got %+v, want T_Ack", p)
+	}
+	answer := next()
+	start := time.Now()
+	if answer.APCI != apdu.DeviceDescriptorResponseService {
+		t.Fatalf("answer %+v", answer)
+	}
+	// The confirmation of the request follows the answer.
+	if f := r.nextFrame(); f.MsgCode != cemi.LDataCon {
+		t.Fatalf("got %v, want the confirmation", f)
+	}
+	// No T_Ack: the answer comes again.
+	req, d := fakeknx.Expect[*knxnetip.TunnellingRequest](r.p, 6*time.Second)
+	r.p.Send(d.From, &knxnetip.TunnellingAck{Channel: r.ch, Seq: req.Seq})
+	f, err := cemi.Parse(req.CEMI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := apdu.Parse(f.(*cemi.LData).TPDU)
+	if err != nil || p.APCI != answer.APCI || p.TPCI != answer.TPCI {
+		t.Fatalf("repetition %+v %v, want %+v", p, err, answer)
+	}
+	if el := time.Since(start); el < 2*time.Second {
+		t.Fatalf("repeated after %v, before the acknowledgement timeout", el)
+	}
+}

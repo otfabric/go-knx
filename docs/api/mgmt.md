@@ -295,6 +295,10 @@ type Responder struct {
 	// next sequence number expected from the peer
 	// sequence number of the next answer
 
+	// the answer awaiting its T_Ack
+	// when pending was last sent
+	// repetitions of pending so far
+
 }
 ```
 
@@ -302,7 +306,7 @@ Responder answers remote device management addressed to one device: A\_PropertyV
 
 With Security, which holds the device's tool key, management is secured: the responder answers S-A\_Sync\_Req and S-A\_Data with tool access only, and its answers are secured with the tool key; plain requests are not answered.
 
-The transport layer is that of a device on a loss free network: the responder acknowledges and checks sequence numbers but does not repeat its own answers.
+The transport layer acknowledges and checks sequence numbers. An answer in a transport connection that the peer refuses (T\_NAK) or does not acknowledge within 3 s ([Responder.Repeat](#func-responder-repeat)) is repeated, at most three times; then the responder ends the connection.
 
 #### func (Responder) Handle
 
@@ -311,3 +315,11 @@ func (r *Responder) Handle(f *cemi.LData) []*cemi.LData
 ```
 
 Handle processes a frame and returns the frames to send in answer, in order; nil for frames not addressed to the device.
+
+#### func (Responder) Repeat
+
+```go
+func (r *Responder) Repeat(now time.Time) []*cemi.LData
+```
+
+Repeat returns the frames due at now: the answer in a transport connection that the peer has not acknowledged within 3 s of sending it, repeated at most three times, and after the last repetition a T\_Disconnect that ends the connection. Call it about once a second; nil when nothing is due. The peer misses an answer now and then (Calimero's transport layer does, when the answer closely follows the T\_Ack); a repetition with the same sequence number recovers it.

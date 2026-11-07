@@ -13,8 +13,15 @@ import (
 	"github.com/otfabric/go-knx/datasecure"
 )
 
-// connectionTimeout ends a transport connection without traffic.
-const connectionTimeout = 6 * time.Second
+const (
+	// connectionTimeout ends a transport connection without traffic.
+	connectionTimeout = 6 * time.Second
+	// ackTimeout is the transport layer's acknowledgement timeout: an
+	// answer not acknowledged within it is repeated, at most
+	// maxRepetitions times; then the connection is ended.
+	ackTimeout     = 3 * time.Second
+	maxRepetitions = 3
+)
 
 // Properties are the interface object properties a [Responder] serves,
 // with objects addressed by their index in the interface object list.
@@ -45,9 +52,10 @@ type Describer interface {
 // access only, and its answers are secured with the tool key; plain
 // requests are not answered.
 //
-// The transport layer is that of a device on a loss free network: the
-// responder acknowledges and checks sequence numbers but does not repeat
-// its own answers.
+// The transport layer acknowledges and checks sequence numbers. An answer
+// in a transport connection that the peer refuses (T_NAK) or does not
+// acknowledge within 3 s ([Responder.Repeat]) is repeated, at most three
+// times; then the responder ends the connection.
 type Responder struct {
 	Address    knx.IndividualAddress
 	Descriptor uint16 // device descriptor type 0
@@ -62,6 +70,9 @@ type Responder struct {
 	recv      uint8 // next sequence number expected from the peer
 	send      uint8 // sequence number of the next answer
 	last      time.Time
+	pending   *cemi.LData // the answer awaiting its T_Ack
+	sent      time.Time   // when pending was last sent
+	repeats   int         // repetitions of pending so far
 }
 
 // Handle processes a frame and returns the frames to send in answer, in
@@ -78,7 +89,7 @@ func (r *Responder) Handle(f *cemi.LData) []*cemi.LData {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.connected && now.Sub(r.last) > connectionTimeout {
-		r.connected = false
+		r.connected, r.pending = false, nil
 	}
 	ours := r.connected && r.peer == f.Source
 	switch t.TPCI.Kind {
@@ -86,15 +97,15 @@ func (r *Responder) Handle(f *cemi.LData) []*cemi.LData {
 		if r.connected && !ours {
 			return []*cemi.LData{r.control(f.Source, apdu.TPCI{Kind: apdu.TDisconnect})}
 		}
-		r.connected, r.peer, r.recv, r.send, r.last = true, f.Source, 0, 0, now
+		r.connected, r.peer, r.recv, r.send, r.last, r.pending = true, f.Source, 0, 0, now, nil
 	case apdu.TDisconnect:
 		if ours {
-			r.connected = false
+			r.connected, r.pending = false, nil
 		}
 	case apdu.TAck:
 		if ours && t.TPCI.Seq == r.send {
 			r.send = (r.send + 1) & 0x0F
-			r.last = now
+			r.last, r.pending = now, nil
 		}
 	case apdu.TDataConnected:
 		if !ours {
@@ -107,23 +118,59 @@ func (r *Responder) Handle(f *cemi.LData) []*cemi.LData {
 			return []*cemi.LData{ack}
 		case r.recv:
 		default:
-			r.connected = false
+			r.connected, r.pending = false, nil
 			return []*cemi.LData{r.control(f.Source, apdu.TPCI{Kind: apdu.TDisconnect})}
 		}
 		r.recv = (r.recv + 1) & 0x0F
 		out := []*cemi.LData{ack}
 		if a := r.answer(f, apdu.TPCI{Kind: apdu.TDataConnected, Seq: r.send}); a != nil {
 			out = append(out, a)
+			r.pending, r.sent, r.repeats = a, now, 0
 		}
 		return out
 	case apdu.TData:
 		if a := r.answer(f, apdu.TPCI{Kind: apdu.TData}); a != nil {
 			return []*cemi.LData{a}
 		}
+	case apdu.TNak:
+		// The peer refuses the answer: repeat it now, within the limit.
+		if ours && t.TPCI.Seq == r.send && r.pending != nil {
+			r.last = now
+			return r.repeat(now)
+		}
 	default:
-		// T_NAK (the responder does not repeat) and tagged group data.
+		// Tagged group data.
 	}
 	return nil
+}
+
+// Repeat returns the frames due at now: the answer in a transport
+// connection that the peer has not acknowledged within 3 s of sending it,
+// repeated at most three times, and after the last repetition a
+// T_Disconnect that ends the connection. Call it about once a second;
+// nil when nothing is due. The peer misses an answer now and then
+// (Calimero's transport layer does, when the answer closely follows the
+// T_Ack); a repetition with the same sequence number recovers it.
+func (r *Responder) Repeat(now time.Time) []*cemi.LData {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.connected || r.pending == nil || now.Sub(r.sent) < ackTimeout {
+		return nil
+	}
+	r.last = now
+	return r.repeat(now)
+}
+
+// repeat returns the pending answer again, or a T_Disconnect once it was
+// repeated maxRepetitions times; r.mu is held.
+func (r *Responder) repeat(now time.Time) []*cemi.LData {
+	if r.repeats == maxRepetitions {
+		r.connected, r.pending = false, nil
+		return []*cemi.LData{r.control(r.peer, apdu.TPCI{Kind: apdu.TDisconnect})}
+	}
+	r.repeats++
+	r.sent = now
+	return []*cemi.LData{r.pending.Clone()}
 }
 
 func (r *Responder) code() cemi.MessageCode {
