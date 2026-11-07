@@ -5,9 +5,15 @@
 // APDU of a telegram end to end with a group key and a 48-bit sequence
 // number per sender.
 //
+// Point to point security with a tool key is implemented too: S-A_Sync
+// ([SyncRequest], [SyncResponse]) and S-A_Data with a tool key, which
+// remote device management uses (package client as the tool, package mgmt
+// as the device).
+// Device-to-device link keys and secure commissioning (FDSK) are not
+// implemented.
+//
 // The implementation follows public sources, not the KNX application note
-// 158 (see docs/standards/SPECIFICATIONS.md, "KNX Secure sources"). Point
-// to point security (tool and device keys, S-A_Sync) is not implemented.
+// 158 (see docs/standards/SPECIFICATIONS.md, "KNX Secure sources").
 package datasecure
 
 import (
