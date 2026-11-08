@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-multicast coverage coverage-check cover bench fuzz check clean coverpkg-check cross e2e interop interop-images interop-matrix docs-check
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-multicast coverage coverage-check cover bench fuzz check clean coverpkg-check cross e2e interop interop-images interop-matrix docs-check captures-verify captures-fetch captures-extended captures-generate
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -22,8 +22,9 @@ GOFMT_CI = $(shell GOTOOLCHAIN=go$(GO_MOD_VERSION).0 go env GOROOT)/bin/gofmt
 BIN_DIR := bin
 TEST_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/interop')
 # Packages whose coverage counts (TESTING.md): not the examples, the
-# end-to-end and interop suites or the test helpers.
-COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e' | grep -v '/interop' | grep -v '/internal/fakeknx' | grep -v '/internal/leak' | paste -sd, -)
+# end-to-end and interop suites or the test helpers (internal/capture reads
+# the recorded traffic for the tests).
+COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e' | grep -v '/interop' | grep -v '/internal/fakeknx' | grep -v '/internal/leak' | grep -v '/internal/capture' | paste -sd, -)
 COVER_MIN := 90
 # Per-package floor (TEST-012); needs the -coverpkg coverage.out of `make coverage`.
 COVER_PKG_MIN := 85
@@ -144,7 +145,21 @@ interop: ## Run the interop suite against the knx-interop images (Docker; writes
 	@KNX_REQUIRE_INTEROP=1 KNX_INTEROP_REPORT=$(CURDIR)/$(BIN_DIR)/interop-report.json \
 		go test -tags=interop -count=1 -timeout=60m -v ./interop/...
 
-check: fmt-check lint lint-ci vet vuln test coverage-check coverage-pkg-check examples cross docs-check ## Everything CI checks except the interop job
+# Recorded traffic (testdata/captures/README.md). The committed captures run
+# in `make test`; the CSV exports of knx-datasets (over 50 MB) are fetched.
+captures-verify: ## Check the committed captures against SHA256SUMS
+	@cd testdata/captures && if command -v sha256sum >/dev/null; then sha256sum -c --quiet SHA256SUMS; else shasum -a 256 -c --quiet SHA256SUMS; fi
+
+captures-fetch: ## Download the files over 50 MB (not committed) into the git-ignored cache and verify their SHA256
+	@./scripts/fetch-captures.sh
+
+captures-extended: captures-verify captures-fetch ## Compare every TP1 frame with the dataset authors' CSV exports
+	@KNX_CAPTURE_EXTENDED=1 go test -count=1 -timeout 20m -run '^TestCorpus' ./internal/capture/
+
+captures-generate: ## Rewrite the derived fields of manifest.json and SHA256SUMS (needs tshark; CSV counts from the cache)
+	@KNX_CAPTURE_GENERATE=1 go test -count=1 -run '^TestGenerate$$' ./internal/capture/
+
+check: fmt-check lint lint-ci vet vuln captures-verify test coverage-check coverage-pkg-check examples cross docs-check ## Everything CI checks except the interop job
 
 clean: ## Remove binaries and coverage files
 	@rm -rf $(BIN_DIR) coverage.out coverage.html

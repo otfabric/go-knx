@@ -35,6 +35,17 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
+  captures:
+    name: Recorded TP1 traffic against the CSV exports
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make captures-extended
+
   repeat:
     name: Whole suite, five times (race)
     runs-on: ubuntu-24.04

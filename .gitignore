@@ -19,3 +19,6 @@ coverage.out
 /examples/tunnel-client/tunnel-client
 /examples/virtual-server/virtual-server
 /interop/node/node
+
+# Independent decodes over 50 MB, downloaded by make captures-fetch
+/testdata/captures/cache/

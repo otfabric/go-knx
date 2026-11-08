@@ -91,6 +91,8 @@ func TP1Frame(f *LData) ([]byte, error)
 
 TP1Frame returns the KNX TP1 standard data frame of an L\_Data frame, as carried in an L\_Busmon.ind: control field, source, destination, address type / hop count / length octet, TPDU and check octet. Only standard frames (NPDU of at most 15 octets) have this format.
 
+The repeat flag of the control field (bit 5 clear: a repetition) is taken from an L\_Data.ind that reports a repeated frame, as [ParseTP1](#func-parsetp1) decodes one; a frame of any other message code is a first transmission.
+
 ## Types
 
 ### type AdditionalInfo

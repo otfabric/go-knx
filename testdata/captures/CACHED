@@ -1,0 +1,3 @@
+knx-datasets/all-knx-hexadecimal.csv	63b6623e989b2c69df0951cc270af75905b3dcc1fde18310abd2f04f633223c8	https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/Original/all_KNX_hexadecimal.csv
+knx-datasets/all-knx-ls-hexadecimal.csv	b82b0df4773c174a7d27cf55be6d8306dffbe14f01b9a57619dc7ebeef53b872	https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/LS/all_KNX_LS_hexadecimal.csv
+knx-datasets/all-knx-di-hexadecimal.csv	bed40993dcb83f2747d005338d41f506e4e31d37d1cf4a6ee86f2eb2f2895f4f	https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/DI/all_KNX_DI_hexadecimal.csv

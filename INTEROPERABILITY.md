@@ -96,6 +96,20 @@ converter read, which the server does not answer.
 Passing these shows that go-knx and those stacks agree with each other;
 it does not show conformance to the KNX specification.
 
+## Recorded traffic (2026-11-08)
+
+Traffic of physical devices recorded by others, replayed
+([testdata/captures/README.md](testdata/captures/README.md)); class B
+evidence, not a live test.
+
+| Recording | Devices | What passes |
+|---|---|---|
+| knx-datasets (KNX TP1 of a house, 2020) | the installation's devices, models not documented (device descriptors 0013, 0021, 0701, 07B0) | 1 150 094 TP1 frames decode and encode again byte for byte (6 414 repetitions included) and equal the dataset authors' decode in every row; `client.Device.DescriptorRead` against 145 recorded answers; `mgmt.Responder` answers the recorded device descriptor reads as the devices did and ends idle connections as 75 devices did |
+| Wireshark issue 14825 (KNXnet/IP, 2018) | ABB IP-Router IPR/S, ABB IPS/S2.1 (named by their DEVICE_INFO; firmware unknown) | every frame Wireshark decodes, go-knx decodes and encodes again byte for byte, but 26 malformed negative cases of the test client; the devices' identities equal Wireshark's; discovery finds the router from its recorded extended search response; 1 008 of 1 063 connection management requests replayed on a go-knx server are answered as the router did (the rest classified) |
+| Wireshark test captures | synthetic or of unknown origin | SECURE_WRAPPER, TIMER_NOTIFY and S-A_Data opened with Wireshark's published test keys as Wireshark does |
+
+Three go-knx defects were found this way and fixed in v0.10.0 (RELEASE.md).
+
 ## Running
 
 ```bash

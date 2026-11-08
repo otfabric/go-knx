@@ -92,4 +92,4 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
-      - run: make build examples cross coverpkg-check
+      - run: make build examples cross coverpkg-check captures-verify

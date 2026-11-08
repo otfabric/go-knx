@@ -49,6 +49,10 @@ tests against independent stacks live in
 Interoperability, verified against Calimero 3.0-M1, knxd 0.14.73, xknx
 4.1.1, KNXUltimate 6.3.2 and cB-Sigma knx v0.2.0 with its simulator knx-sim
 (knx-interop v0.9.2): [INTEROPERABILITY.md](INTEROPERABILITY.md).
+Recorded traffic of physical devices, replayed in the tests (not a live
+test): the KNXnet/IP sessions of an ABB IP-Router IPR/S and an ABB
+IPS/S2.1, and five weeks of a KNX TP1 house installation
+([testdata/captures](testdata/captures/README.md)).
 
 ## Install
 
