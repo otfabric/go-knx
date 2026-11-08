@@ -8,6 +8,7 @@ import (
 	"net"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/otfabric/go-knx/internal/capture"
@@ -24,7 +25,7 @@ func knxnetipCaptures(t *testing.T) []string {
 			t.Fatalf("%s: %v", dir, err)
 		}
 		for _, p := range m {
-			out = append(out, filepath.Join(dir, filepath.Base(p)))
+			out = append(out, dir+"/"+filepath.Base(p))
 		}
 	}
 	return out
@@ -105,7 +106,7 @@ func TestCaptureDeviceIdentity(t *testing.T) {
 	seen := map[string]int{}
 	extended := 0
 	for _, rel := range knxnetipCaptures(t) {
-		if filepath.Dir(rel) != "wireshark-14825" {
+		if !strings.HasPrefix(rel, "wireshark-14825/") {
 			continue
 		}
 		f, err := capture.Load(rel)
