@@ -1,0 +1,2086 @@
+{
+ "generated": "2026-11-08",
+ "wireshark": "TShark (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).",
+ "sources": [
+  {
+   "id": "knx-datasets",
+   "url": "https://github.com/vgraveto/knx-datasets",
+   "revision": "c649ad65ea64276572905781d860a5b0a374e7fc",
+   "fetched": "2026-11-08",
+   "terms": "MIT licence (LICENSE in the repository); also published as IEEE DataPort DOI 10.21227/16a5-m134",
+   "origin": "KNX TP1 bus of a single-family house (three floors, annex, garage) recorded without interruption from 2020-03-07 15:26 to 2020-04-13 17:00 UTC by the dataset authors (README 'Collection process'). The README does not name the capture interface or any device model. The line-scan (LS) and device-info (DI) attacks were run on the real installation from IA 1.1.102 and the recorded attack frames and device answers merged into the normal-operation recording with shifted time stamps."
+  },
+  {
+   "id": "wireshark",
+   "url": "https://gitlab.com/wireshark/wireshark/-/tree/0bb30bc152617526072bd82e62781f3978169f02/test/captures",
+   "revision": "0bb30bc152617526072bd82e62781f3978169f02",
+   "fetched": "2026-11-08",
+   "terms": "Wireshark test captures, distributed with Wireshark (GPL-2.0-or-later project); no separate licence for the capture files",
+   "origin": "Wireshark test suite (test/suite_dissection.py, test/suite_decryption.py at the same revision). knxip_coverage, knxip_decrypt_coverage and cemi_coverage are described there as synthetic; knxip_DataSec, knxip_SecureWrapper and knxip_TimerNotify hold single telegrams of unstated origin. The decryption tests use the published test key 00 01 .. 0F (kip.key_1) and the keyring test/keys/knx_keyring.xml."
+  },
+  {
+   "id": "wireshark-14825",
+   "url": "https://gitlab.com/wireshark/wireshark/-/issues/14825",
+   "revision": "attachments of issue 14825 (KnxipCaptures.zip, SHA256 af1f268c74d62fd0967a6f59ebc5eae2f9b5948ef2b8233a8b8c48b982aad5ab, and its nine members attached separately, byte-identical)",
+   "fetched": "2026-11-08",
+   "terms": "Attached to a public Wireshark issue (migrated bug 14825, 'Replace KNXIP dissector', 2018) as example captures for the KNXnet/IP dissector; no licence statement",
+   "origin": "K12 text exports of Ethernet traffic between a test client (192.168.0.100, not identified) and KNXnet/IP devices on 192.168.0.0/24, recorded 2018. Wireshark's test suite (TestDecryptKnxip) points to them as 'realistic (live captured) KNX/IP telegram sequences'. The devices identify themselves in their DEVICE_INFO blocks: ABB IP-Router IPR/S (MAC 00:0c:de:02:80:8e, at 192.168.0.10 and 192.168.0.11) and ABB IPS/S2.1 (MAC 00:0c:de:9e:50:54, at 192.168.0.222); 00:0c:de is ABB's IEEE OUI. No firmware version is in the traffic. The client sends deliberately malformed frames (conformance-style negative cases)."
+  }
+ ],
+ "files": [
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX.pcapng",
+   "file": "knx-datasets/unknown_residential-tp1_all-knx.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/Original/all_KNX.pcapng",
+   "sha256": "4c9f948c4295396e37e68da082fc475ec9f3f7fba8ffd5cd749b8e2ae06c5022",
+   "size": 16714700,
+   "format": "pcapng, link type 0 (DLT_NULL) declared, every packet a whole TP1 frame without a loopback header (written by gopacket)",
+   "transport": "tp1",
+   "class": "B",
+   "class_basis": "Documented physical TP1 installation (README); interface and device models not stated",
+   "privacy": "Group and individual addresses and group values of a home, with time stamps of its use; no names, keys or credentials (the CSV exports, not committed, add room names from the ETS project)",
+   "stats": {
+    "frames": 379875,
+    "tp": {
+     "frames": 379875,
+     "decoded": 379875,
+     "reencoded_byte_exact": 379875,
+     "cemi_round_trip": 379875,
+     "repeated": 10,
+     "group": 379875,
+     "individual": 0,
+     "priority": {
+      "low": 379875
+     },
+     "hop_count": {
+      "5": 255999,
+      "6": 123876
+     },
+     "tpdu": {
+      "decoded": 379875,
+      "reencoded_byte_exact": 379875,
+      "services": {
+       "A_GroupValue_Read": 1,
+       "A_GroupValue_Response": 3,
+       "A_GroupValue_Write": 379871
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "knx-datasets CSV (all_KNX_hexadecimal.csv)",
+    "services": {
+     "A_GroupValue_Read": 1,
+     "A_GroupValue_Response": 3,
+     "A_GroupValue_Write": 379871
+    },
+    "malformed": 0
+   }
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_LS.pcapng",
+   "file": "knx-datasets/attack-tool_residential-tp1_line-scan.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/LS/all_KNX_LS.pcapng",
+   "sha256": "8d21118a5e07b72a3c498e85be3363846490b383884ea2ac6df41d2cc942cac5",
+   "size": 16781468,
+   "format": "pcapng, as all_KNX.pcapng",
+   "transport": "tp1",
+   "class": "B",
+   "class_basis": "Documented physical TP1 installation (README); interface and device models not stated; attack frames from IA 1.1.102 merged in with shifted time stamps",
+   "privacy": "Group and individual addresses and group values of a home, with time stamps of its use; no names, keys or credentials (the CSV exports, not committed, add room names from the ETS project)",
+   "stats": {
+    "frames": 381524,
+    "tp": {
+     "frames": 381524,
+     "decoded": 381524,
+     "reencoded_byte_exact": 381524,
+     "cemi_round_trip": 381524,
+     "repeated": 994,
+     "group": 379875,
+     "individual": 1649,
+     "priority": {
+      "low": 379875,
+      "system": 1649
+     },
+     "hop_count": {
+      "5": 257552,
+      "6": 123972
+     },
+     "tpdu": {
+      "decoded": 381524,
+      "reencoded_byte_exact": 381524,
+      "services": {
+       "A_DeviceDescriptor_Read": 146,
+       "A_DeviceDescriptor_Response": 56,
+       "A_GroupValue_Read": 1,
+       "A_GroupValue_Response": 3,
+       "A_GroupValue_Write": 379871,
+       "T_ACK": 202,
+       "T_Connect": 1023,
+       "T_Disconnect": 222
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "knx-datasets CSV (all_KNX_LS_hexadecimal.csv)",
+    "services": {
+     "A_DeviceDescriptor_Read": 146,
+     "A_DeviceDescriptor_Response": 56,
+     "A_GroupValue_Read": 1,
+     "A_GroupValue_Response": 3,
+     "A_GroupValue_Write": 379871,
+     "T_ACK": 202,
+     "T_Connect": 1023,
+     "T_Disconnect": 222
+    },
+    "malformed": 0
+   }
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_DI.pcapng",
+   "file": "knx-datasets/attack-tool_residential-tp1_device-info.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/DI/all_KNX_DI.pcapng",
+   "sha256": "6e001d824156edeccab637817510c17e2ef35c2125b9aa4fc1b8bbc6c363b862",
+   "size": 17084060,
+   "format": "pcapng, as all_KNX.pcapng",
+   "transport": "tp1",
+   "class": "B",
+   "class_basis": "Documented physical TP1 installation (README); interface and device models not stated; attack frames from IA 1.1.102 merged in with shifted time stamps",
+   "privacy": "Group and individual addresses and group values of a home, with time stamps of its use; no names, keys or credentials (the CSV exports, not committed, add room names from the ETS project)",
+   "stats": {
+    "frames": 388695,
+    "tp": {
+     "frames": 388695,
+     "decoded": 388695,
+     "reencoded_byte_exact": 388695,
+     "cemi_round_trip": 388695,
+     "repeated": 5410,
+     "group": 379875,
+     "individual": 8820,
+     "priority": {
+      "low": 379875,
+      "system": 8820
+     },
+     "hop_count": {
+      "5": 264819,
+      "6": 123876
+     },
+     "tpdu": {
+      "decoded": 388695,
+      "reencoded_byte_exact": 388695,
+      "services": {
+       "A_ADC_Read": 720,
+       "A_ADC_Response": 180,
+       "A_DeviceDescriptor_Read": 360,
+       "A_DeviceDescriptor_Response": 90,
+       "A_GroupValue_Read": 1,
+       "A_GroupValue_Response": 3,
+       "A_GroupValue_Write": 379871,
+       "A_Memory_Read": 2160,
+       "A_Memory_Response": 540,
+       "T_ACK": 4050,
+       "T_Connect": 360,
+       "T_Disconnect": 360
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "knx-datasets CSV (all_KNX_DI_hexadecimal.csv)",
+    "services": {
+     "A_ADC_Read": 720,
+     "A_ADC_Response": 180,
+     "A_DeviceDescriptor_Read": 360,
+     "A_DeviceDescriptor_Response": 90,
+     "A_GroupValue_Read": 1,
+     "A_GroupValue_Response": 3,
+     "A_GroupValue_Write": 379871,
+     "A_Memory_Read": 2160,
+     "A_Memory_Response": 540,
+     "T_ACK": 4050,
+     "T_Connect": 360,
+     "T_Disconnect": 360
+    },
+    "malformed": 0
+   }
+  },
+  {
+   "source": "wireshark",
+   "name": "knxip_DataSec.pcap",
+   "file": "wireshark/wireshark-test_synthetic_knxip-datasec.pcap",
+   "url": "https://gitlab.com/wireshark/wireshark/-/raw/0bb30bc152617526072bd82e62781f3978169f02/test/captures/knxip_DataSec.pcap",
+   "sha256": "52261f9fffae0d1307e83a10e05f54e5e57e81b45a205b0a2edd0210d40c4d56",
+   "size": 125,
+   "format": "pcap",
+   "transport": "knxnetip",
+   "class": "C",
+   "class_basis": "Single telegram, origin not stated",
+   "privacy": "Private IPv4 addresses; keys are Wireshark's published test keys",
+   "stats": {
+    "frames": 1,
+    "knxnetip": {
+     "udp_datagrams": 1,
+     "tcp_frames": 0,
+     "frames": 1,
+     "decoded": 1,
+     "reencoded_byte_exact": 1,
+     "services": {
+      "DEVICE_CONFIGURATION_REQUEST": 1
+     },
+     "service_codes": {
+      "0x0310": 1
+     },
+     "cemi": 1,
+     "cemi_decoded": 1,
+     "cemi_reencoded_byte_exact": 1,
+     "cemi_codes": {
+      "0x41": 1
+     },
+     "cemi_code_octets": {
+      "0x41": 1
+     },
+     "tpdu": {
+      "decoded": 0,
+      "reencoded_byte_exact": 0,
+      "services": {}
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0310": 1
+    },
+    "malformed": 0,
+    "cemi_codes": {
+     "0x41": 1
+    }
+   }
+  },
+  {
+   "source": "wireshark",
+   "name": "knxip_SecureWrapper.pcap",
+   "file": "wireshark/wireshark-test_synthetic_knxip-securewrapper.pcap",
+   "url": "https://gitlab.com/wireshark/wireshark/-/raw/0bb30bc152617526072bd82e62781f3978169f02/test/captures/knxip_SecureWrapper.pcap",
+   "sha256": "5bf8779363a3abd8d556d17f06bd21ba36250bdfc7a970a121d81f84fd0e8da7",
+   "size": 137,
+   "format": "pcap",
+   "transport": "knxnetip",
+   "class": "C",
+   "class_basis": "Single telegram, origin not stated",
+   "privacy": "Private IPv4 addresses; keys are Wireshark's published test keys",
+   "stats": {
+    "frames": 1,
+    "knxnetip": {
+     "udp_datagrams": 1,
+     "tcp_frames": 0,
+     "frames": 1,
+     "decoded": 1,
+     "reencoded_byte_exact": 1,
+     "services": {
+      "SECURE_WRAPPER": 1
+     },
+     "service_codes": {
+      "0x0950": 1
+     },
+     "cemi": 0,
+     "cemi_decoded": 0,
+     "cemi_reencoded_byte_exact": 0,
+     "tpdu": {
+      "decoded": 0,
+      "reencoded_byte_exact": 0,
+      "services": {}
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0950": 1
+    },
+    "malformed": 0
+   }
+  },
+  {
+   "source": "wireshark",
+   "name": "knxip_TimerNotify.pcap",
+   "file": "wireshark/wireshark-test_synthetic_knxip-timernotify.pcap",
+   "url": "https://gitlab.com/wireshark/wireshark/-/raw/0bb30bc152617526072bd82e62781f3978169f02/test/captures/knxip_TimerNotify.pcap",
+   "sha256": "444af624f83655cccd933c0ecdd778111a91eb0314b5ad00f0f92d7baf356949",
+   "size": 118,
+   "format": "pcap",
+   "transport": "knxnetip",
+   "class": "C",
+   "class_basis": "Single telegram, origin not stated",
+   "privacy": "Private IPv4 addresses; keys are Wireshark's published test keys",
+   "stats": {
+    "frames": 1,
+    "knxnetip": {
+     "udp_datagrams": 1,
+     "tcp_frames": 0,
+     "frames": 1,
+     "decoded": 1,
+     "reencoded_byte_exact": 1,
+     "services": {
+      "TIMER_NOTIFY": 1
+     },
+     "service_codes": {
+      "0x0955": 1
+     },
+     "cemi": 0,
+     "cemi_decoded": 0,
+     "cemi_reencoded_byte_exact": 0,
+     "tpdu": {
+      "decoded": 0,
+      "reencoded_byte_exact": 0,
+      "services": {}
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0955": 1
+    },
+    "malformed": 0
+   }
+  },
+  {
+   "source": "wireshark",
+   "name": "knxip_coverage.pcap.gz",
+   "file": "wireshark/wireshark-test_synthetic_knxip-coverage.pcap.gz",
+   "url": "https://gitlab.com/wireshark/wireshark/-/raw/0bb30bc152617526072bd82e62781f3978169f02/test/captures/knxip_coverage.pcap.gz",
+   "sha256": "0b29af1220083a1c008f9f53cfdc6e901851bb7bfa0fd148e76f1afdcdf24b20",
+   "size": 2969,
+   "format": "pcap (gzip)",
+   "transport": "knxnetip",
+   "class": "E",
+   "class_basis": "Synthetic (Wireshark test suite)",
+   "privacy": "Private IPv4 addresses; keys are Wireshark's published test keys",
+   "stats": {
+    "frames": 131,
+    "knxnetip": {
+     "udp_datagrams": 103,
+     "multi_frame_datagrams": 2,
+     "tcp_frames": 21,
+     "frames": 127,
+     "decoded": 127,
+     "reencoded_byte_exact": 127,
+     "services": {
+      "0x0299": 1,
+      "0x0740": 2,
+      "0x0741": 2,
+      "0x0742": 2,
+      "0x0743": 2,
+      "0x0A01": 1,
+      "CONNECTIONSTATE_REQUEST": 3,
+      "CONNECTIONSTATE_RESPONSE": 5,
+      "CONNECT_REQUEST": 9,
+      "CONNECT_RESPONSE": 7,
+      "DESCRIPTION_REQUEST": 1,
+      "DESCRIPTION_RESPONSE": 5,
+      "DEVICE_CONFIGURATION_ACK": 2,
+      "DEVICE_CONFIGURATION_REQUEST": 2,
+      "DISCONNECT_REQUEST": 2,
+      "DISCONNECT_RESPONSE": 3,
+      "ROUTING_BUSY": 2,
+      "ROUTING_INDICATION": 1,
+      "ROUTING_LOST_MESSAGE": 1,
+      "ROUTING_SYSTEM_BROADCAST": 1,
+      "SEARCH_REQUEST": 2,
+      "SEARCH_REQUEST_EXTENDED": 6,
+      "SEARCH_RESPONSE": 2,
+      "SEARCH_RESPONSE_EXTENDED": 2,
+      "SECURE_WRAPPER": 4,
+      "SESSION_AUTHENTICATE": 1,
+      "SESSION_REQUEST": 2,
+      "SESSION_RESPONSE": 2,
+      "SESSION_STATUS": 7,
+      "TIMER_NOTIFY": 2,
+      "TUNNELLING_ACK": 4,
+      "TUNNELLING_FEATURE_GET": 9,
+      "TUNNELLING_FEATURE_INFO": 8,
+      "TUNNELLING_FEATURE_RESPONSE": 11,
+      "TUNNELLING_FEATURE_SET": 8,
+      "TUNNELLING_REQUEST": 3
+     },
+     "service_codes": {
+      "0x0201": 2,
+      "0x0202": 2,
+      "0x0203": 1,
+      "0x0204": 5,
+      "0x0205": 9,
+      "0x0206": 7,
+      "0x0207": 3,
+      "0x0208": 5,
+      "0x0209": 2,
+      "0x020A": 3,
+      "0x020B": 6,
+      "0x020C": 2,
+      "0x0299": 1,
+      "0x0310": 2,
+      "0x0311": 2,
+      "0x0420": 3,
+      "0x0421": 4,
+      "0x0422": 9,
+      "0x0423": 11,
+      "0x0424": 8,
+      "0x0425": 8,
+      "0x0530": 1,
+      "0x0531": 1,
+      "0x0532": 2,
+      "0x0533": 1,
+      "0x0740": 2,
+      "0x0741": 2,
+      "0x0742": 2,
+      "0x0743": 2,
+      "0x0950": 4,
+      "0x0951": 2,
+      "0x0952": 2,
+      "0x0953": 1,
+      "0x0954": 7,
+      "0x0955": 2,
+      "0x0A01": 1
+     },
+     "cemi": 7,
+     "cemi_decoded": 7,
+     "cemi_reencoded_byte_exact": 7,
+     "cemi_codes": {
+      "L_Data.ind": 3,
+      "L_Data.req": 2,
+      "M_PropRead.con": 1,
+      "M_PropRead.req": 1
+     },
+     "cemi_code_octets": {
+      "0x11": 2,
+      "0x29": 3,
+      "0xFB": 1,
+      "0xFC": 1
+     },
+     "tpdu": {
+      "decoded": 5,
+      "reencoded_byte_exact": 5,
+      "services": {
+       "A_GroupValue_Write": 5
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0201": 2,
+     "0x0202": 2,
+     "0x0203": 1,
+     "0x0204": 5,
+     "0x0205": 9,
+     "0x0206": 7,
+     "0x0207": 3,
+     "0x0208": 5,
+     "0x0209": 2,
+     "0x020A": 3,
+     "0x020B": 6,
+     "0x020C": 2,
+     "0x0299": 1,
+     "0x0310": 2,
+     "0x0311": 2,
+     "0x0420": 3,
+     "0x0421": 4,
+     "0x0422": 9,
+     "0x0423": 11,
+     "0x0424": 8,
+     "0x0425": 8,
+     "0x0530": 1,
+     "0x0531": 1,
+     "0x0532": 2,
+     "0x0533": 1,
+     "0x0740": 2,
+     "0x0741": 2,
+     "0x0742": 2,
+     "0x0743": 2,
+     "0x0950": 4,
+     "0x0951": 2,
+     "0x0952": 2,
+     "0x0953": 1,
+     "0x0954": 7,
+     "0x0955": 2,
+     "0x0A01": 1
+    },
+    "malformed": 0,
+    "cemi_codes": {
+     "0x11": 2,
+     "0x29": 3,
+     "0xFB": 1,
+     "0xFC": 1
+    }
+   }
+  },
+  {
+   "source": "wireshark",
+   "name": "knxip_decrypt_coverage.pcap.gz",
+   "file": "wireshark/wireshark-test_synthetic_knxip-decrypt-coverage.pcap.gz",
+   "url": "https://gitlab.com/wireshark/wireshark/-/raw/0bb30bc152617526072bd82e62781f3978169f02/test/captures/knxip_decrypt_coverage.pcap.gz",
+   "sha256": "a710cc2ad46511e3819dffb3b665d80705c0157de2b65ecb816fee384c16d623",
+   "size": 1532,
+   "format": "pcap (gzip)",
+   "transport": "knxnetip",
+   "class": "E",
+   "class_basis": "Synthetic, placeholder ciphertext and MACs (Wireshark test suite)",
+   "privacy": "Private IPv4 addresses; keys are Wireshark's published test keys",
+   "stats": {
+    "frames": 45,
+    "knxnetip": {
+     "udp_datagrams": 34,
+     "tcp_frames": 8,
+     "frames": 42,
+     "decoded": 35,
+     "rejected": {
+      "SECURE_WRAPPER: knx: malformed frame": 7
+     },
+     "reencoded_byte_exact": 35,
+     "services": {
+      "SECURE_WRAPPER": 29,
+      "TIMER_NOTIFY": 6
+     },
+     "service_codes": {
+      "0x0950": 36,
+      "0x0955": 6
+     },
+     "cemi": 0,
+     "cemi_decoded": 0,
+     "cemi_reencoded_byte_exact": 0,
+     "tpdu": {
+      "decoded": 0,
+      "reencoded_byte_exact": 0,
+      "services": {}
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0950": 36,
+     "0x0955": 6
+    },
+    "malformed": 0
+   }
+  },
+  {
+   "source": "wireshark",
+   "name": "cemi_coverage.pcap.gz",
+   "file": "wireshark/wireshark-test_synthetic_cemi-coverage.pcap.gz",
+   "url": "https://gitlab.com/wireshark/wireshark/-/raw/0bb30bc152617526072bd82e62781f3978169f02/test/captures/cemi_coverage.pcap.gz",
+   "sha256": "55b6e6722ea1281b71990520c52cb81deddeba1c40084d940ef7c5286238b66e",
+   "size": 3269,
+   "format": "pcap (gzip)",
+   "transport": "knxnetip",
+   "class": "E",
+   "class_basis": "Synthetic (Wireshark test suite)",
+   "privacy": "Private IPv4 addresses; keys are Wireshark's published test keys",
+   "stats": {
+    "frames": 157,
+    "knxnetip": {
+     "udp_datagrams": 157,
+     "tcp_frames": 0,
+     "frames": 157,
+     "decoded": 157,
+     "reencoded_byte_exact": 157,
+     "services": {
+      "DEVICE_CONFIGURATION_REQUEST": 15,
+      "ROUTING_INDICATION": 142
+     },
+     "service_codes": {
+      "0x0310": 15,
+      "0x0530": 142
+     },
+     "cemi": 157,
+     "cemi_decoded": 143,
+     "cemi_rejected": {
+      "0x29: knx: malformed frame": 14
+     },
+     "cemi_reencoded_byte_exact": 143,
+     "cemi_codes": {
+      "0x41": 1,
+      "0x4A": 1,
+      "0x89": 1,
+      "0x94": 1,
+      "L_Busmon.ind": 2,
+      "L_Data.con": 1,
+      "L_Data.ind": 115,
+      "L_Data.req": 1,
+      "L_Poll_Data.con": 1,
+      "L_Poll_Data.req": 1,
+      "L_Raw.con": 1,
+      "L_Raw.ind": 1,
+      "L_Raw.req": 1,
+      "M_FuncProp.con": 1,
+      "M_FuncPropCommand.req": 1,
+      "M_FuncPropStateRead.req": 1,
+      "M_PropInfo.ind": 2,
+      "M_PropRead.con": 4,
+      "M_PropRead.req": 1,
+      "M_PropWrite.con": 2,
+      "M_PropWrite.req": 1,
+      "M_Reset.ind": 1,
+      "M_Reset.req": 1
+     },
+     "cemi_code_octets": {
+      "0x10": 1,
+      "0x11": 1,
+      "0x13": 1,
+      "0x25": 1,
+      "0x29": 129,
+      "0x2B": 2,
+      "0x2D": 1,
+      "0x2E": 1,
+      "0x2F": 1,
+      "0x41": 1,
+      "0x4A": 1,
+      "0x89": 1,
+      "0x94": 1,
+      "0xF0": 1,
+      "0xF1": 1,
+      "0xF5": 2,
+      "0xF6": 1,
+      "0xF7": 2,
+      "0xF8": 1,
+      "0xF9": 1,
+      "0xFA": 1,
+      "0xFB": 4,
+      "0xFC": 1
+     },
+     "tpdu": {
+      "decoded": 117,
+      "reencoded_byte_exact": 117,
+      "services": {
+       "APCI(0x1CC)": 1,
+       "APCI(0x1CD)": 1,
+       "APCI(0x1CE)": 1,
+       "APCI(0x1CF)": 1,
+       "APCI(0x1D0)": 1,
+       "APCI(0x1D2)": 1,
+       "APCI(0x2C3)": 1,
+       "APCI(0x2C4)": 1,
+       "APCI(0x381)": 1,
+       "APCI(0x382)": 1,
+       "APCI(0x3C0)": 1,
+       "APCI(0x3C1)": 1,
+       "APCI(0x3C2)": 1,
+       "APCI(0x3C3)": 1,
+       "APCI(0x3C4)": 1,
+       "APCI(0x3C8)": 1,
+       "APCI(0x3C9)": 1,
+       "APCI(0x3CA)": 1,
+       "APCI(0x3CD)": 1,
+       "APCI(0x3CE)": 1,
+       "APCI(0x3CF)": 1,
+       "APCI(0x3D0)": 1,
+       "A_ADC_Read": 2,
+       "A_ADC_Response": 1,
+       "A_Authorize_Request": 2,
+       "A_Authorize_Response": 1,
+       "A_DeviceDescriptor_Read": 2,
+       "A_DeviceDescriptor_Response": 2,
+       "A_DomainAddressSelective_Read": 1,
+       "A_DomainAddressSerialNumber_Read": 1,
+       "A_DomainAddressSerialNumber_Response": 1,
+       "A_DomainAddressSerialNumber_Write": 1,
+       "A_DomainAddress_Read": 1,
+       "A_DomainAddress_Response": 1,
+       "A_DomainAddress_Write": 1,
+       "A_FileStream_InfoReport": 1,
+       "A_FunctionPropertyCommand": 1,
+       "A_FunctionPropertyState_Read": 1,
+       "A_FunctionPropertyState_Response": 1,
+       "A_GroupPropValue_InfoReport": 3,
+       "A_GroupPropValue_Read": 1,
+       "A_GroupPropValue_Response": 1,
+       "A_GroupPropValue_Write": 1,
+       "A_GroupValue_Read": 6,
+       "A_GroupValue_Response": 2,
+       "A_GroupValue_Write": 4,
+       "A_IndividualAddressSerialNumber_Read": 1,
+       "A_IndividualAddressSerialNumber_Response": 1,
+       "A_IndividualAddressSerialNumber_Write": 1,
+       "A_IndividualAddress_Read": 1,
+       "A_IndividualAddress_Response": 1,
+       "A_IndividualAddress_Write": 1,
+       "A_Key_Response": 1,
+       "A_Key_Write": 1,
+       "A_Link_Read": 1,
+       "A_Link_Response": 1,
+       "A_Link_Write": 1,
+       "A_MemoryExtended_Read": 1,
+       "A_MemoryExtended_ReadResponse": 1,
+       "A_MemoryExtended_Write": 1,
+       "A_MemoryExtended_WriteResponse": 2,
+       "A_Memory_Read": 2,
+       "A_Memory_Response": 1,
+       "A_Memory_Write": 1,
+       "A_NetworkParameter_Read": 1,
+       "A_NetworkParameter_Response": 1,
+       "A_NetworkParameter_Write": 1,
+       "A_PropertyDescription_Read": 2,
+       "A_PropertyDescription_Response": 2,
+       "A_PropertyValue_Read": 2,
+       "A_PropertyValue_Response": 4,
+       "A_PropertyValue_Write": 1,
+       "A_Restart": 1,
+       "A_Restart_Response": 1,
+       "A_SystemNetworkParameter_Read": 1,
+       "A_SystemNetworkParameter_Response": 1,
+       "A_SystemNetworkParameter_Write": 1,
+       "A_UserManufacturerInfo_Read": 1,
+       "A_UserManufacturerInfo_Response": 1,
+       "A_UserMemory_Read": 1,
+       "A_UserMemory_Response": 1,
+       "A_UserMemory_Write": 1,
+       "FunctionPropertyExtCommandService": 1,
+       "FunctionPropertyExtStateReadService": 1,
+       "FunctionPropertyExtStateResponseService": 1,
+       "SecureService": 5,
+       "T_ACK": 1,
+       "T_Connect": 1,
+       "T_Disconnect": 1,
+       "T_NAK": 1
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0310": 15,
+     "0x0530": 142
+    },
+    "malformed": 0,
+    "cemi_codes": {
+     "0x10": 1,
+     "0x11": 1,
+     "0x13": 1,
+     "0x25": 1,
+     "0x29": 129,
+     "0x2B": 2,
+     "0x2D": 1,
+     "0x2E": 1,
+     "0x2F": 1,
+     "0x41": 1,
+     "0x4A": 1,
+     "0x89": 1,
+     "0x94": 1,
+     "0xF0": 1,
+     "0xF1": 1,
+     "0xF5": 2,
+     "0xF6": 1,
+     "0xF7": 2,
+     "0xF8": 1,
+     "0xF9": 1,
+     "0xFA": 1,
+     "0xFB": 4,
+     "0xFC": 1
+    }
+   }
+  },
+  {
+   "source": "wireshark-14825",
+   "name": "00_Setup.txt",
+   "file": "wireshark-14825/test-tool_abb-ipr-s_00-setup.txt",
+   "url": "https://gitlab.com/wireshark/wireshark/uploads/27c759e48641fcc042fe3d9af027c76f/00_Setup.txt",
+   "sha256": "9ce4f811d9a3d59fb490fb02192c9e66e98a09dbd51b1fbd681fca3cdfd4abc2",
+   "size": 34201,
+   "format": "K12 text (Ethernet)",
+   "transport": "knxnetip",
+   "class": "B",
+   "class_basis": "Live capture per Wireshark's test suite; devices named by their own DEVICE_INFO blocks; no firmware in the traffic",
+   "privacy": "Private IPv4 addresses and the devices' MAC addresses and serial numbers; the KNX IP Secure session (07) is encrypted with keys not published, nothing secret in clear",
+   "stats": {
+    "frames": 124,
+    "other": {
+     "ip proto 1": 7
+    },
+    "knxnetip": {
+     "udp_datagrams": 117,
+     "tcp_frames": 0,
+     "frames": 117,
+     "decoded": 117,
+     "reencoded_byte_exact": 117,
+     "services": {
+      "CONNECTIONSTATE_REQUEST": 1,
+      "CONNECTIONSTATE_RESPONSE": 1,
+      "CONNECT_REQUEST": 3,
+      "CONNECT_RESPONSE": 3,
+      "DESCRIPTION_REQUEST": 12,
+      "DESCRIPTION_RESPONSE": 3,
+      "DEVICE_CONFIGURATION_ACK": 40,
+      "DEVICE_CONFIGURATION_REQUEST": 40,
+      "DISCONNECT_REQUEST": 3,
+      "DISCONNECT_RESPONSE": 3,
+      "TUNNELLING_ACK": 4,
+      "TUNNELLING_REQUEST": 4
+     },
+     "service_codes": {
+      "0x0203": 12,
+      "0x0204": 3,
+      "0x0205": 3,
+      "0x0206": 3,
+      "0x0207": 1,
+      "0x0208": 1,
+      "0x0209": 3,
+      "0x020A": 3,
+      "0x0310": 40,
+      "0x0311": 40,
+      "0x0420": 4,
+      "0x0421": 4
+     },
+     "cemi": 44,
+     "cemi_decoded": 44,
+     "cemi_reencoded_byte_exact": 44,
+     "cemi_codes": {
+      "0x41": 15,
+      "0x89": 15,
+      "L_Data.con": 2,
+      "L_Data.req": 2,
+      "M_PropRead.con": 5,
+      "M_PropRead.req": 5
+     },
+     "cemi_code_octets": {
+      "0x11": 2,
+      "0x2E": 2,
+      "0x41": 15,
+      "0x89": 15,
+      "0xFB": 5,
+      "0xFC": 5
+     },
+     "tpdu": {
+      "decoded": 4,
+      "reencoded_byte_exact": 4,
+      "services": {
+       "A_GroupValue_Write": 4
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0203": 12,
+     "0x0204": 3,
+     "0x0205": 3,
+     "0x0206": 3,
+     "0x0207": 1,
+     "0x0208": 1,
+     "0x0209": 3,
+     "0x020A": 3,
+     "0x0310": 40,
+     "0x0311": 40,
+     "0x0420": 4,
+     "0x0421": 4
+    },
+    "malformed": 0,
+    "cemi_codes": {
+     "0x11": 2,
+     "0x2E": 2,
+     "0x41": 15,
+     "0x89": 15,
+     "0xFB": 5,
+     "0xFC": 5
+    }
+   }
+  },
+  {
+   "source": "wireshark-14825",
+   "name": "01_Core.txt",
+   "file": "wireshark-14825/test-tool_abb-ipr-s_01-core.txt",
+   "url": "https://gitlab.com/wireshark/wireshark/uploads/8349b99965eb749f0b45ad5a0a655fc6/01_Core.txt",
+   "sha256": "cd097f2247949d417cf953e0559ea07ad16c4d25f652940ba8dd125ed987eef9",
+   "size": 777684,
+   "format": "K12 text (Ethernet)",
+   "transport": "knxnetip",
+   "class": "B",
+   "class_basis": "Live capture per Wireshark's test suite; devices named by their own DEVICE_INFO blocks; no firmware in the traffic",
+   "privacy": "Private IPv4 addresses and the devices' MAC addresses and serial numbers; the KNX IP Secure session (07) is encrypted with keys not published, nothing secret in clear",
+   "stats": {
+    "frames": 1923,
+    "other": {
+     "ip proto 1": 71
+    },
+    "knxnetip": {
+     "udp_datagrams": 1418,
+     "trailing_octets_datagrams": 7,
+     "tcp_frames": 361,
+     "tcp_rest_octets": 52,
+     "frames": 1779,
+     "decoded": 1764,
+     "rejected": {
+      "DESCRIPTION_REQUEST: knx: malformed frame": 4,
+      "DESCRIPTION_REQUEST: knx: unsupported": 1,
+      "SEARCH_REQUEST: knx: malformed frame": 3,
+      "SEARCH_REQUEST: knx: unsupported": 1,
+      "SEARCH_REQUEST_EXTENDED: knx: malformed frame": 4,
+      "SEARCH_REQUEST_EXTENDED: knx: unsupported": 1,
+      "SECURE_WRAPPER: knx: malformed frame": 1
+     },
+     "reencoded_byte_exact": 1764,
+     "services": {
+      "0x09EE": 1,
+      "0x18EA": 1,
+      "0x3FE5": 5,
+      "0x5FC1": 5,
+      "0x7DC0": 5,
+      "0x936B": 1,
+      "0x9E69": 1,
+      "CONNECTIONSTATE_REQUEST": 30,
+      "CONNECTIONSTATE_RESPONSE": 29,
+      "CONNECT_REQUEST": 76,
+      "CONNECT_RESPONSE": 69,
+      "DESCRIPTION_REQUEST": 140,
+      "DESCRIPTION_RESPONSE": 50,
+      "DEVICE_CONFIGURATION_ACK": 429,
+      "DEVICE_CONFIGURATION_REQUEST": 439,
+      "DISCONNECT_REQUEST": 64,
+      "DISCONNECT_RESPONSE": 53,
+      "ROUTING_INDICATION": 4,
+      "SEARCH_REQUEST": 9,
+      "SEARCH_REQUEST_EXTENDED": 108,
+      "SEARCH_RESPONSE": 14,
+      "SEARCH_RESPONSE_EXTENDED": 88,
+      "SECURE_WRAPPER": 107,
+      "SESSION_REQUEST": 9,
+      "SESSION_RESPONSE": 9,
+      "TUNNELLING_ACK": 9,
+      "TUNNELLING_REQUEST": 9
+     },
+     "service_codes": {
+      "0x0201": 13,
+      "0x0202": 14,
+      "0x0203": 145,
+      "0x0204": 50,
+      "0x0205": 76,
+      "0x0206": 69,
+      "0x0207": 30,
+      "0x0208": 29,
+      "0x0209": 64,
+      "0x020A": 53,
+      "0x020B": 113,
+      "0x020C": 88,
+      "0x0310": 439,
+      "0x0311": 429,
+      "0x0420": 9,
+      "0x0421": 9,
+      "0x0530": 4,
+      "0x0950": 108,
+      "0x0951": 9,
+      "0x0952": 9,
+      "0x09EE": 1,
+      "0x18EA": 1,
+      "0x3FE5": 5,
+      "0x5FC1": 5,
+      "0x7DC0": 5,
+      "0x936B": 1,
+      "0x9E69": 1
+     },
+     "cemi": 452,
+     "cemi_decoded": 451,
+     "cemi_rejected": {
+      "0xFC: knx: malformed frame": 1
+     },
+     "cemi_reencoded_byte_exact": 451,
+     "cemi_codes": {
+      "0x41": 134,
+      "0x89": 132,
+      "L_Data.con": 4,
+      "L_Data.ind": 5,
+      "L_Data.req": 4,
+      "M_PropRead.con": 86,
+      "M_PropRead.req": 86
+     },
+     "cemi_code_octets": {
+      "0x11": 4,
+      "0x29": 5,
+      "0x2E": 4,
+      "0x41": 134,
+      "0x89": 132,
+      "0xFB": 86,
+      "0xFC": 87
+     },
+     "tpdu": {
+      "decoded": 13,
+      "reencoded_byte_exact": 13,
+      "services": {
+       "A_GroupValue_Write": 10,
+       "A_NetworkParameter_Write": 3
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0201": 12,
+     "0x0202": 14,
+     "0x0203": 142,
+     "0x0204": 50,
+     "0x0205": 76,
+     "0x0206": 69,
+     "0x0207": 30,
+     "0x0208": 29,
+     "0x0209": 64,
+     "0x020A": 53,
+     "0x020B": 110,
+     "0x020C": 85,
+     "0x0310": 439,
+     "0x0311": 429,
+     "0x0420": 9,
+     "0x0421": 9,
+     "0x0530": 4,
+     "0x0950": 92,
+     "0x0951": 8,
+     "0x0952": 8,
+     "0x09EE": 1,
+     "0x18EA": 1,
+     "0x3FE5": 5,
+     "0x5FC1": 5,
+     "0x7DC0": 5,
+     "0x936B": 1,
+     "0x9E69": 1
+    },
+    "malformed": 129,
+    "cemi_codes": {
+     "0x11": 4,
+     "0x29": 5,
+     "0x2E": 4,
+     "0x41": 134,
+     "0x89": 132,
+     "0xFB": 86,
+     "0xFC": 87
+    }
+   }
+  },
+  {
+   "source": "wireshark-14825",
+   "name": "02_DeviceManagement.txt",
+   "file": "wireshark-14825/test-tool_abb-ipr-s_02-devicemanagement.txt",
+   "url": "https://gitlab.com/wireshark/wireshark/uploads/3535cfa9ccf102bde4d9e3a743fac4c7/02_DeviceManagement.txt",
+   "sha256": "3f35b089d65a94ccd2510a5c3e210fa54bee843643e7d2c6d83cc97ee29f9f6d",
+   "size": 171008,
+   "format": "K12 text (Ethernet)",
+   "transport": "knxnetip",
+   "class": "B",
+   "class_basis": "Live capture per Wireshark's test suite; devices named by their own DEVICE_INFO blocks; no firmware in the traffic",
+   "privacy": "Private IPv4 addresses and the devices' MAC addresses and serial numbers; the KNX IP Secure session (07) is encrypted with keys not published, nothing secret in clear",
+   "stats": {
+    "frames": 665,
+    "other": {
+     "ip proto 1": 8
+    },
+    "knxnetip": {
+     "udp_datagrams": 657,
+     "tcp_frames": 0,
+     "frames": 657,
+     "decoded": 657,
+     "reencoded_byte_exact": 657,
+     "services": {
+      "CONNECTIONSTATE_REQUEST": 4,
+      "CONNECTIONSTATE_RESPONSE": 4,
+      "CONNECT_REQUEST": 40,
+      "CONNECT_RESPONSE": 35,
+      "DESCRIPTION_REQUEST": 9,
+      "DESCRIPTION_RESPONSE": 9,
+      "DEVICE_CONFIGURATION_ACK": 154,
+      "DEVICE_CONFIGURATION_REQUEST": 164,
+      "DISCONNECT_REQUEST": 34,
+      "DISCONNECT_RESPONSE": 30,
+      "TUNNELLING_ACK": 87,
+      "TUNNELLING_REQUEST": 87
+     },
+     "service_codes": {
+      "0x0203": 9,
+      "0x0204": 9,
+      "0x0205": 40,
+      "0x0206": 35,
+      "0x0207": 4,
+      "0x0208": 4,
+      "0x0209": 34,
+      "0x020A": 30,
+      "0x0310": 164,
+      "0x0311": 154,
+      "0x0420": 87,
+      "0x0421": 87
+     },
+     "cemi": 251,
+     "cemi_decoded": 251,
+     "cemi_reencoded_byte_exact": 251,
+     "cemi_codes": {
+      "0x41": 3,
+      "0x4A": 2,
+      "0x89": 5,
+      "0x94": 4,
+      "L_Data.con": 32,
+      "L_Data.ind": 23,
+      "L_Data.req": 32,
+      "M_PropInfo.ind": 2,
+      "M_PropRead.con": 68,
+      "M_PropRead.req": 67,
+      "M_PropWrite.con": 5,
+      "M_PropWrite.req": 5,
+      "M_Reset.req": 3
+     },
+     "cemi_code_octets": {
+      "0x11": 32,
+      "0x29": 23,
+      "0x2E": 32,
+      "0x41": 3,
+      "0x4A": 2,
+      "0x89": 5,
+      "0x94": 4,
+      "0xF1": 3,
+      "0xF5": 5,
+      "0xF6": 5,
+      "0xF7": 2,
+      "0xFB": 68,
+      "0xFC": 67
+     },
+     "tpdu": {
+      "decoded": 87,
+      "reencoded_byte_exact": 87,
+      "services": {
+       "A_DeviceDescriptor_Read": 6,
+       "A_DeviceDescriptor_Response": 3,
+       "A_GroupValue_Write": 4,
+       "A_IndividualAddress_Read": 4,
+       "A_IndividualAddress_Response": 2,
+       "A_IndividualAddress_Write": 2,
+       "A_Memory_Read": 8,
+       "A_Memory_Response": 4,
+       "A_Memory_Write": 4,
+       "A_PropertyValue_Read": 4,
+       "A_PropertyValue_Response": 2,
+       "A_Restart": 2,
+       "T_ACK": 30,
+       "T_Connect": 6,
+       "T_Disconnect": 6
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0203": 9,
+     "0x0204": 9,
+     "0x0205": 40,
+     "0x0206": 35,
+     "0x0207": 4,
+     "0x0208": 4,
+     "0x0209": 34,
+     "0x020A": 30,
+     "0x0310": 163,
+     "0x0311": 154,
+     "0x0420": 87,
+     "0x0421": 87
+    },
+    "malformed": 0,
+    "cemi_codes": {
+     "0x11": 32,
+     "0x29": 23,
+     "0x2E": 32,
+     "0x41": 3,
+     "0x4A": 2,
+     "0x89": 5,
+     "0x94": 4,
+     "0xF1": 3,
+     "0xF5": 5,
+     "0xF6": 5,
+     "0xF7": 2,
+     "0xFB": 68,
+     "0xFC": 66
+    }
+   }
+  },
+  {
+   "source": "wireshark-14825",
+   "name": "03_Tunneling.txt",
+   "file": "wireshark-14825/test-tool_abb-ipr-s_03-tunneling.txt",
+   "url": "https://gitlab.com/wireshark/wireshark/uploads/a995198d2184bcb612b0dc0cd0ec75c2/03_Tunneling.txt",
+   "sha256": "c4a3de2962dd8171150d58d51337ab8f10eec5ad292de140b574a80fa8400d7f",
+   "size": 1399024,
+   "format": "K12 text (Ethernet)",
+   "transport": "knxnetip",
+   "class": "B",
+   "class_basis": "Live capture per Wireshark's test suite; devices named by their own DEVICE_INFO blocks; no firmware in the traffic",
+   "privacy": "Private IPv4 addresses and the devices' MAC addresses and serial numbers; the KNX IP Secure session (07) is encrypted with keys not published, nothing secret in clear",
+   "stats": {
+    "frames": 5005,
+    "other": {
+     "ip proto 1": 175
+    },
+    "knxnetip": {
+     "udp_datagrams": 4591,
+     "tcp_frames": 239,
+     "frames": 4830,
+     "decoded": 4829,
+     "rejected": {
+      "CONNECT_REQUEST: knx: malformed frame": 1
+     },
+     "reencoded_byte_exact": 4829,
+     "services": {
+      "CONNECTIONSTATE_REQUEST": 24,
+      "CONNECTIONSTATE_RESPONSE": 24,
+      "CONNECT_REQUEST": 168,
+      "CONNECT_RESPONSE": 169,
+      "DESCRIPTION_REQUEST": 322,
+      "DESCRIPTION_RESPONSE": 97,
+      "DEVICE_CONFIGURATION_ACK": 1528,
+      "DEVICE_CONFIGURATION_REQUEST": 1528,
+      "DISCONNECT_REQUEST": 148,
+      "DISCONNECT_RESPONSE": 138,
+      "SEARCH_REQUEST_EXTENDED": 3,
+      "SEARCH_RESPONSE_EXTENDED": 3,
+      "SECURE_WRAPPER": 170,
+      "SESSION_REQUEST": 29,
+      "SESSION_RESPONSE": 29,
+      "TUNNELLING_ACK": 213,
+      "TUNNELLING_FEATURE_GET": 26,
+      "TUNNELLING_FEATURE_INFO": 6,
+      "TUNNELLING_FEATURE_RESPONSE": 46,
+      "TUNNELLING_FEATURE_SET": 26,
+      "TUNNELLING_REQUEST": 132
+     },
+     "service_codes": {
+      "0x0203": 322,
+      "0x0204": 97,
+      "0x0205": 169,
+      "0x0206": 169,
+      "0x0207": 24,
+      "0x0208": 24,
+      "0x0209": 148,
+      "0x020A": 138,
+      "0x020B": 3,
+      "0x020C": 3,
+      "0x0310": 1528,
+      "0x0311": 1528,
+      "0x0420": 132,
+      "0x0421": 213,
+      "0x0422": 26,
+      "0x0423": 46,
+      "0x0424": 26,
+      "0x0425": 6,
+      "0x0950": 170,
+      "0x0951": 29,
+      "0x0952": 29
+     },
+     "cemi": 1660,
+     "cemi_decoded": 1660,
+     "cemi_reencoded_byte_exact": 1660,
+     "cemi_codes": {
+      "0x41": 541,
+      "0x89": 541,
+      "L_Busmon.ind": 4,
+      "L_Data.con": 43,
+      "L_Data.ind": 39,
+      "L_Data.req": 46,
+      "M_PropRead.con": 173,
+      "M_PropRead.req": 173,
+      "M_PropWrite.con": 50,
+      "M_PropWrite.req": 50
+     },
+     "cemi_code_octets": {
+      "0x11": 46,
+      "0x29": 39,
+      "0x2B": 4,
+      "0x2E": 43,
+      "0x41": 541,
+      "0x89": 541,
+      "0xF5": 50,
+      "0xF6": 50,
+      "0xFB": 173,
+      "0xFC": 173
+     },
+     "tpdu": {
+      "decoded": 128,
+      "reencoded_byte_exact": 128,
+      "services": {
+       "A_DeviceDescriptor_Read": 2,
+       "A_DeviceDescriptor_Response": 2,
+       "A_GroupValue_Write": 113,
+       "A_IndividualAddress_Read": 5,
+       "T_ACK": 2,
+       "T_Connect": 2,
+       "T_Disconnect": 2
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0203": 322,
+     "0x0204": 97,
+     "0x0205": 169,
+     "0x0206": 169,
+     "0x0207": 24,
+     "0x0208": 24,
+     "0x0209": 148,
+     "0x020A": 138,
+     "0x020B": 3,
+     "0x020C": 3,
+     "0x0310": 1528,
+     "0x0311": 1528,
+     "0x0420": 132,
+     "0x0421": 213,
+     "0x0422": 26,
+     "0x0423": 46,
+     "0x0424": 26,
+     "0x0425": 6,
+     "0x0950": 168,
+     "0x0951": 28,
+     "0x0952": 28
+    },
+    "malformed": 9,
+    "cemi_codes": {
+     "0x11": 46,
+     "0x29": 39,
+     "0x2B": 4,
+     "0x2E": 43,
+     "0x41": 541,
+     "0x89": 541,
+     "0xF5": 50,
+     "0xF6": 50,
+     "0xFB": 173,
+     "0xFC": 173
+    }
+   }
+  },
+  {
+   "source": "wireshark-14825",
+   "name": "04_Routing.txt",
+   "file": "wireshark-14825/test-tool_abb-ipr-s_04-routing.txt",
+   "url": "https://gitlab.com/wireshark/wireshark/uploads/6f8dce27811dc371878c5dced018e69e/04_Routing.txt",
+   "sha256": "11a2fe1fcd557894f7e1d9af5df9b5c9a5b721b6638846ac8f3bb80cc11fef36",
+   "size": 5010982,
+   "format": "K12 text (Ethernet)",
+   "transport": "knxnetip",
+   "class": "B",
+   "class_basis": "Live capture per Wireshark's test suite; devices named by their own DEVICE_INFO blocks; no firmware in the traffic",
+   "privacy": "Private IPv4 addresses and the devices' MAC addresses and serial numbers; the KNX IP Secure session (07) is encrypted with keys not published, nothing secret in clear",
+   "stats": {
+    "frames": 19543,
+    "other": {
+     "ip proto 1": 5
+    },
+    "knxnetip": {
+     "udp_datagrams": 19538,
+     "tcp_frames": 0,
+     "frames": 19538,
+     "decoded": 19538,
+     "reencoded_byte_exact": 19538,
+     "services": {
+      "CONNECTIONSTATE_REQUEST": 15,
+      "CONNECTIONSTATE_RESPONSE": 15,
+      "CONNECT_REQUEST": 44,
+      "CONNECT_RESPONSE": 39,
+      "DESCRIPTION_REQUEST": 11,
+      "DESCRIPTION_RESPONSE": 11,
+      "DEVICE_CONFIGURATION_ACK": 26,
+      "DEVICE_CONFIGURATION_REQUEST": 26,
+      "DISCONNECT_REQUEST": 40,
+      "DISCONNECT_RESPONSE": 33,
+      "ROUTING_BUSY": 1852,
+      "ROUTING_INDICATION": 3581,
+      "ROUTING_LOST_MESSAGE": 8,
+      "TUNNELLING_ACK": 6902,
+      "TUNNELLING_REQUEST": 6935
+     },
+     "service_codes": {
+      "0x0203": 11,
+      "0x0204": 11,
+      "0x0205": 44,
+      "0x0206": 39,
+      "0x0207": 15,
+      "0x0208": 15,
+      "0x0209": 40,
+      "0x020A": 33,
+      "0x0310": 26,
+      "0x0311": 26,
+      "0x0420": 6935,
+      "0x0421": 6902,
+      "0x0530": 3581,
+      "0x0531": 8,
+      "0x0532": 1852
+     },
+     "cemi": 10542,
+     "cemi_decoded": 10542,
+     "cemi_reencoded_byte_exact": 10542,
+     "cemi_codes": {
+      "L_Data.con": 1818,
+      "L_Data.ind": 5176,
+      "L_Data.req": 3522,
+      "M_PropRead.con": 6,
+      "M_PropRead.req": 6,
+      "M_PropWrite.con": 4,
+      "M_PropWrite.req": 4,
+      "M_Reset.req": 6
+     },
+     "cemi_code_octets": {
+      "0x11": 3522,
+      "0x29": 5176,
+      "0x2E": 1818,
+      "0xF1": 6,
+      "0xF5": 4,
+      "0xF6": 4,
+      "0xFB": 6,
+      "0xFC": 6
+     },
+     "tpdu": {
+      "decoded": 10516,
+      "reencoded_byte_exact": 10516,
+      "services": {
+       "A_GroupValue_Write": 10516
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0203": 11,
+     "0x0204": 11,
+     "0x0205": 44,
+     "0x0206": 39,
+     "0x0207": 15,
+     "0x0208": 15,
+     "0x0209": 40,
+     "0x020A": 33,
+     "0x0310": 26,
+     "0x0311": 26,
+     "0x0420": 6935,
+     "0x0421": 6902,
+     "0x0530": 3581,
+     "0x0531": 8,
+     "0x0532": 1852
+    },
+    "malformed": 0,
+    "cemi_codes": {
+     "0x11": 3522,
+     "0x29": 5176,
+     "0x2E": 1818,
+     "0xF1": 6,
+     "0xF5": 4,
+     "0xF6": 4,
+     "0xFB": 6,
+     "0xFC": 6
+    }
+   }
+  },
+  {
+   "source": "wireshark-14825",
+   "name": "05_RemoteDiagAndConfig.txt",
+   "file": "wireshark-14825/test-tool_abb-ipr-s_05-remotediagandconfig.txt",
+   "url": "https://gitlab.com/wireshark/wireshark/uploads/0b4e1f8190f2e2538764d5e3759a39c8/05_RemoteDiagAndConfig.txt",
+   "sha256": "747b5b95e9e6505170819068d7120348784e2b881a637932eb865ac096a1612e",
+   "size": 80434,
+   "format": "K12 text (Ethernet)",
+   "transport": "knxnetip",
+   "class": "B",
+   "class_basis": "Live capture per Wireshark's test suite; devices named by their own DEVICE_INFO blocks; no firmware in the traffic",
+   "privacy": "Private IPv4 addresses and the devices' MAC addresses and serial numbers; the KNX IP Secure session (07) is encrypted with keys not published, nothing secret in clear",
+   "stats": {
+    "frames": 232,
+    "knxnetip": {
+     "udp_datagrams": 232,
+     "trailing_octets_datagrams": 5,
+     "tcp_frames": 0,
+     "frames": 232,
+     "decoded": 227,
+     "rejected": {
+      "0x0740: knx: malformed frame": 2,
+      "0x0740: knx: unsupported": 1,
+      "0x0742: knx: malformed frame": 1,
+      "0x0743: knx: malformed frame": 1
+     },
+     "reencoded_byte_exact": 227,
+     "services": {
+      "0x0740": 41,
+      "0x0741": 50,
+      "0x0742": 23,
+      "0x0743": 4,
+      "0x0744": 1,
+      "CONNECT_REQUEST": 13,
+      "CONNECT_RESPONSE": 12,
+      "DESCRIPTION_REQUEST": 6,
+      "DESCRIPTION_RESPONSE": 5,
+      "DEVICE_CONFIGURATION_ACK": 24,
+      "DEVICE_CONFIGURATION_REQUEST": 24,
+      "DISCONNECT_REQUEST": 12,
+      "DISCONNECT_RESPONSE": 12
+     },
+     "service_codes": {
+      "0x0203": 6,
+      "0x0204": 5,
+      "0x0205": 13,
+      "0x0206": 12,
+      "0x0209": 12,
+      "0x020A": 12,
+      "0x0310": 24,
+      "0x0311": 24,
+      "0x0740": 44,
+      "0x0741": 50,
+      "0x0742": 24,
+      "0x0743": 5,
+      "0x0744": 1
+     },
+     "cemi": 24,
+     "cemi_decoded": 24,
+     "cemi_reencoded_byte_exact": 24,
+     "cemi_codes": {
+      "M_PropWrite.con": 12,
+      "M_PropWrite.req": 12
+     },
+     "cemi_code_octets": {
+      "0xF5": 12,
+      "0xF6": 12
+     },
+     "tpdu": {
+      "decoded": 0,
+      "reencoded_byte_exact": 0,
+      "services": {}
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0203": 6,
+     "0x0204": 5,
+     "0x0205": 13,
+     "0x0206": 12,
+     "0x0209": 12,
+     "0x020A": 12,
+     "0x0310": 24,
+     "0x0311": 24,
+     "0x0740": 44,
+     "0x0741": 50,
+     "0x0742": 24,
+     "0x0743": 5,
+     "0x0744": 1
+    },
+    "malformed": 56,
+    "cemi_codes": {
+     "0xF5": 12,
+     "0xF6": 12
+    }
+   }
+  },
+  {
+   "source": "wireshark-14825",
+   "name": "06_Medium.txt",
+   "file": "wireshark-14825/test-tool_abb-ipr-s_06-medium.txt",
+   "url": "https://gitlab.com/wireshark/wireshark/uploads/d44a42a5853495e7587891a3fa7c1f04/06_Medium.txt",
+   "sha256": "1299fe0a6341dad67925b737f164f86eb79594e8883b9c2b2364e911ab134213",
+   "size": 16238,
+   "format": "K12 text (Ethernet)",
+   "transport": "knxnetip",
+   "class": "B",
+   "class_basis": "Live capture per Wireshark's test suite; devices named by their own DEVICE_INFO blocks; no firmware in the traffic",
+   "privacy": "Private IPv4 addresses and the devices' MAC addresses and serial numbers; the KNX IP Secure session (07) is encrypted with keys not published, nothing secret in clear",
+   "stats": {
+    "frames": 59,
+    "knxnetip": {
+     "udp_datagrams": 59,
+     "tcp_frames": 0,
+     "frames": 59,
+     "decoded": 59,
+     "reencoded_byte_exact": 59,
+     "services": {
+      "CONNECT_REQUEST": 6,
+      "CONNECT_RESPONSE": 6,
+      "DESCRIPTION_REQUEST": 8,
+      "DESCRIPTION_RESPONSE": 7,
+      "DEVICE_CONFIGURATION_ACK": 6,
+      "DEVICE_CONFIGURATION_REQUEST": 6,
+      "DISCONNECT_REQUEST": 5,
+      "DISCONNECT_RESPONSE": 5,
+      "ROUTING_INDICATION": 10
+     },
+     "service_codes": {
+      "0x0203": 8,
+      "0x0204": 7,
+      "0x0205": 6,
+      "0x0206": 6,
+      "0x0209": 5,
+      "0x020A": 5,
+      "0x0310": 6,
+      "0x0311": 6,
+      "0x0530": 10
+     },
+     "cemi": 16,
+     "cemi_decoded": 16,
+     "cemi_reencoded_byte_exact": 16,
+     "cemi_codes": {
+      "0x41": 1,
+      "0x4A": 1,
+      "0x89": 1,
+      "0x94": 1,
+      "L_Data.ind": 10,
+      "M_PropRead.con": 1,
+      "M_PropRead.req": 1
+     },
+     "cemi_code_octets": {
+      "0x29": 10,
+      "0x41": 1,
+      "0x4A": 1,
+      "0x89": 1,
+      "0x94": 1,
+      "0xFB": 1,
+      "0xFC": 1
+     },
+     "tpdu": {
+      "decoded": 10,
+      "reencoded_byte_exact": 10,
+      "services": {
+       "A_DeviceDescriptor_Read": 1,
+       "A_GroupValue_Read": 1,
+       "A_PropertyValue_Read": 2,
+       "A_PropertyValue_Response": 1,
+       "T_Connect": 2,
+       "T_Disconnect": 3
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0203": 8,
+     "0x0204": 7,
+     "0x0205": 6,
+     "0x0206": 6,
+     "0x0209": 5,
+     "0x020A": 5,
+     "0x0310": 6,
+     "0x0311": 6,
+     "0x0530": 10
+    },
+    "malformed": 0,
+    "cemi_codes": {
+     "0x29": 10,
+     "0x41": 1,
+     "0x4A": 1,
+     "0x89": 1,
+     "0x94": 1,
+     "0xFB": 1,
+     "0xFC": 1
+    }
+   }
+  },
+  {
+   "source": "wireshark-14825",
+   "name": "07_Security.txt",
+   "file": "wireshark-14825/test-tool_abb-ipr-s_07-security.txt",
+   "url": "https://gitlab.com/wireshark/wireshark/uploads/544cb5f6d45486e56cc88c2561cf6d50/07_Security.txt",
+   "sha256": "22f53c860dce189cc47e9496815166156e326449ef95582ffde805f572e0cbdc",
+   "size": 4273642,
+   "format": "K12 text (Ethernet)",
+   "transport": "knxnetip",
+   "class": "B",
+   "class_basis": "Live capture per Wireshark's test suite; devices named by their own DEVICE_INFO blocks; no firmware in the traffic",
+   "privacy": "Private IPv4 addresses and the devices' MAC addresses and serial numbers; the KNX IP Secure session (07) is encrypted with keys not published, nothing secret in clear",
+   "stats": {
+    "frames": 14953,
+    "other": {
+     "ip proto 1": 1165
+    },
+    "knxnetip": {
+     "udp_datagrams": 13016,
+     "trailing_octets_datagrams": 2,
+     "tcp_frames": 772,
+     "frames": 13788,
+     "decoded": 13783,
+     "rejected": {
+      "SESSION_REQUEST: knx: malformed frame": 1,
+      "TIMER_NOTIFY: knx: malformed frame": 4
+     },
+     "reencoded_byte_exact": 13783,
+     "services": {
+      "0x0740": 2,
+      "0x0741": 1,
+      "0x0742": 1,
+      "0x0743": 1,
+      "CONNECTIONSTATE_REQUEST": 16,
+      "CONNECTIONSTATE_RESPONSE": 16,
+      "CONNECT_REQUEST": 246,
+      "CONNECT_RESPONSE": 245,
+      "DESCRIPTION_REQUEST": 2077,
+      "DESCRIPTION_RESPONSE": 382,
+      "DEVICE_CONFIGURATION_ACK": 4561,
+      "DEVICE_CONFIGURATION_REQUEST": 4565,
+      "DISCONNECT_REQUEST": 229,
+      "DISCONNECT_RESPONSE": 223,
+      "ROUTING_INDICATION": 3,
+      "SECURE_WRAPPER": 666,
+      "SESSION_AUTHENTICATE": 1,
+      "SESSION_REQUEST": 81,
+      "SESSION_RESPONSE": 76,
+      "SESSION_STATUS": 1,
+      "TIMER_NOTIFY": 334,
+      "TUNNELLING_ACK": 28,
+      "TUNNELLING_REQUEST": 28
+     },
+     "service_codes": {
+      "0x0203": 2077,
+      "0x0204": 382,
+      "0x0205": 246,
+      "0x0206": 245,
+      "0x0207": 16,
+      "0x0208": 16,
+      "0x0209": 229,
+      "0x020A": 223,
+      "0x0310": 4565,
+      "0x0311": 4561,
+      "0x0420": 28,
+      "0x0421": 28,
+      "0x0530": 3,
+      "0x0740": 2,
+      "0x0741": 1,
+      "0x0742": 1,
+      "0x0743": 1,
+      "0x0950": 666,
+      "0x0951": 82,
+      "0x0952": 76,
+      "0x0953": 1,
+      "0x0954": 1,
+      "0x0955": 338
+     },
+     "cemi": 4596,
+     "cemi_decoded": 4596,
+     "cemi_reencoded_byte_exact": 4596,
+     "cemi_codes": {
+      "0x41": 1678,
+      "0x89": 1675,
+      "L_Data.con": 14,
+      "L_Data.ind": 3,
+      "L_Data.req": 14,
+      "M_PropRead.con": 603,
+      "M_PropRead.req": 609
+     },
+     "cemi_code_octets": {
+      "0x11": 14,
+      "0x29": 3,
+      "0x2E": 14,
+      "0x41": 1678,
+      "0x89": 1675,
+      "0xFB": 603,
+      "0xFC": 609
+     },
+     "tpdu": {
+      "decoded": 31,
+      "reencoded_byte_exact": 31,
+      "services": {
+       "A_DeviceDescriptor_Read": 2,
+       "A_DeviceDescriptor_Response": 1,
+       "A_GroupValue_Write": 28
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0203": 2077,
+     "0x0204": 382,
+     "0x0205": 246,
+     "0x0206": 245,
+     "0x0207": 16,
+     "0x0208": 16,
+     "0x0209": 229,
+     "0x020A": 223,
+     "0x0310": 4565,
+     "0x0311": 4561,
+     "0x0420": 28,
+     "0x0421": 28,
+     "0x0530": 3,
+     "0x0740": 2,
+     "0x0741": 1,
+     "0x0742": 1,
+     "0x0743": 1,
+     "0x0950": 666,
+     "0x0951": 82,
+     "0x0952": 76,
+     "0x0953": 1,
+     "0x0954": 1,
+     "0x0955": 338
+    },
+    "malformed": 9,
+    "cemi_codes": {
+     "0x11": 14,
+     "0x29": 3,
+     "0x2E": 14,
+     "0x41": 1678,
+     "0x89": 1675,
+     "0xFB": 603,
+     "0xFC": 609
+    }
+   }
+  },
+  {
+   "source": "wireshark-14825",
+   "name": "08_SystemBroadcast.txt",
+   "file": "wireshark-14825/test-tool_abb-ipr-s_08-systembroadcast.txt",
+   "url": "https://gitlab.com/wireshark/wireshark/uploads/ad26a68f33ee9d04849704a05b1ec021/08_SystemBroadcast.txt",
+   "sha256": "5c7a5fa151379b3426921616ddf78ca4b62704f4d24cb9e38f5849bef2fc668e",
+   "size": 1370340,
+   "format": "K12 text (Ethernet)",
+   "transport": "knxnetip",
+   "class": "B",
+   "class_basis": "Live capture per Wireshark's test suite; devices named by their own DEVICE_INFO blocks; no firmware in the traffic",
+   "privacy": "Private IPv4 addresses and the devices' MAC addresses and serial numbers; the KNX IP Secure session (07) is encrypted with keys not published, nothing secret in clear",
+   "stats": {
+    "frames": 4980,
+    "other": {
+     "ip proto 1": 250
+    },
+    "knxnetip": {
+     "udp_datagrams": 4730,
+     "tcp_frames": 0,
+     "frames": 4730,
+     "decoded": 4730,
+     "reencoded_byte_exact": 4730,
+     "services": {
+      "CONNECTIONSTATE_REQUEST": 15,
+      "CONNECTIONSTATE_RESPONSE": 15,
+      "CONNECT_REQUEST": 105,
+      "CONNECT_RESPONSE": 105,
+      "DESCRIPTION_REQUEST": 506,
+      "DESCRIPTION_RESPONSE": 143,
+      "DEVICE_CONFIGURATION_ACK": 1664,
+      "DEVICE_CONFIGURATION_REQUEST": 1664,
+      "DISCONNECT_REQUEST": 105,
+      "DISCONNECT_RESPONSE": 104,
+      "ROUTING_INDICATION": 72,
+      "ROUTING_SYSTEM_BROADCAST": 78,
+      "TIMER_NOTIFY": 2,
+      "TUNNELLING_ACK": 76,
+      "TUNNELLING_REQUEST": 76
+     },
+     "service_codes": {
+      "0x0203": 506,
+      "0x0204": 143,
+      "0x0205": 105,
+      "0x0206": 105,
+      "0x0207": 15,
+      "0x0208": 15,
+      "0x0209": 105,
+      "0x020A": 104,
+      "0x0310": 1664,
+      "0x0311": 1664,
+      "0x0420": 76,
+      "0x0421": 76,
+      "0x0530": 72,
+      "0x0533": 78,
+      "0x0955": 2
+     },
+     "cemi": 1890,
+     "cemi_decoded": 1890,
+     "cemi_reencoded_byte_exact": 1890,
+     "cemi_codes": {
+      "0x41": 563,
+      "0x89": 563,
+      "L_Data.con": 35,
+      "L_Data.ind": 156,
+      "L_Data.req": 35,
+      "M_PropRead.con": 268,
+      "M_PropRead.req": 270
+     },
+     "cemi_code_octets": {
+      "0x11": 35,
+      "0x29": 156,
+      "0x2E": 35,
+      "0x41": 563,
+      "0x89": 563,
+      "0xFB": 268,
+      "0xFC": 270
+     },
+     "tpdu": {
+      "decoded": 226,
+      "reencoded_byte_exact": 226,
+      "services": {
+       "A_DeviceDescriptor_Read": 29,
+       "A_DeviceDescriptor_Response": 10,
+       "A_DomainAddressSerialNumber_Write": 16,
+       "A_GroupValue_Read": 1,
+       "A_GroupValue_Response": 1,
+       "A_GroupValue_Write": 6,
+       "A_IndividualAddressSerialNumber_Read": 1,
+       "A_IndividualAddress_Read": 5,
+       "A_IndividualAddress_Response": 2,
+       "A_PropertyValue_Read": 1,
+       "A_SystemNetworkParameter_Read": 42,
+       "A_SystemNetworkParameter_Response": 25,
+       "SecureService": 87
+      }
+     }
+    }
+   },
+   "oracle": {
+    "tool": "tshark",
+    "services": {
+     "0x0203": 506,
+     "0x0204": 143,
+     "0x0205": 105,
+     "0x0206": 105,
+     "0x0207": 15,
+     "0x0208": 15,
+     "0x0209": 105,
+     "0x020A": 104,
+     "0x0310": 1664,
+     "0x0311": 1664,
+     "0x0420": 76,
+     "0x0421": 76,
+     "0x0530": 72,
+     "0x0533": 78,
+     "0x0955": 2
+    },
+    "malformed": 0,
+    "cemi_codes": {
+     "0x11": 35,
+     "0x29": 156,
+     "0x2E": 35,
+     "0x41": 563,
+     "0x89": 563,
+     "0xFB": 268,
+     "0xFC": 270
+    }
+   }
+  }
+ ],
+ "oracles": [
+  {
+   "for": "knx-datasets/unknown_residential-tp1_all-knx.pcapng",
+   "name": "all_KNX_hexadecimal.csv",
+   "file": "knx-datasets/all-knx-hexadecimal.csv",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/Original/all_KNX_hexadecimal.csv",
+   "sha256": "63b6623e989b2c69df0951cc270af75905b3dcc1fde18310abd2f04f633223c8",
+   "size": 89162544
+  },
+  {
+   "for": "knx-datasets/attack-tool_residential-tp1_line-scan.pcapng",
+   "name": "all_KNX_LS_hexadecimal.csv",
+   "file": "knx-datasets/all-knx-ls-hexadecimal.csv",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/LS/all_KNX_LS_hexadecimal.csv",
+   "sha256": "b82b0df4773c174a7d27cf55be6d8306dffbe14f01b9a57619dc7ebeef53b872",
+   "size": 89514024
+  },
+  {
+   "for": "knx-datasets/attack-tool_residential-tp1_device-info.pcapng",
+   "name": "all_KNX_DI_hexadecimal.csv",
+   "file": "knx-datasets/all-knx-di-hexadecimal.csv",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/DI/all_KNX_DI_hexadecimal.csv",
+   "sha256": "bed40993dcb83f2747d005338d41f506e4e31d37d1cf4a6ee86f2eb2f2895f4f",
+   "size": 91092605
+  }
+ ],
+ "skipped": [
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_IC_decimal_1.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/IC/all_KNX_IC_decimal_1.pcapng",
+   "size": 16881812,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_IC_decimal_5.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/IC/all_KNX_IC_decimal_5.pcapng",
+   "size": 17550348,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_IC_decimal_10.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/IC/all_KNX_IC_decimal_10.pcapng",
+   "size": 18386084,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_IC_hexadecimal_1.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/IC/all_KNX_IC_hexadecimal_1.pcapng",
+   "size": 16881812,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_IC_hexadecimal_5.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/IC/all_KNX_IC_hexadecimal_5.pcapng",
+   "size": 17550348,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_IC_hexadecimal_10.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/IC/all_KNX_IC_hexadecimal_10.pcapng",
+   "size": 18386040,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_MI_SR_decimal_1.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/MI/SR/all_KNX_MI_SR_decimal_1.pcapng",
+   "size": 16881812,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_MI_SR_decimal_5.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/MI/SR/all_KNX_MI_SR_decimal_5.pcapng",
+   "size": 17550392,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_MI_SR_decimal_10.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/MI/SR/all_KNX_MI_SR_decimal_10.pcapng",
+   "size": 18386128,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_MI_SR_hexadecimal_1.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/MI/SR/all_KNX_MI_SR_hexadecimal_1.pcapng",
+   "size": 16881812,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_MI_SR_hexadecimal_5.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/MI/SR/all_KNX_MI_SR_hexadecimal_5.pcapng",
+   "size": 17550392,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_MI_SR_hexadecimal_10.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/MI/SR/all_KNX_MI_SR_hexadecimal_10.pcapng",
+   "size": 18386128,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "knx-datasets",
+   "name": "all_KNX_MI_HR.pcapng",
+   "url": "https://github.com/vgraveto/knx-datasets/raw/c649ad65ea64276572905781d860a5b0a374e7fc/Dataset/MI/HR/all_KNX_MI_HR.pcapng",
+   "size": 17374700,
+   "reason": "Message injection (MI) and invalid context (IC) sets: frames the authors injected into all_KNX.pcapng at random (SR, IC) or one frame repeated 15000 times (HR); no transport or application service that all_KNX.pcapng and the LS and DI sets do not already hold"
+  },
+  {
+   "source": "wireshark-14825",
+   "name": "KnxipCaptures.zip",
+   "url": "https://gitlab.com/wireshark/wireshark/uploads/ea6be96024b33a7471dee60540b7718b/KnxipCaptures.zip",
+   "size": 1221872,
+   "reason": "Archive of the nine committed text files (byte-identical)"
+  }
+ ]
+}

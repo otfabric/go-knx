@@ -40,7 +40,9 @@
   link (the `mgmt` services, connectionless or in a transport
   connection); the client's read loop hands it the frames of that device.
   `mgmt.Responder` is the device side, which the server runs for its own
-  individual address. Both sides use the same codecs in `mgmt`
+  individual address; its transport layer is driven by `Handle` (frames)
+  and `Repeat` (time: answers not acknowledged within 3 s, connections
+  idle for 6 s, which it ends with a T_Disconnect). Both sides use the same codecs in `mgmt`
   (`Property`, `Description`); `mgmt.PDT` gives the element size of a
   property datatype, which a tool needs before it reads a table property.
 - **Server** (`server`, `device`) is the other side: a KNXnet/IP server

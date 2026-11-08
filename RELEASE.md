@@ -5,6 +5,35 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.10.0
+
+**Date:** 2026-11-08
+**Previous release:** v0.9.0
+
+## Summary
+
+go-knx is validated against recorded traffic of physical devices: five weeks of a KNX TP1 house installation (1 150 094 frames, knx-datasets) and the live KNXnet/IP sessions of an ABB IP-Router IPR/S and an ABB IPS/S2.1 with a test client (Wireshark issue 14825), with Wireshark's KNX test captures. Every frame is decoded and encoded again byte for byte, compared with Wireshark 4.6.9 and with the dataset authors' own decode, and the management, client, discovery and server code is replayed against the recorded devices. Three defects the recordings show are fixed: discovery missed the ABB router, a repeated TP1 frame did not encode back, and the server's own device ended an idle transport connection without telling the peer.
+
+## Changes
+
+### Fixed
+
+- `knxnetip.ParseDIBs` (and every search and description response): one optional block of a known type with another layout made the whole response fail to decode, so `discovery` did not see the device. An ABB IP-Router IPR/S sends a TUNNELLING_INFO block without the maximum APDU length and an 11-octet SECURED_SERVICE_FAMILIES block in its extended search responses (91 recorded; Wireshark marks both blocks malformed). Such an optional block is now kept as `knxnetip.UnknownDIB`, octets as sent, when the DEVICE_INFO block decodes; a malformed DEVICE_INFO or SUPP_SVC_FAMILIES block, or one in a response without DEVICE_INFO, still refuses the response.
+- `cemi.TP1Frame` always wrote the "not repeated" bit: a repeated frame (control field 0x90, 0x9C) decoded by `cemi.ParseTP1` did not encode back to its octets, and the server's busmonitor connections saw a repeated L_Data.ind (from routing) as a first transmission. `TP1Frame` now takes the repeat flag from an L_Data.ind that reports a repeated frame; requests are first transmissions as before. 6 414 repeated frames recorded on the TP1 line now encode back.
+- `mgmt.Responder` (the server's own device) ended a transport connection idle for 6 s silently. `Repeat` now returns a T_Disconnect to the peer, as 75 devices of the recorded TP1 line do 5 to 13 s after a T_Connect that no data follows. The server sends it once a second, as it sends repetitions.
+
+### Added
+
+- `testdata/captures`: the recordings, byte-identical, with SHA256SUMS, a manifest (provenance, evidence class, go-knx's and the oracles' counts) and a README. `make captures-verify` (in CI), `captures-fetch`, `captures-extended` (nightly: every TP1 frame against the CSV exports) and `captures-generate`.
+- Capture tests in `cemi`, `knxnetip`, `discovery`, `secure`, `datasecure`, `mgmt`, `client`, `server` and `internal/capture`; fuzz seeds from the recordings for `cemi.ParseTP1`, `apdu.Parse` and `knxnetip.Parse`. `FuzzParseTP1` now requires a byte-exact round trip, repeat flag included.
+
+### Documentation
+
+- testdata/captures/README.md: sources, terms, evidence classes, comparison rules, results and the classified differences (unsupported memory and ADC services, link-layer repetitions acknowledged again, cEMI transport layer messages and remote diagnosis kept unknown, the router's configuration in the server replay).
+- INTEROPERABILITY.md, LIMITATIONS.md, TESTING.md, docs/IMPLEMENTATION-STATUS.md and README describe the recorded-traffic evidence and its limits. No device was tested live.
+
+---
+
 ## v0.9.0
 
 **Date:** 2026-11-07

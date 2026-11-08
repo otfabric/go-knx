@@ -467,15 +467,39 @@ func (ds DIBs) AppendTo(b []byte) []byte {
 }
 
 // ParseDIBs decodes blocks until b is empty.
+//
+// An optional block (not DEVICE_INFO or SUPP_SVC_FAMILIES) whose content
+// does not fit its type, but whose structure length frames it within b,
+// is kept as an [UnknownDIB] with its octets as sent when the blocks also
+// hold a DEVICE_INFO block that decodes: one malformed optional block
+// does not lose the device's identity and its other blocks. An ABB IP
+// router sends TUNNELLING_INFO and SECURED_SERVICE_FAMILIES blocks of
+// another layout in its extended search responses
+// (testdata/captures/wireshark-14825). Any other malformed block is an
+// error.
 func ParseDIBs(b []byte) (DIBs, error) {
-	var ds DIBs
+	var (
+		ds    DIBs
+		first error
+	)
 	for len(b) > 0 {
 		d, rest, err := ParseDIB(b)
 		if err != nil {
-			return nil, err
+			t := DIBType(b[min(1, len(b)-1)])
+			if len(b) < 2 || b[0] < 2 || int(b[0]) > len(b) || t == DIBDeviceInfo || t == DIBSupportedServices {
+				return nil, err
+			}
+			if first == nil {
+				first = err
+			}
+			n := int(b[0])
+			d, rest = UnknownDIB{DIBType: t, Data: clone(b[2:n])}, b[n:]
 		}
 		ds = append(ds, d)
 		b = rest
+	}
+	if _, ok := ds.DeviceInfo(); first != nil && !ok {
+		return nil, first
 	}
 	return ds, nil
 }

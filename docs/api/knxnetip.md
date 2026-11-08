@@ -377,6 +377,8 @@ func ParseDIBs(b []byte) (DIBs, error)
 
 ParseDIBs decodes blocks until b is empty.
 
+An optional block (not DEVICE\_INFO or SUPP\_SVC\_FAMILIES) whose content does not fit its type, but whose structure length frames it within b, is kept as an [UnknownDIB](#type-unknowndib) with its octets as sent when the blocks also hold a DEVICE\_INFO block that decodes: one malformed optional block does not lose the device's identity and its other blocks. An ABB IP router sends TUNNELLING\_INFO and SECURED\_SERVICE\_FAMILIES blocks of another layout in its extended search responses (testdata/captures/wireshark-14825). Any other malformed block is an error.
+
 #### func (DIBs) AppendTo
 
 ```go

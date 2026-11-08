@@ -1146,7 +1146,10 @@ func (s *Server) distribute(t Telegram, origin *tconn) {
 			c.enqueue(out{cemi: b})
 		case kindBusmonitor:
 			if busmon == nil {
-				busmon = s.busmonitorFrame(ind)
+				// The frame as it came: a request is a first
+				// transmission on the bus, an indication may be a
+				// repetition.
+				busmon = s.busmonitorFrame(f)
 			}
 			if busmon != nil {
 				c.enqueue(out{cemi: busmon})

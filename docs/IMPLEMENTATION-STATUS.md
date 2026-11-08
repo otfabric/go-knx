@@ -43,6 +43,7 @@ the implementation versions. Nothing here is a conformance claim
 | KNX Data Secure (group communication) | datasecure, client | S-A_Data (auth+conf, auth only), security tables, S-A_Sync, surrogate (group object diagnostics) | 99 %, xknx vectors, Annex C S-A_Sync vectors, a Calimero capture | both ways with xknx; go-knx → Calimero tools; Calimero tools → go-knx through go-knx as surrogate |
 | ETS keyring (.knxkeys) | keyring | read (signature, decryption), write test keyrings | 98 %, ETS-exported fixtures | xknx and Calimero load keyrings written by go-knx |
 | ETS project import | — | not implemented | — | — |
+| Recorded traffic (testdata/captures) | all | TP1 frames of a house installation and live KNXnet/IP sessions of ABB IPR/S and IPS/S2.1 (class B), Wireshark test captures (C, E) | every frame decoded and encoded again; Wireshark 4.6.9 and the dataset authors' decode as oracles; management, client, discovery and server replays | recorded devices, not live: see testdata/captures/README.md |
 
 ## Deviations and decisions
 
@@ -56,6 +57,9 @@ the implementation versions. Nothing here is a conformance claim
 | DPT 17/18 scene numbers | raw 0..63 (xknx presents 1..64) | the encoding |
 | Tunnelling v2 status codes 0x2D, 0x2E | used for the extended CRI | cross-checked with xknx's code list |
 | Standard frames | NPDU ≤ 15 octets enforced on encode and decode | frame format |
+| Malformed optional description blocks | kept as `UnknownDIB` (octets as sent) when DEVICE_INFO decodes; a malformed DEVICE_INFO or SUPP_SVC_FAMILIES block, or one without a DEVICE_INFO, refuses the response | an ABB IP-Router IPR/S sends TUNNELLING_INFO and SECURED_SERVICE_FAMILIES of another layout (testdata/captures/wireshark-14825) |
+| Idle transport connection of `mgmt.Responder` | ended with a T_Disconnect after 6 s (from `Repeat`) | 75 recorded TP1 devices do so (knx-datasets line scan) |
+| TP1 repeat flag | `TP1Frame` writes the repeat flag of an L_Data.ind that reports a repeated frame; a request is a first transmission | recorded repeated frames (knx-datasets) |
 | Data Secure CTR stream | The 4-octet MAC is encrypted first and the APDU continues the same key stream | xknx; checked against its vectors and both ways with xknx, decrypted by Calimero |
 | Plain connection to a secure server | refused with E_CONNECTION_TYPE | Calimero's secure server answers the same |
 | Secure device management | user 1 (management user) only | Calimero's secure server refuses other users |

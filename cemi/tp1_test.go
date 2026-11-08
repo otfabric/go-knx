@@ -4,6 +4,7 @@ package cemi
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"testing"
 
@@ -80,14 +81,46 @@ func FuzzParseTP1(f *testing.F) {
 		if err != nil {
 			return
 		}
-		// A frame that decodes encodes back to the same octets, except the
-		// repeat bit, which TP1Frame always clears (an original frame).
+		// A frame that decodes encodes back to the same octets, the repeat
+		// flag of the control field included.
 		again, err := TP1Frame(ld)
 		if err != nil {
 			t.Fatalf("% X decodes but does not encode: %v", b, err)
 		}
-		if !bytes.Equal(again[1:len(again)-1], b[1:len(b)-1]) {
+		if !bytes.Equal(again, b) {
 			t.Fatalf("% X -> % X", b, again)
 		}
 	})
+}
+
+// TestTP1RepeatedFrameRoundTrip: repeated frames recorded on a TP1 line
+// (testdata/captures/knx-datasets) decode to an L_Data.ind with the repeat
+// flag and encode again to the recorded octets. TP1Frame used to set the
+// "not repeated" bit always.
+func TestTP1RepeatedFrameRoundTrip(t *testing.T) {
+	for _, s := range []string{
+		"9C1102100DE100810D", // all-knx frame 114139: group write, low priority, repeated
+		"901166118E508057",   // device-info frame 83289: T_Connect, system priority, repeated
+		"BC11DC0D70D10080A2", // all-knx frame 1: not repeated
+	} {
+		b, _ := hex.DecodeString(s)
+		f, err := ParseTP1(b)
+		if err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+		if f.Repeat() != (b[0]&0x20 == 0) {
+			t.Errorf("%s: Repeat %v", s, f.Repeat())
+		}
+		got, err := TP1Frame(f)
+		if err != nil || !bytes.Equal(got, b) {
+			t.Errorf("%s: encoded % X, %v", s, got, err)
+		}
+	}
+	// A request is a first transmission: its cEMI repeat bit asks for
+	// repetitions on error and does not mark the TP1 frame as repeated.
+	req := NewGroupFrame(LDataReq, 1, 1, knx.PriorityLow, []byte{0x00, 0x81})
+	req.Ctrl1 &^= Ctrl1NoRepeat
+	if b, err := TP1Frame(req); err != nil || b[0] != 0xBC {
+		t.Errorf("request: % X, %v", b, err)
+	}
 }
