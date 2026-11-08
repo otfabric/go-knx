@@ -147,13 +147,20 @@ func (r *Responder) Handle(f *cemi.LData) []*cemi.LData {
 // Repeat returns the frames due at now: the answer in a transport
 // connection that the peer has not acknowledged within 3 s of sending it,
 // repeated at most three times, and after the last repetition a
-// T_Disconnect that ends the connection. Call it about once a second;
-// nil when nothing is due. The peer misses an answer now and then
-// (Calimero's transport layer does, when the answer closely follows the
-// T_Ack); a repetition with the same sequence number recovers it.
+// T_Disconnect that ends the connection; and a T_Disconnect that ends a
+// connection without traffic for 6 s (the connection timeout), as the
+// devices recorded in testdata/captures/knx-datasets send one. Call it
+// about once a second; nil when nothing is due. The peer misses an answer
+// now and then (Calimero's transport layer does, when the answer closely
+// follows the T_Ack); a repetition with the same sequence number recovers
+// it.
 func (r *Responder) Repeat(now time.Time) []*cemi.LData {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.connected && now.Sub(r.last) > connectionTimeout {
+		r.connected, r.pending = false, nil
+		return []*cemi.LData{r.control(r.peer, apdu.TPCI{Kind: apdu.TDisconnect})}
+	}
 	if !r.connected || r.pending == nil || now.Sub(r.sent) < ackTimeout {
 		return nil
 	}

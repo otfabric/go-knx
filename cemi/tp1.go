@@ -13,6 +13,10 @@ import (
 // carried in an L_Busmon.ind: control field, source, destination, address
 // type / hop count / length octet, TPDU and check octet. Only standard
 // frames (NPDU of at most 15 octets) have this format.
+//
+// The repeat flag of the control field (bit 5 clear: a repetition) is
+// taken from an L_Data.ind that reports a repeated frame, as [ParseTP1]
+// decodes one; a frame of any other message code is a first transmission.
 func TP1Frame(f *LData) ([]byte, error) {
 	npdu := len(f.TPDU) - 1
 	if npdu < 0 {
@@ -24,6 +28,9 @@ func TP1Frame(f *LData) ([]byte, error) {
 	// Control field: standard frame (bit 7), not repeated (bit 5), the
 	// fixed bit 4, priority (bits 3-2).
 	b := []byte{0x80 | 0x20 | 0x10 | byte(f.Priority())<<2}
+	if f.MsgCode == LDataInd && f.Repeat() {
+		b[0] &^= 0x20
+	}
 	b = binary.BigEndian.AppendUint16(b, uint16(f.Source))
 	b = binary.BigEndian.AppendUint16(b, f.Destination)
 	o := f.HopCount()<<4 | byte(npdu)
