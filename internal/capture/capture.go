@@ -480,24 +480,30 @@ func (r *reader) reassemble(k flow, s *stream) {
 	}
 	base := s.segs[0].seq
 	sort.SliceStable(s.segs, func(i, j int) bool { return s.segs[i].seq-base < s.segs[j].seq-base })
+	// end is where the stream's octets up to off became complete.
+	type end struct {
+		off   int64
+		frame int
+		ts    time.Time
+	}
 	var (
 		buf   []byte
-		ends  []segment // the segment that ends at each octet boundary
-		next  = uint32(0)
+		ends  []end
+		next  int64
 		start = 0
 	)
 	for _, g := range s.segs {
-		off := g.seq - base
+		off := int64(g.seq - base)
 		if off > next {
 			r.f.TCPGaps++
 			break
 		}
-		if skip := next - off; int(skip) < len(g.data) {
+		if skip := next - off; skip < int64(len(g.data)) {
 			buf = append(buf, g.data[skip:]...)
-			next = off + uint32(len(g.data))
+			next = off + int64(len(g.data))
 			// The octets up to next are complete once the latest of their
 			// segments has arrived.
-			e := segment{seq: next, frame: g.frame, ts: g.ts}
+			e := end{off: next, frame: g.frame, ts: g.ts}
 			if n := len(ends); n > 0 && ends[n-1].frame > e.frame {
 				e.frame, e.ts = ends[n-1].frame, ends[n-1].ts
 			}
@@ -509,8 +515,8 @@ func (r *reader) reassemble(k flow, s *stream) {
 		if n < 6 || len(buf)-start < n {
 			break
 		}
-		end := uint32(start + n)
-		i := sort.Search(len(ends), func(i int) bool { return ends[i].seq >= end })
+		last := int64(start + n)
+		i := sort.Search(len(ends), func(i int) bool { return ends[i].off >= last })
 		g := ends[i]
 		r.f.IP = append(r.f.IP, Datagram{Frame: g.frame, Time: g.ts, Transport: TCP, Src: k.src, Dst: k.dst, Data: buf[start : start+n]})
 		start += n
