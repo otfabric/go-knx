@@ -57,6 +57,12 @@ and this repository's `interop/secure_test.go` (xknx, Calimero tools and
 cB-Sigma knx against go-knx's secure server, go-knx's secure client against Calimero's
 secure server, with the knx-interop test profile).
 
+The table below is the record of the 2026-11-06 run, against knx-interop
+v0.9.0. The current pin is knx-interop v0.9.2 (Makefile); the `secure`
+suite is part of the matrix run against it on 2026-11-07
+([Results](#results-2026-11-07-knx-interop-v092): 0 fail), which did not
+record the secure scenarios separately.
+
 | Scenario | xknx 4.1.1 | Calimero 3.0-M1 |
 |---|---|---|
 | Secure tunnelling: peer client → go-knx server (session, device authentication verified by the client, write, read) | pass | tools: pass |

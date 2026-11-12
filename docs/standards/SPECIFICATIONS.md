@@ -54,14 +54,23 @@ The code was written from:
 3. No source code of another KNX stack was copied. The xknx DPT 20 value
    lists were used to cross-check names and numbers.
 
-## Not yet covered by any source in this repository
+## Implemented without the specification text
 
-- KNX IP Secure and KNX Data Secure are implemented without AN158/AN159
+This section lists sources the project did not have, not missing
+features: each item below is implemented, but from the public frame
+layouts and observed behaviour (sources 1 and 2 above) rather than from
+the clauses that define it.
+
+- KNX IP Secure and KNX Data Secure: implemented without AN158/AN159
   (see "KNX Secure sources" below and LICENSING.md).
-- Tunnelling feature services (TUNNELLING_FEATURE_*) semantics beyond the
-  frame layout.
-- Device management (local device management with M_PropRead etc. over
-  DEVICE_CONFIGURATION_REQUEST).
+- Tunnelling feature services (TUNNELLING_FEATURE_GET/SET/RESPONSE/INFO,
+  3/8/4): implemented in `tunnel` (client) and `server`; the semantics
+  beyond the frame layout follow the interop peers (go-knx client →
+  Calimero server, feature get), not a cited clause.
+- Device management (local device management with M_PropRead and
+  M_PropWrite over DEVICE_CONFIGURATION_REQUEST, 3/8/3): implemented in
+  `devmgmt` (client) and `server`; checked against the Calimero tools
+  (property read), not against the clause text.
 
 ## KNX Secure sources
 
