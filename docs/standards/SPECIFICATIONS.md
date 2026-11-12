@@ -18,7 +18,7 @@ Conformance claims: [CONFORMANCE.md](CONFORMANCE.md).
 | **Datapoint types (DPT)** | Standardised encodings and semantics of application values. KNX volume 3 part 7 part 2 | `dpt` |
 | **KNX TP / PL / RF** | Physical and data link media: twisted pair (TP1), power line (PL110), radio (RF 868 MHz) | Not implemented: go-knx reaches TP/RF only through a KNXnet/IP interface or router. The cEMI frames carry the medium's addressing unchanged |
 | **KNX IP Secure** | Authenticated and encrypted KNXnet/IP: secure sessions (tunnelling over TCP), secure routing (multicast with timer synchronisation), SECURE_WRAPPER. KNX volume 3 part 8 part 9; Application Note 159 | Implemented from public sources: `secure`, secure sessions in `tunnel` and `server` (TCP), secure routing in `routing` (see "KNX Secure sources") |
-| **KNX Data Secure** | End-to-end security of the application layer (A_SecureService, S-APDU, CCM with group/device keys), independent of the transport. Application Note 158; KNX volume 3 part 3 part 7 (security) | S-A_Data for group communication in `datasecure` and `client` (no S-A_Sync, no point to point); keyrings in `keyring` |
+| **KNX Data Secure** | End-to-end security of the application layer (A_SecureService, S-APDU, CCM with group/device keys), independent of the transport. Application Note 158; KNX volume 3 part 3 part 7 (security) | S-A_Data for group communication in `datasecure` and `client`; S-A_Sync and point to point S-A_Data with a tool key for remote device management (`client.WithToolKey`, `server.WithToolKey`); no device-to-device link keys, no secure commissioning (FDSK); keyrings in `keyring` |
 | **KNX IoT** | A separate protocol family (CoAP-based Point API, 3rd Party API), part of KNX Standard v3.0, volume 3 part 10 | Not implemented; out of scope |
 | **ETS project formats** | The XML schemas of ETS project (`.knxproj`, namespace `http://knx.org/xml/project/NN`) and keyring (`.knxkeys`, namespace `http://knx.org/xml/keyring/1`) files | Not implemented |
 
@@ -29,8 +29,8 @@ Conformance claims: [CONFORMANCE.md](CONFORMANCE.md).
 | Individual and group addresses, presentations | `knx` | 3/3/2 Data link layer general; 3/5/1 resources | Two- and three-level presentation is an installation convention; the 16-bit value is what is sent |
 | KNXnet/IP header, HPAI, DIB, CRI/CRD, status codes | `knxnetip` | 3/8/2 Core | Header 0x06/0x10, service identifiers, structures, E_* codes |
 | Search, extended search, description | `knxnetip`, `discovery`, `server` | 3/8/2 Core (core v2 adds SEARCH_REQUEST_EXTENDED and search parameters) | |
-| Device management frames | `knxnetip` | 3/8/3 Device Management | Frames only; no device management connection |
-| Tunnelling (connect, ACK, sequence counters, heartbeat, disconnect) | `tunnel`, `server` | 3/8/4 Tunnelling; 3/8/2 Core (connection management) | UDP, link layer. Tunnelling v2 extended CRI accepted. TCP and feature services: frames only |
+| Device management | `knxnetip`, `devmgmt`, `server` | 3/8/3 Device Management | Device management connection: M_PropRead/M_PropWrite of interface object properties (`devmgmt` client; the server answers for its device, router and KNXnet/IP parameter objects) |
+| Tunnelling (connect, ACK, sequence counters, heartbeat, disconnect) | `tunnel`, `server` | 3/8/4 Tunnelling; 3/8/2 Core (connection management) | UDP and TCP, link layer and busmonitor. Tunnelling v2 extended CRI and address request; feature services (TUNNELLING_FEATURE_*) in client and server |
 | Routing (indication, lost message, busy) | `routing`, `server` | 3/8/5 Routing | Multicast 224.0.23.12:3671 |
 | SECURE_WRAPPER, SESSION_*, TIMER_NOTIFY frames | `knxnetip`, `secure` | 3/8/9 KNXnet/IP Secure; AN159 | Encoded, sealed and opened (public sources) |
 | cEMI L_Data, L_Busmon, L_Raw, M_Prop*, M_FuncProp*, M_Reset | `cemi` | 3/6/3 EMI/IMI, cEMI clauses | |
