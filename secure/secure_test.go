@@ -221,3 +221,41 @@ func TestOpenTooLong(t *testing.T) {
 		t.Errorf("oversized wrapper: %v", err)
 	}
 }
+
+// TestSessionRefusesOwnWrapper: both ends seal with the same key, so a
+// session refuses a wrapper with its own serial number (a frame sent
+// back to its sender) without touching its receive sequence, and still
+// accepts the peer's.
+func TestSessionRefusesOwnWrapper(t *testing.T) {
+	var k Key
+	k[0] = 1
+	a, b := NewSession(3, k, [6]byte{0, 0xfa, 0, 0, 0, 1}), NewSession(3, k, [6]byte{0, 0xfa, 1, 2, 3, 4})
+	for range 2 {
+		if _, err := a.Wrap([]byte{6, 0x10, 2, 9, 0, 6}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	own, err := a.Wrap([]byte{6, 0x10, 2, 9, 0, 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Unwrap(own); !errors.Is(err, knx.ErrSecurity) {
+		t.Errorf("own wrapper: %v", err)
+	}
+	if a.rxSeen || a.rx != 0 {
+		t.Errorf("receive sequence moved: %d %v", a.rx, a.rxSeen)
+	}
+	if _, err := b.Unwrap(own); err != nil {
+		t.Errorf("wrapper of the peer refused: %v", err)
+	}
+	peer, err := b.Wrap([]byte{6, 0x10, 2, 9, 0, 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Unwrap(peer); err != nil {
+		t.Errorf("wrapper of the peer refused: %v", err)
+	}
+	if !a.rxSeen || a.rx != 0 {
+		t.Errorf("receive sequence %d %v, want 0", a.rx, a.rxSeen)
+	}
+}

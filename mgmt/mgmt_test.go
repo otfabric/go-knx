@@ -395,3 +395,72 @@ func TestRepeat(t *testing.T) {
 		t.Fatalf("connectionless answer repeated: %v", f)
 	}
 }
+
+// TestSecuredSyncReplay: a recorded S-A_Sync_Req and the property write
+// that followed it, sent again after a later write, are refused: the value
+// stays the later one. The write alone is refused as well. Both the
+// library's tool side and a tool that reuses the request's sequence number
+// for its first frame (Calimero) are covered.
+func TestSecuredSyncReplay(t *testing.T) {
+	key := datasecure.Key{1, 2, 3}
+	devTab, _ := datasecure.NewTable(nil, nil, 500)
+	devTab.SetToolKey(dev, key)
+	p := &props{name: []byte("abcd")}
+	r := &mgmt.Responder{Address: dev, Properties: p, Security: devTab}
+	toolTab, _ := datasecure.NewTable(nil, nil, 10)
+	toolTab.SetToolKey(dev, key)
+	write := func(val string) *cemi.LData {
+		w := mgmt.Property{Object: 0, PID: 76, Start: 1, Count: 4, Data: []byte(val)}
+		return cemi.NewIndividualFrame(cemi.LDataInd, tool, dev, knx.PrioritySystem, w.TPDU(data, apdu.PropertyValueWriteService))
+	}
+	library := func(val string) (*cemi.LData, *cemi.LData) {
+		t.Helper()
+		req, ch, err := toolTab.SyncRequest(cemi.LDataInd, tool, dev, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := r.Handle(req)
+		if len(out) != 1 || toolTab.OpenSyncResponse(out[0], ch) != nil {
+			t.Fatalf("sync %q failed", val)
+		}
+		sealed, err := toolTab.SealToolRequest(write(val))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out := r.Handle(sealed); len(out) != 1 {
+			t.Fatalf("write %q not answered", val)
+		}
+		return req, sealed
+	}
+	calimero := func(val string) (*cemi.LData, *cemi.LData) {
+		t.Helper()
+		seq := toolTab.Sequence()
+		ch := [6]byte{4, 5, 6}
+		req, _ := datasecure.SyncRequest(key, cemi.LDataInd, tool, dev, 0, seq, [6]byte{}, ch)
+		if out := r.Handle(req); len(out) != 1 {
+			t.Fatalf("sync %q failed", val)
+		}
+		sealed, _ := datasecure.Seal(key, write(val), seq, datasecure.SCF{ToolAccess: true, Algorithm: datasecure.AuthConf})
+		if out := r.Handle(sealed); len(out) != 1 {
+			t.Fatalf("write %q not answered", val)
+		}
+		_, _ = toolTab.SealToolRequest(write("skip")) // move the tool's sequence on
+		return req, sealed
+	}
+	for name, session := range map[string]func(string) (*cemi.LData, *cemi.LData){"library": library, "calimero": calimero} {
+		recSync, recWrite := session("OLD ")
+		session("NEW ")
+		if out := r.Handle(recWrite.Clone()); out != nil {
+			t.Errorf("%s: repeated write answered", name)
+		}
+		if out := r.Handle(recSync.Clone()); len(out) != 1 {
+			t.Errorf("%s: repeated sync request: %d answers", name, len(out))
+		}
+		if out := r.Handle(recWrite.Clone()); out != nil {
+			t.Errorf("%s: write after repeated sync answered", name)
+		}
+		if string(p.name) != "NEW " {
+			t.Errorf("%s: value %q, want %q", name, p.name, "NEW ")
+		}
+	}
+}

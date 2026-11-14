@@ -29,6 +29,11 @@ const (
 	// DefaultSecureSessionTimeout is SESSION_TIMEOUT: a KNX IP Secure
 	// session without a frame for this long is ended.
 	DefaultSecureSessionTimeout = 60 * time.Second
+	// DefaultSecureAuthTimeout bounds the time from SESSION_REQUEST to a
+	// successful SESSION_AUTHENTICATE: a KNX IP Secure session (or a TCP
+	// connection of a secure server) that has not authenticated by then
+	// is ended.
+	DefaultSecureAuthTimeout = 10 * time.Second
 	// DefaultQueueSize bounds the telegrams queued for each tunnelling
 	// connection.
 	DefaultQueueSize = 128
@@ -220,6 +225,18 @@ func WithSecure(device secure.Key, users map[uint8]SecureUser) Option
 ```
 
 WithSecure makes the server a KNX IP Secure interface: tunnelling and device management connections need a secure session over TCP (KNXnet/IP Secure, SESSION\_REQUEST...) authenticated as one of the users (IDs 1..127); plain connection requests are refused with E\_CONNECTION\_TYPE. device is the device authentication code (secure.DeviceAuthenticationCode). Device management connections are for user 1, the management user. Search and description stay plain. WithTCP must stay on.
+
+A session must authenticate within [WithSecureAuthTimeout](#func-withsecureauthtimeout); until then its frames do not keep it open, and when the sessions (or TCP connections) are all taken, a new one replaces the oldest that has not authenticated. A tunnel carries only telegrams with its own individual address as source (or 0, which the server replaces).
+
+WithSecure alone does not protect the remote management of the server's own device (property read and write to its individual address through a tunnel): that stays plain for every tunnelling user unless [WithToolKey](#func-withtoolkey) is set.
+
+#### func WithSecureAuthTimeout
+
+```go
+func WithSecureAuthTimeout(d time.Duration) Option
+```
+
+WithSecureAuthTimeout sets how long a KNX IP Secure session of a [WithSecure](#func-withsecure) server, and a TCP connection to it, may stay without an authenticated user (default 10 s): from SESSION\_REQUEST (over TCP from the accept) to a successful SESSION\_AUTHENTICATE. Frames received before that do not extend it.
 
 #### func WithSecureRouting
 

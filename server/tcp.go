@@ -22,6 +22,9 @@ type tcpConn struct {
 	wmu    sync.Mutex
 	once   sync.Once
 
+	accepted time.Time // start of the authentication deadline
+	release  func()    // frees the connection's slot; runs once
+
 	// ss is the KNX IP Secure session, when the client opened one: its
 	// frames are wrapped from SESSION_REQUEST on.
 	ss sessionState
@@ -46,7 +49,8 @@ func (t *tcpConn) write(m knxnetip.Message) {
 		b, err = knxnetip.Marshal(m)
 	}
 	if err != nil {
-		t.s.o.logger.Errorf("server: encode %s: %v", m.Service(), err)
+		// A frame that does not encode can follow from a peer's request.
+		t.s.o.logger.Debugf("server: encode %s: %v", m.Service(), err)
 		return
 	}
 	t.wmu.Lock()
@@ -63,7 +67,9 @@ func (t *tcpConn) write(m knxnetip.Message) {
 
 func (t *tcpConn) close() { t.once.Do(func() { _ = t.c.Close() }) }
 
-// acceptLoop accepts TCP connections, at most maxTCP at a time.
+// acceptLoop accepts TCP connections, at most maxTCP at a time. On a
+// secure server, when all are taken, a new connection replaces the oldest
+// one that has not authenticated.
 func (s *Server) acceptLoop(ln *net.TCPListener) {
 	defer s.wg.Done()
 	sem := make(chan struct{}, s.maxTCP())
@@ -75,15 +81,14 @@ func (s *Server) acceptLoop(ln *net.TCPListener) {
 			}
 			continue
 		}
-		select {
-		case sem <- struct{}{}:
-		default:
+		if !s.acquireTCP(sem) {
 			s.o.logger.Warnf("server: refuse tcp %s: too many connections", c.RemoteAddr())
 			_ = c.Close()
 			continue
 		}
 		ap := c.RemoteAddr().(*net.TCPAddr).AddrPort()
-		t := &tcpConn{s: s, c: c, remote: netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port())}
+		t := &tcpConn{s: s, c: c, remote: netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()), accepted: time.Now(),
+			release: sync.OnceFunc(func() { <-sem })}
 		s.mu.Lock()
 		if s.closed {
 			s.mu.Unlock()
@@ -94,7 +99,43 @@ func (s *Server) acceptLoop(ln *net.TCPListener) {
 		s.tcpConns[t] = struct{}{}
 		s.mu.Unlock()
 		s.wg.Add(1)
-		go s.serveTCP(t, func() { <-sem })
+		go s.serveTCP(t)
+	}
+}
+
+// acquireTCP takes a slot of the TCP limit. When none is free on a secure
+// server, the oldest connection without an authenticated session gives
+// its slot up and is closed. Only acceptLoop takes slots, so the slot it
+// frees is the one it takes.
+func (s *Server) acquireTCP(sem chan struct{}) bool {
+	select {
+	case sem <- struct{}{}:
+		return true
+	default:
+	}
+	if s.o.secure == nil {
+		return false
+	}
+	var oldest *tcpConn
+	s.mu.Lock()
+	for t := range s.tcpConns {
+		if _, ok := t.secured(); !ok && (oldest == nil || t.accepted.Before(oldest.accepted)) {
+			oldest = t
+		}
+	}
+	s.mu.Unlock()
+	if oldest == nil {
+		return false
+	}
+	oldest.release()
+	oldest.close()
+	s.o.metrics.OnDropped(net.TCPAddrFromAddrPort(oldest.remote), "session_replaced")
+	s.o.logger.Debugf("server: tcp %s replaced: not authenticated", oldest.remote)
+	select {
+	case sem <- struct{}{}:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -103,13 +144,13 @@ func (s *Server) acceptLoop(ln *net.TCPListener) {
 func (s *Server) maxTCP() int { return len(s.o.tunnels) + 4 }
 
 // serveTCP reads the frames of one TCP connection until it closes, then
-// ends the connections it opened. release frees the connection's slot of
-// the TCP limit; it runs before the socket is closed, so a peer that sees
-// the close finds the slot free.
-func (s *Server) serveTCP(t *tcpConn, release func()) {
+// ends the connections it opened. t.release frees the connection's slot
+// of the TCP limit; it runs before the socket is closed, so a peer that
+// sees the close finds the slot free.
+func (s *Server) serveTCP(t *tcpConn) {
 	defer s.wg.Done()
 	defer func() {
-		release()
+		t.release()
 		t.close()
 		s.mu.Lock()
 		delete(s.tcpConns, t)
@@ -128,11 +169,19 @@ func (s *Server) serveTCP(t *tcpConn, release func()) {
 	for {
 		// A client without traffic or heartbeat for the alive time is
 		// gone; a secure session ends after the session timeout.
+		// On a secure server a connection without an authenticated
+		// session ends at the authentication deadline, whatever it sends.
 		idle := s.o.aliveTime
 		if s.o.secure != nil {
 			idle = min(idle, s.o.sessionTimeout)
 		}
-		_ = t.c.SetReadDeadline(time.Now().Add(idle))
+		deadline := time.Now().Add(idle)
+		if _, ok := t.secured(); s.o.secure != nil && !ok {
+			if d := t.accepted.Add(s.o.authTimeout); d.Before(deadline) {
+				deadline = d
+			}
+		}
+		_ = t.c.SetReadDeadline(deadline)
 		b, err := knxnetip.ReadFrame(t.c)
 		if err != nil {
 			return

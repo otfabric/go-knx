@@ -45,6 +45,9 @@ Calls that wait for a peer, or collect its answers, are bounded even when the ca
 | `discovery.Search` | `DefaultMaxResults` (256) servers, then it returns | `WithMaxResults(n)` |
 | `devmgmt` `PropRead`, `PropWrite` | `DefaultTimeout` (3 s) without a context deadline, then `knx.ErrTimeout` | the context |
 | `client.Device.PropertyWrite` | `MaxPropertyData` (250) octets, refused before sending | none |
+| `tunnel.Conn.Send` over TCP | each write bounded by the request timeout; a write the server does not take ends the connection (`knx.ErrConnectionLost`) | `tunnel.WithRequestTimeout` |
+| `server` secure sessions | a session or TCP connection that does not authenticate within `DefaultSecureAuthTimeout` (10 s) ends | `server.WithSecureAuthTimeout` |
+| `keyring` `Load`, `LoadFile`, `Parse` | 4 MiB, nesting depth 64, 262144 elements | none |
 | `tunnel.Conn.Send` | a frame too long for one KNXnet/IP datagram (once secured, too) returns `knx.ErrInvalidValue`; the connection stays up | none |
 
 A cancelled context ends a call with an error matching `context.Canceled`; an expired deadline with one matching `knx.ErrTimeout` (and `context.DeadlineExceeded`).
@@ -55,7 +58,7 @@ A cancelled context ends a call with an error matching `context.Canceled`; an ex
 |---|---|---|
 | `keyring` | `LoadFile(path, password)`, `Load(r, password)`, `Parse(b, password)` | reads `.knxkeys` files into a `*Keyring` |
 | `secure` | `NewCredentials`, `NewKeyPair`, `NewSession`, `NewRoutingTimer` | KNX IP Secure: key derivation and the session handshake |
-| `datasecure` | `NewTable(keys, senders, seq)`, `Open`, `OpenSyncRequest`, `OpenSyncResponse` | KNX Data Secure for group communication |
+| `datasecure` | `NewTable(keys, senders, seq)`, `Open`, `OpenSyncRequest`, `OpenSyncResponse` | KNX Data Secure for group communication; persist `Table.Senders`, `Table.ToolSequences` and `Table.Sequence` and restore them (`NewTable`, `Table.SetToolSequence`) to keep replay protection across restarts |
 
 These hold no sockets and have nothing to close.
 

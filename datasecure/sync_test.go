@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-knx"
+	"github.com/otfabric/go-knx/apdu"
 	"github.com/otfabric/go-knx/cemi"
 )
 
@@ -181,5 +182,124 @@ func TestNewTableClockBeforeEpoch(t *testing.T) {
 	tab, err := NewTable(nil, nil, 0)
 	if err != nil || tab.seq == 0 {
 		t.Fatalf("NewTable: seq %v, %v", tab, err)
+	}
+}
+
+// TestSyncRequestRepeated: an S-A_Sync_Req whose sequence number is not
+// above the last tool access frame of its sender is still answered, but
+// does not let its number be used again; a new one does, once.
+func TestSyncRequestRepeated(t *testing.T) {
+	tool, dev := knx.MustParseIndividualAddress("15.15.240"), knx.MustParseIndividualAddress("15.15.255")
+	toolKey := Key{7}
+	tab, _ := NewTable(nil, nil, 100)
+	tab.SetToolKey(dev, toolKey)
+	data := cemi.NewIndividualFrame(cemi.LDataInd, tool, dev, knx.PrioritySystem, []byte{0x01, 0xD4, 0, 9, 0, 0x10, 0x42})
+	seal := func(seq uint64) *cemi.LData {
+		f, _ := Seal(toolKey, data, seq, SCF{ToolAccess: true, Algorithm: AuthConf})
+		return f
+	}
+	sync := func(seq uint64) *cemi.LData {
+		req, _ := SyncRequest(toolKey, cemi.LDataInd, tool, dev, 0, seq, [6]byte{}, [6]byte{1})
+		return req
+	}
+	respond := func(req *cemi.LData) {
+		t.Helper()
+		if res, err := tab.Respond(req, dev, cemi.LDataInd); err != nil || res == nil {
+			t.Fatalf("respond: %v", err)
+		}
+	}
+	// A first session (Calimero: request and first frame share 5), then a
+	// later frame.
+	req5, data5 := sync(5), seal(5)
+	respond(req5)
+	if p, err := tab.OpenTool(data5, dev); err != nil || p == nil {
+		t.Fatalf("first tool frame: %v", err)
+	}
+	if p, err := tab.OpenTool(seal(6), dev); err != nil || p == nil {
+		t.Fatalf("later tool frame: %v", err)
+	}
+	// The recorded pair, repeated: the request is answered, the frame is
+	// refused.
+	respond(req5)
+	if _, err := tab.OpenTool(data5, dev); !errors.Is(err, knx.ErrSecurity) {
+		t.Errorf("repeated pair: %v", err)
+	}
+	// An equal sequence number does not reopen either.
+	respond(sync(6))
+	if _, err := tab.OpenTool(seal(6), dev); !errors.Is(err, knx.ErrSecurity) {
+		t.Errorf("request with the last sequence number: %v", err)
+	}
+	// A new request still works, its number once.
+	respond(sync(9))
+	if p, err := tab.OpenTool(seal(9), dev); err != nil || p == nil {
+		t.Errorf("new session: %v", err)
+	}
+	if _, err := tab.OpenTool(seal(9), dev); !errors.Is(err, knx.ErrSecurity) {
+		t.Errorf("new session frame twice: %v", err)
+	}
+	// A stray old request after a new one drops the pending number.
+	respond(sync(20))
+	respond(sync(3))
+	if _, ok := tab.synced[tool]; ok {
+		t.Error("old request kept a pending sequence number")
+	}
+}
+
+// group telegram and a recorded tool access frame refused.
+func TestReceiveStateRestore(t *testing.T) {
+	sender, tool, dev := knx.MustParseIndividualAddress("1.1.5"), knx.MustParseIndividualAddress("1.1.10"), knx.MustParseIndividualAddress("1.1.0")
+	g := knx.MustParseGroupAddress("1/2/3")
+	keys := map[knx.GroupAddress]Key{g: key040}
+	toolKey := Key{1, 2, 3}
+	initial := map[knx.IndividualAddress]uint64{sender: 0}
+	w, _ := apdu.GroupValueWrite(apdu.GroupValue{Small: true, Data: []byte{1}})
+	grp, _ := Seal(key040, cemi.NewGroupFrame(cemi.LDataInd, sender, g, knx.PriorityLow, w), 4242, GroupData)
+	toolFrame, _ := Seal(toolKey, cemi.NewIndividualFrame(cemi.LDataInd, tool, dev, knx.PrioritySystem, []byte{0x01, 0xD4, 0, 9, 0, 0x10, 0x42}), 77, SCF{ToolAccess: true, Algorithm: AuthConf})
+
+	before, _ := NewTable(keys, initial, 100)
+	before.SetToolKey(dev, toolKey)
+	if _, err := before.Incoming(grp); err != nil {
+		t.Fatal(err)
+	}
+	if p, err := before.OpenTool(toolFrame, dev); err != nil || p == nil {
+		t.Fatal(err)
+	}
+	senders, tools := before.Senders(), before.ToolSequences()
+	if senders[sender] != 4242 || tools[tool] != 77 {
+		t.Fatalf("state %v %v", senders, tools)
+	}
+	// The copies are not the table's maps.
+	senders[sender], tools[tool] = 0, 0
+	if before.Senders()[sender] != 4242 || before.ToolSequences()[tool] != 77 {
+		t.Fatal("state shares the table's maps")
+	}
+	senders, tools = before.Senders(), before.ToolSequences()
+
+	// Without the state, a restarted table accepts the recordings again.
+	fresh, _ := NewTable(keys, initial, before.Sequence())
+	fresh.SetToolKey(dev, toolKey)
+	if _, err := fresh.Incoming(grp); err != nil {
+		t.Errorf("fresh table: %v", err)
+	}
+
+	after, _ := NewTable(keys, senders, before.Sequence())
+	after.SetToolKey(dev, toolKey)
+	for a, last := range tools {
+		after.SetToolSequence(a, last)
+	}
+	after.SetToolSequence(tool, 1) // lower: kept
+	if _, err := after.Incoming(grp); !errors.Is(err, knx.ErrSecurity) {
+		t.Errorf("group telegram after restore: %v", err)
+	}
+	if _, err := after.OpenTool(toolFrame, dev); !errors.Is(err, knx.ErrSecurity) {
+		t.Errorf("tool access frame after restore: %v", err)
+	}
+	// A recorded S-A_Sync_Req with the same number does not reopen it.
+	req, _ := SyncRequest(toolKey, cemi.LDataInd, tool, dev, 0, 77, [6]byte{}, [6]byte{1})
+	if res, err := after.Respond(req, dev, cemi.LDataInd); err != nil || res == nil {
+		t.Fatalf("respond: %v", err)
+	}
+	if _, err := after.OpenTool(toolFrame, dev); !errors.Is(err, knx.ErrSecurity) {
+		t.Errorf("tool access frame after restore and sync: %v", err)
 	}
 }

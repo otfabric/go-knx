@@ -27,7 +27,7 @@ A KNXnet/IP network is part of a building's control system.
 | The building's devices | Unauthorised telegrams (switch off heating, open blinds, trigger scenes) | Sends only what the application asks; never scans, probes or retransmits on its own beyond the protocol's one repetition | Prevent telegrams from others: plain KNXnet/IP has no authentication |
 | Confidentiality of states | Eavesdropping on group values (presence, alarms) | — | Plain KNXnet/IP is not encrypted |
 | The host running go-knx | Malformed or hostile datagrams | Strict decoding (no panics, fuzzed), bounded frame size (1024 octets), bounded queues, bounded connections, deadlines on every wait, rate-limited routing | — |
-| A go-knx server | Resource exhaustion by many clients | Connection limit (one per tunnelling address), per-connection bounded queue, heartbeat timeout (120 s), refusal with the standard status codes | Rate limiting per source address (not implemented) |
+| A go-knx server | Resource exhaustion by many clients | Connection limit (one per tunnelling address), per-connection bounded queue, heartbeat timeout (120 s), refusal with the standard status codes; on a secure server, sessions and TCP connections that do not authenticate within 10 s end, and a new one replaces the oldest that has not authenticated when all are taken | Rate limiting per source address (not implemented) |
 | The KNX IP network | Telegram storms or loops through routing | Routing indications are rate limited (50/s by default); telegrams with hop count 0 are not routed; the server never re-routes indications received from multicast; routing.Conn never forwards | Loops created by other routers |
 
 ## KNXnet/IP security limitations
@@ -55,11 +55,11 @@ verified for conformance, and not certified
 
 | Feature | Covered | Not covered |
 |---|---|---|
-| Secure tunnelling (`tunnel.WithSecure`, `server.WithSecure`) | X25519 session over TCP or UDP (`tunnel.WithUDP`), user authentication, device authentication (client verifies when given the code), SECURE_WRAPPER with replay protection, keep alive, close; server binds users to tunnelling addresses, device management for user 1 only, ends sessions idle for the session timeout (60 s, `server.WithSecureSessionTimeout`; the client sends a keep alive after 30 s idle, `tunnel.WithSessionKeepAlive`) | secure device management by remote tools beyond property access |
-| Secure routing (`routing.WithSecure`, `server.WithSecureRouting`) | backbone key, timer synchronisation as keeper or follower, latency tolerance; plain routing frames dropped | — |
+| Secure tunnelling (`tunnel.WithSecure`, `server.WithSecure`) | X25519 session over TCP or UDP (`tunnel.WithUDP`), user authentication, device authentication (client verifies when given the code), SECURE_WRAPPER with replay protection, keep alive, close; server binds users to tunnelling addresses, device management for user 1 only, ends sessions that do not authenticate within `server.WithSecureAuthTimeout` (10 s; frames before authentication do not extend a session, and when all sessions or TCP connections are taken a new one replaces the oldest that has not authenticated), drops a tunnel's telegrams whose source is not its own address (negative L_Data.con), ends sessions idle for the session timeout (60 s, `server.WithSecureSessionTimeout`; the client sends a keep alive after 30 s idle, `tunnel.WithSessionKeepAlive`) | secure device management by remote tools beyond property access |
+| Secure routing (`routing.WithSecure`, `server.WithSecureRouting`) | backbone key, timer synchronisation as keeper or follower (answers are collected for the whole synchronisation window and the newest is used), latency tolerance, each frame accepted once within it (at most 4096 remembered; more are dropped until older ones expire); plain routing frames dropped | — |
 | Data Secure (`datasecure`, `client.WithDataSecure`) | S-A_Data with authentication and confidentiality (or authentication only) for group communication, per sender sequence numbers; S-A_Sync request and response; answering S-A_Sync and group object diagnostics with the device's tool key (the surrogate a tool such as Calimero uses to send secured group telegrams) | asking group peers by S-A_Sync automatically |
 | Data Secure tool access (`client.Device`, `client.WithToolKey`, `server.WithToolKey`, `mgmt.Responder`) | remote device management secured with the device's tool key: S-A_Sync, then S-A_Data with tool access, connectionless and in transport connections, as tool and as device; a secured device ignores plain management | device-to-device link keys (P2P key table), secure commissioning with the factory key (FDSK), setting the security mode by function property |
-| Keyrings (`keyring`) | signature check, decryption, lookups, writing test keyrings | — |
+| Keyrings (`keyring`) | signature check, decryption, lookups, writing test keyrings; input bounded (4 MiB, nesting depth 64, 262144 elements) before the signature is checked | — |
 
 Behaviour that matters for security:
 
@@ -69,7 +69,14 @@ Behaviour that matters for security:
   search and description stay plain, as the standard requires.
 - Frames that fail authentication, replay an old sequence number or carry
   an outdated routing timer are dropped and counted
-  (`Metrics.OnDecodeError` / `OnDropped`), never delivered.
+  (`Metrics.OnDecodeError` / `OnDropped`), never delivered. A secure
+  session refuses frames carrying its own serial number; the two ends of
+  a session must use different KNX serial numbers.
+- A Data Secure table remembers the last sequence number of each sender
+  only while it runs. Persist `Table.Senders()` and
+  `Table.ToolSequences()` together with `Table.Sequence()`, and restore
+  them (`datasecure.NewTable`, `Table.SetToolSequence`), or a recorded
+  telegram is accepted again after a restart.
 - A client with Data Secure drops plain telegrams to secured groups.
 - The secure session's frames are sealed with AES-128-CCM; the key
   agreement is X25519 (`crypto/ecdh`); comparisons of MACs are constant
@@ -78,12 +85,18 @@ Behaviour that matters for security:
   the tool authenticated with the client's own tool key (S-A_Sync, then a
   tool access S-A_Data). The tool key is the tool's credential: any
   sender that has it may synchronise, and its tool access sequence
-  numbers are tracked apart from the group senders'. The layout of the group object diagnostics request comes
+  numbers are tracked apart from the group senders'. An S-A_Sync_Req lets its own sequence number be used once only when that number is above the last tool access frame of the sender. The layout of the group object diagnostics request comes
   from observing Calimero, not from the specification.
 - A device with a tool key (`server.WithToolKey`) answers no plain
   management request; with a tool key, `client.Device` never falls back
   to plain access, and answers that fail authentication or replay an old
   sequence number are dropped.
+- Without a tool key, remote management of a secure server's own
+  individual address (property read and write over L_Data) stays plain
+  for every tunnelling user: `server.WithSecure` protects the KNXnet/IP
+  connections, `server.WithToolKey` the device.
+- The tunnelling client bounds every TCP write by the request timeout and
+  drops stray datagrams during the KNX IP Secure handshake over UDP.
 - A Data Secure table starts its sending sequence number at the
   milliseconds since 2018-01-05 when none is given; persist
   `Table.Sequence()` if the clock may go backwards.

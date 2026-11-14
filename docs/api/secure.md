@@ -187,6 +187,8 @@ type RoutingTimer struct {
 
 	// timer value minus local milliseconds
 
+	// last value returned by Next
+
 }
 ```
 
@@ -206,7 +208,7 @@ NewRoutingTimer returns a timer for the backbone key. serial is the KNX serial n
 func (r *RoutingTimer) Accept(w *knxnetip.SecureWrapper) bool
 ```
 
-Accept checks the timer value of a received SECURE\_WRAPPER (already authenticated): a newer value advances the timer, a value older than the latency tolerance is refused and answered by an update notify.
+Accept checks the timer value of a received SECURE\_WRAPPER (already authenticated): a newer value advances the timer, a value older than the latency tolerance is refused and answered by an update notify. A repeat of a wrapper already accepted is refused, as is every wrapper before Synchronize returns. At most maxSeenWrappers wrappers inside the latency tolerance are remembered; beyond that wrappers are refused until older ones leave the tolerance.
 
 #### func (RoutingTimer) Authenticated
 
@@ -230,7 +232,7 @@ HandleNotify processes a received TIMER\_NOTIFY. It returns false when the MAC i
 func (r *RoutingTimer) Next() uint64
 ```
 
-Next returns the timer value for an outgoing SECURE\_WRAPPER.
+Next returns the timer value for an outgoing SECURE\_WRAPPER. Values strictly increase (until the timer saturates at MaxSequence): two wrappers sent in the same millisecond get different values.
 
 #### func (RoutingTimer) Stop
 
@@ -246,7 +248,7 @@ Stop stops the notify timer.
 func (r *RoutingTimer) Synchronize(ctx context.Context)
 ```
 
-Synchronize sends a TIMER\_NOTIFY and waits for the time keeper's answer; without one this router becomes the time keeper. Frames are accepted only after it returns.
+Synchronize sends a TIMER\_NOTIFY and collects the answers for the whole synchronisation window (about 3.3 s at DefaultLatency); without an answer this router becomes the time keeper. An answer only raises the timer, so the newest answer wins and a stale one cannot set it back. Frames are accepted only after it returns.
 
 #### func (RoutingTimer) TimeKeeper
 
@@ -273,7 +275,7 @@ Session is the state of an established secure session (tunnelling over a unicast
 func NewSession(id uint16, key Key, serial [6]byte) *Session
 ```
 
-NewSession returns a session with identifier id and the session key; serial is the KNX serial number sent in its wrappers.
+NewSession returns a session with identifier id and the session key; serial is the KNX serial number sent in its wrappers. Both ends of a session seal with the same key, so Unwrap tells the directions apart by the serial number: the two ends must use different serial numbers. The tunnel client picks a random one (00FA plus 4 random octets); the server uses its configured serial number (server.WithSerial).
 
 #### func (Session) Marshal
 
@@ -289,7 +291,7 @@ Marshal wraps a message and encodes the SECURE\_WRAPPER.
 func (s *Session) Unwrap(w *knxnetip.SecureWrapper) ([]byte, error)
 ```
 
-Unwrap verifies a SECURE\_WRAPPER of the session and returns its frame. Sequence numbers must increase: a repeated or older one is a replay.
+Unwrap verifies a SECURE\_WRAPPER of the session and returns its frame. Sequence numbers must increase: a repeated or older one is a replay. A wrapper with this session's own serial number was sealed by this end and is refused, so a frame sent back to its sender is not taken as the peer's.
 
 #### func (Session) Wrap
 

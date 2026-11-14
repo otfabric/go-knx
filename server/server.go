@@ -289,6 +289,9 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.o.routing {
 		s.wg.Add(1)
 	}
+	if s.o.routing && s.o.secureRouting != nil {
+		s.wg.Add(1) // the timer synchronisation
+	}
 	s.mu.Unlock()
 	s.o.logger.Infof("server: listening on %s (tcp %t, discovery %t, routing %t)", main.LocalAddr(), s.o.tcp, s.o.discovery, s.o.routing)
 	if s.o.routing && s.o.secureRouting != nil {
@@ -296,7 +299,20 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	go s.readLoop(main)
 	if s.rtimer != nil {
-		go s.rtimer.Synchronize(ctx)
+		go func() {
+			defer s.wg.Done()
+			// Close ends the synchronisation too.
+			sctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			go func() {
+				select {
+				case <-s.closing:
+					cancel()
+				case <-sctx.Done():
+				}
+			}()
+			s.rtimer.Synchronize(sctx)
+		}()
 	}
 	go s.janitor()
 	if disc != nil {
@@ -468,7 +484,8 @@ func (s *Server) Close() error {
 func (s *Server) write(to netip.AddrPort, m knxnetip.Message) {
 	b, err := knxnetip.Marshal(m)
 	if err != nil {
-		s.o.logger.Errorf("server: encode %s: %v", m.Service(), err)
+		// A frame that does not encode can follow from a peer's request.
+		s.o.logger.Debugf("server: encode %s: %v", m.Service(), err)
 		return
 	}
 	s.writeRaw(to, b, m.Service())
@@ -724,7 +741,9 @@ func (s *Server) dibs(types []knxnetip.DIBType, extended bool) knxnetip.DIBs {
 		case knxnetip.DIBExtendedDeviceInfo:
 			ds = append(ds, knxnetip.ExtendedDeviceInfo{MaxAPDU: 254})
 		case knxnetip.DIBKNXAddresses:
-			ds = append(ds, knxnetip.KNXAddresses{Addresses: append([]knx.IndividualAddress{s.o.address}, s.o.tunnels...)})
+			as := append([]knx.IndividualAddress{s.o.address}, s.o.tunnels...)
+			// The DIB length is one octet: the addresses that fit.
+			ds = append(ds, knxnetip.KNXAddresses{Addresses: as[:min(len(as), maxDIBAddresses)]})
 		case knxnetip.DIBTunnellingInfo:
 			ds = append(ds, s.tunnellingInfo())
 		case knxnetip.DIBSecuredServices:
@@ -739,6 +758,14 @@ func (s *Server) dibs(types []knxnetip.DIBType, extended bool) knxnetip.DIBs {
 	return ds
 }
 
+// Entries that fit in a DIB, whose length is one octet: KNX_ADDRESSES
+// has 2 octets of header and 2 per address, TUNNELLING_INFO 4 octets of
+// header and 4 per slot.
+const (
+	maxDIBAddresses = (0xFF - 2) / 2
+	maxDIBSlots     = (0xFF - 4) / 4
+)
+
 func (s *Server) tunnellingInfo() knxnetip.TunnellingInfo {
 	s.mu.Lock()
 	used := map[knx.IndividualAddress]bool{}
@@ -747,7 +774,8 @@ func (s *Server) tunnellingInfo() knxnetip.TunnellingInfo {
 	}
 	s.mu.Unlock()
 	t := knxnetip.TunnellingInfo{MaxAPDU: 254}
-	for _, a := range s.o.tunnels {
+	// The DIB length is one octet: the slots that fit.
+	for _, a := range s.o.tunnels[:min(len(s.o.tunnels), maxDIBSlots)] {
 		st := uint16(0x04 | 0x02) // usable, authorised
 		if !used[a] {
 			st |= 0x01
@@ -758,9 +786,11 @@ func (s *Server) tunnellingInfo() knxnetip.TunnellingInfo {
 }
 
 // searchExt applies the search parameters of an extended search; ok is
-// false when the server must not answer.
+// false when the server must not answer. A DIB type requested more than
+// once is answered once.
 func (s *Server) searchExt(m *knxnetip.SearchRequestExt) (knxnetip.DIBs, bool) {
 	var types []knxnetip.DIBType
+	var seen [256]bool
 	for _, p := range m.Params {
 		switch p.Type {
 		case knxnetip.SRPProgrammingMode:
@@ -781,7 +811,8 @@ func (s *Server) searchExt(m *knxnetip.SearchRequestExt) (knxnetip.DIBs, bool) {
 			}
 		case knxnetip.SRPRequestDIBs:
 			for _, t := range p.Data {
-				if t != 0 {
+				if t != 0 && !seen[t] {
+					seen[t] = true
 					types = append(types, knxnetip.DIBType(t))
 				}
 			}
@@ -976,12 +1007,19 @@ func (s *Server) onConnect(p peer, m *knxnetip.ConnectRequest) {
 			return
 		}
 	}
-	ch := s.next
+	// A free channel: never one of a live connection.
+	ch, free := s.next, false
 	for range 256 {
 		ch++
 		if _, taken := s.conns[ch]; ch != 0 && !taken {
+			free = true
 			break
 		}
+	}
+	if !free {
+		s.mu.Unlock()
+		refuse(knxnetip.StatusNoMoreConnections)
+		return
 	}
 	s.next = ch
 	c := s.newConn(kind, ch, addr, ctrl, data, p)
@@ -1029,9 +1067,13 @@ func (s *Server) disconnect(c *tconn, notify bool, cause error) {
 	// metrics never lag behind what the client sees.
 	s.o.metrics.OnDisconnect(net.UDPAddrFromAddrPort(c.ctrl), c.channel, cause)
 	if notify {
-		if c.tcp != nil {
+		switch {
+		case c.tcp != nil:
 			c.tcp.write(&knxnetip.DisconnectRequest{Channel: c.channel, Control: knxnetip.TCPHPAI()})
-		} else {
+		case c.us != nil:
+			// A connection of a secure session over UDP: in the session.
+			s.writeSession(c.us, c.ctrl, &knxnetip.DisconnectRequest{Channel: c.channel, Control: s.endpoint(c.ctrl)})
+		default:
 			s.write(c.ctrl, &knxnetip.DisconnectRequest{Channel: c.channel, Control: s.endpoint(c.ctrl)})
 		}
 	}
@@ -1041,7 +1083,7 @@ func (s *Server) disconnect(c *tconn, notify bool, cause error) {
 // janitor closes connections without heartbeat.
 func (s *Server) janitor() {
 	defer s.wg.Done()
-	tick := max(min(min(s.o.aliveTime, s.o.sessionTimeout)/10, time.Second),
+	tick := max(min(min(s.o.aliveTime, s.o.sessionTimeout, s.o.authTimeout)/10, time.Second),
 		// NewTicker panics on 0
 		time.Millisecond)
 	t := time.NewTicker(tick)

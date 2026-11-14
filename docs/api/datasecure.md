@@ -208,13 +208,15 @@ func NewTable(keys map[knx.GroupAddress]Key, senders map[knx.IndividualAddress]u
 
 NewTable returns a table. senders maps each sender that may send to the secured groups to its last valid sequence number (0 if unknown). seq is the next sending sequence number; 0 starts at the milliseconds since 2018-01-05, which exceeds earlier runs.
 
+A table refuses a telegram whose sequence number is not above the last valid one of its sender only while it remembers that number. To keep this across a restart, persist Senders and ToolSequences together with Sequence and pass them back (senders here, tool sequences with SetToolSequence): a table built from the initial values (for example the keyring's) accepts a recorded telegram again.
+
 #### func (Table) AddSender
 
 ```go
 func (t *Table) AddSender(a knx.IndividualAddress, last uint64)
 ```
 
-AddSender allows a sender with its last valid sequence number.
+AddSender allows a sender with its last valid sequence number. A known sender's number is only raised, never lowered.
 
 #### func (Table) Incoming
 
@@ -298,13 +300,21 @@ func (t *Table) Secured(g knx.GroupAddress) bool
 
 Secured reports whether a group address has a key.
 
+#### func (Table) Senders
+
+```go
+func (t *Table) Senders() map[knx.IndividualAddress]uint64
+```
+
+Senders returns a copy of the last valid sequence number of each known group sender: the receive state Incoming checks. Persist it together with Sequence and pass it to NewTable (or AddSender) after a restart, or a recorded telegram is accepted again.
+
 #### func (Table) Sequence
 
 ```go
 func (t *Table) Sequence() uint64
 ```
 
-Sequence returns the next sending sequence number. Persist it to continue after a restart.
+Sequence returns the next sending sequence number. Persist it, with Senders and ToolSequences, to continue after a restart.
 
 #### func (Table) SetToolKey
 
@@ -313,6 +323,14 @@ func (t *Table) SetToolKey(a knx.IndividualAddress, k Key)
 ```
 
 SetToolKey sets the tool key of a device. A Table answers the S-A\_Sync\_Req addressed to its own device with that device's tool key (see Respond).
+
+#### func (Table) SetToolSequence
+
+```go
+func (t *Table) SetToolSequence(a knx.IndividualAddress, last uint64)
+```
+
+SetToolSequence restores the last valid tool access sequence number of a peer, as returned by ToolSequences. A known peer's number is only raised, never lowered.
 
 #### func (Table) SyncRequest
 
@@ -329,3 +347,11 @@ func (t *Table) ToolKey(a knx.IndividualAddress) (Key, bool)
 ```
 
 ToolKey returns the tool key of a device.
+
+#### func (Table) ToolSequences
+
+```go
+func (t *Table) ToolSequences() map[knx.IndividualAddress]uint64
+```
+
+ToolSequences returns a copy of the last valid tool access sequence number of each peer: of the tools that access this table's devices (OpenTool) and of the devices this table accesses as a tool (OpenToolResponse). Persist it together with Sequence and restore it with SetToolSequence after a restart, or a recorded tool access frame is accepted again.

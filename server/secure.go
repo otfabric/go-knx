@@ -24,7 +24,8 @@ type sessionState struct {
 	serverPub [32]byte
 	user      uint8
 	authed    bool
-	lastSeen  time.Time
+	lastSeen  time.Time // last frame of the authenticated session
+	created   time.Time // SESSION_REQUEST: start of the authentication deadline
 }
 
 func (st *sessionState) secured() (uint8, bool) {
@@ -82,6 +83,7 @@ func (s *Server) start(st *sessionState, m *knxnetip.SessionRequest) (*knxnetip.
 	st.sess = secure.NewSession(id, key, s.o.serial)
 	st.clientPub, st.serverPub = m.PublicKey, kp.Public
 	st.lastSeen = time.Now()
+	st.created = st.lastSeen
 	st.mu.Unlock()
 	return &knxnetip.SessionResponse{SessionID: id, PublicKey: kp.Public,
 		MAC: secure.ResponseMAC(s.o.secure.device, id, m.PublicKey, kp.Public)}, nil
@@ -136,9 +138,15 @@ func (s *Server) handleSecure(t *tcpConn, m knxnetip.Message) bool {
 
 // handleSession processes a frame received in a secure session; write
 // sends a frame in the session. It returns false when the session ends.
+//
+// Only the frames of an authenticated session renew it: a session that
+// does not authenticate ends after the authentication timeout, whatever
+// it sends.
 func (s *Server) handleSession(st *sessionState, write func(knxnetip.Message), p peer, m knxnetip.Message) bool {
 	st.mu.Lock()
-	st.lastSeen = time.Now()
+	if st.authed {
+		st.lastSeen = time.Now()
+	}
 	st.mu.Unlock()
 	switch m := m.(type) {
 	case *knxnetip.SessionAuthenticate:
@@ -147,6 +155,7 @@ func (s *Server) handleSession(st *sessionState, write func(knxnetip.Message), p
 		ok = ok && secure.Equal(m.MAC, secure.AuthenticateMAC(user.Key, m.UserID, st.clientPub, st.serverPub))
 		if ok {
 			st.user, st.authed = m.UserID, true
+			st.lastSeen = time.Now()
 		}
 		st.mu.Unlock()
 		status := knxnetip.SessionAuthSuccess
@@ -159,7 +168,7 @@ func (s *Server) handleSession(st *sessionState, write func(knxnetip.Message), p
 		write(&knxnetip.SessionStatus{Status: status})
 		return true
 	case *knxnetip.SessionStatus:
-		// Keep alive (lastSeen is renewed) or close.
+		// Keep alive (lastSeen is renewed once authenticated) or close.
 		return m.Status != knxnetip.SessionClose
 	}
 	if _, ok := st.secured(); !ok {
@@ -181,6 +190,14 @@ func (s *Server) handleUDPSecure(from netip.AddrPort, m knxnetip.Message) bool {
 			s.o.metrics.OnDropped(fa, "no_security")
 			return true
 		}
+		// Check for room before the key agreement, and again after it.
+		s.mu.Lock()
+		room := s.sessionRoomLocked(false)
+		s.mu.Unlock()
+		if !room {
+			s.o.logger.Warnf("server: refuse secure session of %s: too many sessions", from)
+			return true
+		}
 		us := &udpSession{ctrl: reply(m.Control, from)}
 		resp, err := s.start(&us.ss, m)
 		if err != nil {
@@ -189,7 +206,7 @@ func (s *Server) handleUDPSecure(from netip.AddrPort, m knxnetip.Message) bool {
 		}
 		us.id = resp.SessionID
 		s.mu.Lock()
-		if len(s.usessions) >= s.maxTCP() {
+		if !s.sessionRoomLocked(true) {
 			s.mu.Unlock()
 			s.o.logger.Warnf("server: refuse secure session of %s: too many sessions", from)
 			return true
@@ -240,11 +257,42 @@ func (s *Server) handleUDPSecure(from netip.AddrPort, m knxnetip.Message) bool {
 	return false
 }
 
+// sessionRoomLocked reports whether a new UDP session fits: the sessions
+// are bounded by maxTCP, and when they are all taken the oldest session
+// that has not authenticated gives way (with evict, it is removed). A
+// session without authentication holds no connection, so nothing else is
+// ended. Authenticated sessions are never replaced. s.mu is held.
+func (s *Server) sessionRoomLocked(evict bool) bool {
+	if len(s.usessions) < s.maxTCP() {
+		return true
+	}
+	var oldest *udpSession
+	var oldestAt time.Time
+	for _, us := range s.usessions {
+		us.ss.mu.Lock()
+		authed, created := us.ss.authed, us.ss.created
+		us.ss.mu.Unlock()
+		if !authed && (oldest == nil || created.Before(oldestAt)) {
+			oldest, oldestAt = us, created
+		}
+	}
+	if oldest == nil {
+		return false
+	}
+	if evict {
+		delete(s.usessions, oldest.id)
+		s.o.metrics.OnDropped(net.UDPAddrFromAddrPort(oldest.ctrl), "session_replaced")
+		s.o.logger.Debugf("server: secure session %d of %s replaced: not authenticated", oldest.id, oldest.ctrl)
+	}
+	return true
+}
+
 // writeSession sends a frame in a UDP session.
 func (s *Server) writeSession(us *udpSession, to netip.AddrPort, m knxnetip.Message) {
 	b, err := us.ss.session().Marshal(m)
 	if err != nil {
-		s.o.logger.Errorf("server: encode %s: %v", m.Service(), err)
+		// A frame that does not encode can follow from a peer's request.
+		s.o.logger.Debugf("server: encode %s: %v", m.Service(), err)
 		return
 	}
 	s.writeRaw(to, b, m.Service())
@@ -266,20 +314,29 @@ func (s *Server) endSession(us *udpSession, cause error) {
 	}
 }
 
-// expireSessions ends UDP sessions without frames for the session timeout.
+// expireSessions ends UDP sessions without frames for the session
+// timeout, and sessions not authenticated within the authentication
+// timeout.
 func (s *Server) expireSessions() {
+	type expired struct {
+		us    *udpSession
+		cause error
+	}
 	s.mu.Lock()
-	var stale []*udpSession
+	var stale []expired
 	for _, us := range s.usessions {
 		us.ss.mu.Lock()
-		if time.Since(us.ss.lastSeen) > s.o.sessionTimeout {
-			stale = append(stale, us)
+		switch {
+		case !us.ss.authed && time.Since(us.ss.created) > s.o.authTimeout:
+			stale = append(stale, expired{us, fmt.Errorf("%w: secure session not authenticated within %v", knx.ErrConnectionLost, s.o.authTimeout)})
+		case time.Since(us.ss.lastSeen) > s.o.sessionTimeout:
+			stale = append(stale, expired{us, fmt.Errorf("%w: secure session idle for %v", knx.ErrConnectionLost, s.o.sessionTimeout)})
 		}
 		us.ss.mu.Unlock()
 	}
 	s.mu.Unlock()
-	for _, us := range stale {
-		s.endSession(us, fmt.Errorf("%w: secure session idle for %v", knx.ErrConnectionLost, s.o.sessionTimeout))
+	for _, e := range stale {
+		s.endSession(e.us, e.cause)
 	}
 }
 

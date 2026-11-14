@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -205,11 +206,64 @@ func TestMalformed(t *testing.T) {
 		"bad base64": `<Keyring Signature="%%%" />`,
 		"unbalanced": `</Keyring>`,
 		"long attr":  `<Keyring Signature="AAAA" A="` + strings.Repeat("a", 300) + `" />`,
+		"deep":       `<Keyring Signature="AAAA">` + strings.Repeat("<a>", maxDepth) + strings.Repeat("</a>", maxDepth) + `</Keyring>`,
+		"very deep":  strings.Repeat("<a>", 200000) + strings.Repeat("</a>", 200000),
+		"elements":   `<Keyring Signature="AAAA">` + strings.Repeat("<a/>", maxElements) + `</Keyring>`,
+		"duplicate":  `<Keyring Signature="AAAA" Project="a" Project="b" />`,
+		"end tag":    `<Keyring Signature="AAAA"><Backbone></Interface></Keyring>`,
+		"too large":  `<Keyring Signature="AAAA" />` + strings.Repeat(" ", maxSize),
 	} {
 		if _, err := Parse([]byte(doc), "x"); !errors.Is(err, knx.ErrMalformed) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+}
+
+func TestLimits(t *testing.T) {
+	// A reader longer than the bound is rejected without reading it all.
+	r := &countReader{n: 64 << 20}
+	if _, err := Load(r, "x"); !errors.Is(err, knx.ErrMalformed) {
+		t.Errorf("long reader: %v", err)
+	}
+	if r.read > maxSize+1 {
+		t.Errorf("read %d octets", r.read)
+	}
+	// The deepest and largest accepted documents still verify.
+	deep := `<Keyring Signature="">` + strings.Repeat("<a>", maxDepth-1) + strings.Repeat("</a>", maxDepth-1) + `</Keyring>`
+	if _, err := Parse(signed(t, deep), "x"); err != nil {
+		t.Errorf("depth %d: %v", maxDepth, err)
+	}
+	many := `<Keyring Signature="">` + strings.Repeat("<a/>", maxElements-1) + `</Keyring>`
+	if _, err := Load(bytes.NewReader(signed(t, many)), "x"); err != nil {
+		t.Errorf("%d elements: %v", maxElements, err)
+	}
+	// A valid keyring read through Load still verifies.
+	b, err := os.ReadFile("testdata/SecureTest.knxkeys")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(bytes.NewReader(b), "test"); err != nil {
+		t.Errorf("SecureTest: %v", err)
+	}
+	if _, err := LoadFile("testdata/missing.knxkeys", "test"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("missing file: %v", err)
+	}
+}
+
+// countReader yields n spaces and counts what was read.
+type countReader struct{ n, read int }
+
+func (r *countReader) Read(p []byte) (int, error) {
+	if r.n == 0 {
+		return 0, io.EOF
+	}
+	m := min(len(p), r.n)
+	for i := range p[:m] {
+		p[i] = ' '
+	}
+	r.n -= m
+	r.read += m
+	return m, nil
 }
 
 // signed returns a document with a valid signature for password "x".
@@ -229,6 +283,8 @@ func signed(t *testing.T, body string) []byte {
 func TestMalformedValues(t *testing.T) {
 	for name, doc := range map[string]string{
 		"latency":     `<Keyring Signature=""><Backbone Latency="x" /></Keyring>`,
+		"neg latency": `<Keyring Signature=""><Backbone Latency="-1" /></Keyring>`,
+		"big latency": `<Keyring Signature=""><Backbone Latency="65536" /></Keyring>`,
 		"backbone":    `<Keyring Signature=""><Backbone Key="%%" /></Keyring>`,
 		"key length":  `<Keyring Signature=""><Backbone Key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" /></Keyring>`,
 		"block":       `<Keyring Signature=""><Backbone Key="AAAA" /></Keyring>`,
