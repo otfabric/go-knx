@@ -69,8 +69,9 @@ type secureOptions struct {
 
 // WithSecure enables KNX IP Secure routing with the backbone key and the
 // latency tolerance of the backbone (0: secure.DefaultLatency). Listen
-// then synchronises the multicast timer, which takes up to about 3.3 s
-// at the default latency when no other secure router answers.
+// then synchronises the multicast timer: it collects the answers of the
+// other secure routers for the whole synchronisation window (about 3.3 s
+// at the default latency) and uses the newest timer value.
 func WithSecure(key secure.Key, latency time.Duration) Option {
 	return func(o *options) error {
 		if latency < 0 {

@@ -16,7 +16,7 @@ The connection state machine:
 	lost ──otherwise──▶ closed (Err reports why)
 	any ──Close──▶ DISCONNECT_REQUEST ──▶ closed
 
-One goroutine reads the socket and one sends heartbeats; both end when the Conn is closed. A Conn is safe for concurrent use; sends are serialised, as tunnelling allows one unacknowledged request at a time.
+One goroutine reads the socket and one sends heartbeats; both end when the Conn is closed. Over TCP every write is bounded by the request timeout; a write the server does not take in time loses the connection, so neither Send nor Close waits on a server that stops reading. A Conn is safe for concurrent use; sends are serialised, as tunnelling allows one unacknowledged request at a time.
 
 ## Constants
 
@@ -321,7 +321,7 @@ WithReconnect makes a lost connection reconnect with exponential backoff between
 func WithRequestTimeout(d time.Duration) Option
 ```
 
-WithRequestTimeout sets the wait for a TUNNELLING\_ACK (default 1 s).
+WithRequestTimeout sets the wait for a TUNNELLING\_ACK (default 1 s). Over TCP it also bounds each write: a frame the server does not take within it ends the connection (knx.ErrConnectionLost).
 
 #### func WithSecure
 

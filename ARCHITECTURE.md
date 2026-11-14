@@ -67,7 +67,10 @@
 
 Every queue is bounded (inbound telegrams, per-connection sends,
 subscriptions); when one is full the telegram is dropped and
-`Metrics.OnDropped` is called. Every wait has a deadline or a context.
+`Metrics.OnDropped` is called. Every wait has a deadline or a context;
+the tunnelling client bounds each TCP write by the request timeout (a
+write the server does not take ends the connection) and the writes of
+`Close` by 1 s.
 `Close` is idempotent and returns after all goroutines have ended (tested
 with `internal/leak`).
 
@@ -111,7 +114,13 @@ waits for its L_Data.con (3 s) unless `WithConfirm(false)`.
   TCP connections are open at a time. A frame whose header is valid but
   whose body does not parse is dropped and the connection kept; a bad
   header closes it. Secure sessions without a frame for 60 s end
-  (`WithSecureSessionTimeout`).
+  (`WithSecureSessionTimeout`). A secure session or TCP connection must
+  authenticate within 10 s (`WithSecureAuthTimeout`); frames before that
+  do not extend it, and when all are taken a new one replaces the oldest
+  that has not authenticated. A secure tunnel's telegrams carry only its
+  own address. A connection request with no free channel is refused
+  (E_NO_MORE_CONNECTIONS). The routing timer synchronisation runs under
+  the server's WaitGroup.
 - Busmonitor connections receive L_Busmon.ind (TP1 frame, status,
   timestamp) of every standard frame. Busmonitor and link layer
   tunnelling exclude each other (E_NO_MORE_CONNECTIONS), as the standard

@@ -108,3 +108,61 @@ func waitSent(t *testing.T, l *link, n int) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+// TestSurrogateSyncReplay: a recorded S-A_Sync_Req and the tool access
+// frame that followed it, sent again after later tool frames, are refused:
+// the stray request does not reopen its old sequence number, so the
+// surrogate sends no new group write. The data frame alone stays refused.
+func TestSurrogateSyncReplay(t *testing.T) {
+	tool, own := knx.MustParseIndividualAddress("15.15.240"), knx.MustParseIndividualAddress("15.15.255")
+	toolKey, groupKey := datasecure.Key{7}, datasecure.Key{0x42}
+	g := knx.MustParseGroupAddress("1/2/9")
+	tab, _ := datasecure.NewTable(map[knx.GroupAddress]datasecure.Key{g: groupKey}, nil, 50)
+	tab.SetToolKey(own, toolKey)
+	l := newLink()
+	c := client.New(l, client.WithSource(own), client.WithDataSecure(tab))
+	defer c.Close()
+
+	cmd := func(v byte) *cemi.LData {
+		return cemi.NewIndividualFrame(cemi.LDataInd, tool, own, knx.PrioritySystem,
+			[]byte{0x01, 0xD4, 0x00, 0x09, 0x00, 0x10, 0x42, 0x00, 0x01, 0x03, 0x0A, 0x09, 0x0C, v})
+	}
+	n := 0
+	// session syncs with sequence seq and sends the first tool frame with
+	// the same number, as Calimero tools do.
+	session := func(seq uint64, v byte) (sync, write *cemi.LData) {
+		t.Helper()
+		challenge := [6]byte{byte(seq), 1, 2, 3, 4, 5}
+		req, _ := datasecure.SyncRequest(toolKey, cemi.LDataInd, tool, own, 0, seq, [6]byte{}, challenge)
+		l.in <- req
+		n++
+		waitSent(t, l, n)
+		if _, _, err := datasecure.OpenSyncResponse(toolKey, l.last(t), challenge); err != nil {
+			t.Fatal(err)
+		}
+		sealed, _ := datasecure.Seal(toolKey, cmd(v), seq, datasecure.SCF{ToolAccess: true, Algorithm: datasecure.AuthConf})
+		l.in <- sealed
+		n += 2 // group write and answer
+		waitSent(t, l, n)
+		return req, sealed
+	}
+	recSync, recWrite := session(1000, 0x97)
+	session(1001, 0x01)
+
+	l.in <- recWrite.Clone()
+	l.in <- recSync.Clone()
+	n++ // the request is still answered
+	waitSent(t, l, n)
+	l.in <- recWrite.Clone()
+	time.Sleep(100 * time.Millisecond)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.sent) != n {
+		t.Fatalf("%d frames sent, want %d", len(l.sent), n)
+	}
+	for _, f := range l.sent[n-1:] {
+		if _, ok := f.Group(); ok {
+			t.Errorf("group write sent for the repeated tool frame: %s", f)
+		}
+	}
+}

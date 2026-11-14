@@ -21,6 +21,11 @@ const (
 	// DefaultSecureSessionTimeout is SESSION_TIMEOUT: a KNX IP Secure
 	// session without a frame for this long is ended.
 	DefaultSecureSessionTimeout = 60 * time.Second
+	// DefaultSecureAuthTimeout bounds the time from SESSION_REQUEST to a
+	// successful SESSION_AUTHENTICATE: a KNX IP Secure session (or a TCP
+	// connection of a secure server) that has not authenticated by then
+	// is ended.
+	DefaultSecureAuthTimeout = 10 * time.Second
 	// DefaultQueueSize bounds the telegrams queued for each tunnelling
 	// connection.
 	DefaultQueueSize = 128
@@ -50,6 +55,7 @@ type options struct {
 	group            string
 	aliveTime        time.Duration
 	sessionTimeout   time.Duration
+	authTimeout      time.Duration
 	reqTimeout       time.Duration
 	queueSize        int
 	routingRate      int
@@ -73,6 +79,7 @@ func defaultOptions() options {
 		group:          "224.0.23.12:3671",
 		aliveTime:      DefaultConnectionAliveTime,
 		sessionTimeout: DefaultSecureSessionTimeout,
+		authTimeout:    DefaultSecureAuthTimeout,
 		reqTimeout:     time.Second,
 		queueSize:      DefaultQueueSize,
 		routingRate:    DefaultRoutingRate,
@@ -154,6 +161,17 @@ type secureOptions struct {
 // device is the device authentication code (secure.DeviceAuthenticationCode).
 // Device management connections are for user 1, the management user.
 // Search and description stay plain. WithTCP must stay on.
+//
+// A session must authenticate within [WithSecureAuthTimeout]; until then
+// its frames do not keep it open, and when the sessions (or TCP
+// connections) are all taken, a new one replaces the oldest that has not
+// authenticated. A tunnel carries only telegrams with its own individual
+// address as source (or 0, which the server replaces).
+//
+// WithSecure alone does not protect the remote management of the
+// server's own device (property read and write to its individual address
+// through a tunnel): that stays plain for every tunnelling user unless
+// [WithToolKey] is set.
 func WithSecure(device secure.Key, users map[uint8]SecureUser) Option {
 	return func(o *options) error {
 		if len(users) == 0 {
@@ -260,6 +278,21 @@ func WithSecureSessionTimeout(d time.Duration) Option {
 			return invalid("secure session timeout %v", d)
 		}
 		o.sessionTimeout = d
+		return nil
+	}
+}
+
+// WithSecureAuthTimeout sets how long a KNX IP Secure session of a
+// [WithSecure] server, and a TCP connection to it, may stay without an
+// authenticated user (default 10 s): from SESSION_REQUEST (over TCP from
+// the accept) to a successful SESSION_AUTHENTICATE. Frames received before
+// that do not extend it.
+func WithSecureAuthTimeout(d time.Duration) Option {
+	return func(o *options) error {
+		if d <= 0 {
+			return invalid("secure authentication timeout %v", d)
+		}
+		o.authTimeout = d
 		return nil
 	}
 }

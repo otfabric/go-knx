@@ -182,6 +182,8 @@ func WithIndividualAddress(a knx.IndividualAddress) Option {
 }
 
 // WithRequestTimeout sets the wait for a TUNNELLING_ACK (default 1 s).
+// Over TCP it also bounds each write: a frame the server does not take
+// within it ends the connection (knx.ErrConnectionLost).
 func WithRequestTimeout(d time.Duration) Option {
 	return func(o *options) error {
 		if d <= 0 {

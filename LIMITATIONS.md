@@ -59,6 +59,18 @@ What go-knx does not do, or does with restrictions. Feature status:
   same sequence number), where the recorded TP1 devices answered once.
 - **The server's M_Reset.req** does nothing: the virtual server has nothing
   to restart (a recorded ABB router restarts and ends its connections).
+- **Many tunnelling addresses**: a description block has a one-octet
+  length, so TUNNELLING_INFO lists the first 62 tunnelling slots and
+  KNX_ADDRESSES the first 126 addresses. Each requested DIB type of an
+  extended search is answered once.
+- **Secure routing** remembers at most 4096 frames within the latency
+  tolerance to refuse repeats; beyond that new frames are dropped until
+  older ones expire. `routing.Listen` with `WithSecure` takes the whole
+  synchronisation window (about 3.3 s at the default latency).
+- **Keyrings** are read up to 4 MiB, 64 levels deep and 262144 elements.
+- **Data Secure replay state** lives in the table: an application that
+  does not persist `Table.Senders`, `Table.ToolSequences` and
+  `Table.Sequence` accepts recorded telegrams again after a restart.
 - **Description blocks**: an optional block of a known type that does not
   have its type's layout is kept as `knxnetip.UnknownDIB` when the
   DEVICE_INFO block decodes (as an ABB IP-Router IPR/S sends them).

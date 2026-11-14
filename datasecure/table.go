@@ -40,6 +40,13 @@ type Table struct {
 // the secured groups to its last valid sequence number (0 if unknown).
 // seq is the next sending sequence number; 0 starts at the milliseconds
 // since 2018-01-05, which exceeds earlier runs.
+//
+// A table refuses a telegram whose sequence number is not above the last
+// valid one of its sender only while it remembers that number. To keep
+// this across a restart, persist Senders and ToolSequences together with
+// Sequence and pass them back (senders here, tool sequences with
+// SetToolSequence): a table built from the initial values (for example
+// the keyring's) accepts a recorded telegram again.
 func NewTable(keys map[knx.GroupAddress]Key, senders map[knx.IndividualAddress]uint64, seq uint64) (*Table, error) {
 	if seq == 0 {
 		ms := time.Since(sequenceEpoch).Milliseconds()
@@ -67,7 +74,8 @@ func (t *Table) Secured(g knx.GroupAddress) bool {
 	return ok
 }
 
-// AddSender allows a sender with its last valid sequence number.
+// AddSender allows a sender with its last valid sequence number. A
+// known sender's number is only raised, never lowered.
 func (t *Table) AddSender(a knx.IndividualAddress, last uint64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -76,8 +84,41 @@ func (t *Table) AddSender(a knx.IndividualAddress, last uint64) {
 	}
 }
 
-// Sequence returns the next sending sequence number. Persist it to
-// continue after a restart.
+// Senders returns a copy of the last valid sequence number of each known
+// group sender: the receive state Incoming checks. Persist it together
+// with Sequence and pass it to NewTable (or AddSender) after a restart,
+// or a recorded telegram is accepted again.
+func (t *Table) Senders() map[knx.IndividualAddress]uint64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return maps.Clone(t.senders)
+}
+
+// ToolSequences returns a copy of the last valid tool access sequence
+// number of each peer: of the tools that access this table's devices
+// (OpenTool) and of the devices this table accesses as a tool
+// (OpenToolResponse). Persist it together with Sequence and restore it
+// with SetToolSequence after a restart, or a recorded tool access frame
+// is accepted again.
+func (t *Table) ToolSequences() map[knx.IndividualAddress]uint64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return maps.Clone(t.tools)
+}
+
+// SetToolSequence restores the last valid tool access sequence number of
+// a peer, as returned by ToolSequences. A known peer's number is only
+// raised, never lowered.
+func (t *Table) SetToolSequence(a knx.IndividualAddress, last uint64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if cur, ok := t.tools[a]; !ok || last > cur {
+		t.tools[a] = last
+	}
+}
+
+// Sequence returns the next sending sequence number. Persist it, with
+// Senders and ToolSequences, to continue after a restart.
 func (t *Table) Sequence() uint64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -200,7 +241,14 @@ func (t *Table) RespondTPCI(f *cemi.LData, own knx.IndividualAddress, code cemi.
 	t.mu.Lock()
 	last := t.tools[f.Source]
 	remote := t.seq
-	t.synced[f.Source] = req.Sequence
+	// The request's own sequence number may be used once by the next tool
+	// access frame only if it is new: a recorded request verifies again,
+	// so a number already seen must not reopen it.
+	if req.Sequence > last {
+		t.synced[f.Source] = req.Sequence
+	} else {
+		delete(t.synced, f.Source)
+	}
 	t.mu.Unlock()
 	return SyncResponse(key, code, own, f.Source, tpci, req.Challenge, random, remote, last+1)
 }

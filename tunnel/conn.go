@@ -15,7 +15,9 @@
 //	any ──Close──▶ DISCONNECT_REQUEST ──▶ closed
 //
 // One goroutine reads the socket and one sends heartbeats; both end when
-// the Conn is closed. A Conn is safe for concurrent use; sends are
+// the Conn is closed. Over TCP every write is bounded by the request
+// timeout; a write the server does not take in time loses the connection,
+// so neither Send nor Close waits on a server that stops reading. A Conn is safe for concurrent use; sends are
 // serialised, as tunnelling allows one unacknowledged request at a time.
 package tunnel
 
@@ -123,7 +125,9 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		if err != nil {
 			return nil, fmt.Errorf("tunnel: dial tcp %s: %w", server, err)
 		}
-		tr = &tcpTransport{c: tc, server: server}
+		// Every write is bounded by the request timeout: a server that
+		// stops reading is a lost connection, not a stuck writer.
+		tr = &tcpTransport{c: tc, server: server, writeTimeout: o.requestTimeout}
 	} else {
 		sock, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(local))
 		if err != nil {
@@ -238,11 +242,20 @@ func (c *Conn) setState(s knx.State, err error) {
 }
 
 func (c *Conn) write(to netip.AddrPort, m knxnetip.Message) error {
+	return c.writeContext(context.Background(), to, m)
+}
+
+// writeContext is write bounded by ctx: a write ctx ends before it
+// started returns ctx.Err() unwrapped.
+func (c *Conn) writeContext(ctx context.Context, to netip.AddrPort, m knxnetip.Message) error {
 	b, err := knxnetip.Marshal(m)
 	if err != nil {
 		return err
 	}
-	if err := c.tr.writeTo(b, to); err != nil {
+	if err := c.tr.writeContext(ctx, b, to); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
 		return fmt.Errorf("tunnel: write %s to %s: %w", m.Service(), to, err)
 	}
 	c.o.metrics.OnFrameSent(net.UDPAddrFromAddrPort(to), uint16(m.Service()), len(b))
@@ -365,8 +378,13 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	drain(c.ackCh)
 	acked := false
 	if c.tr.stream() {
-		// TCP is reliable: tunnelling requests are not acknowledged.
-		if err := c.write(dataEP, req); err != nil {
+		// TCP is reliable: tunnelling requests are not acknowledged. The
+		// write is bounded by ctx and the write timeout; one ctx ends
+		// before it started leaves the connection up.
+		if err := c.writeContext(ctx, dataEP, req); err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
 			return c.sendError(gen, err)
 		}
 		acked = true
@@ -846,6 +864,10 @@ func (c *Conn) Close() error {
 	return nil
 }
 
+// closeWriteTimeout bounds each write of Close (DISCONNECT_REQUEST, the
+// SESSION_STATUS close of a secure session).
+const closeWriteTimeout = time.Second
+
 func (c *Conn) shutdown(cause error) {
 	c.closeMu.Do(func() {
 		c.mu.Lock()
@@ -856,7 +878,12 @@ func (c *Conn) shutdown(cause error) {
 		c.mu.Unlock()
 		if state == knx.StateConnected && !remoteClosed {
 			drain(c.discCh)
-			if err := c.write(c.server, &knxnetip.DisconnectRequest{Channel: ch, Control: c.hpai}); err == nil {
+			// A server that does not read does not hold up Close: the
+			// DISCONNECT_REQUEST gets at most closeWriteTimeout.
+			ctx, cancel := context.WithTimeout(context.Background(), closeWriteTimeout)
+			err := c.writeContext(ctx, c.server, &knxnetip.DisconnectRequest{Channel: ch, Control: c.hpai})
+			cancel()
+			if err == nil {
 				t := time.NewTimer(time.Second)
 				select {
 				case <-c.discCh:

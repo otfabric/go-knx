@@ -5,6 +5,50 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.11.0
+
+**Date:** 2026-11-14
+**Previous release:** v0.10.0
+
+## Summary
+
+Tighter state handling in KNX IP Secure, KNX Data Secure and the server: tool access sequence numbers, the receive replay state across restarts, secure session direction, secure routing repeats and timer synchronisation, the server's session and channel capacity, the tunnelling client's TCP writes and keyring input bounds.
+
+## Changes
+
+### Added
+
+- `datasecure.Table.Senders`, `Table.ToolSequences` and `Table.SetToolSequence`: read and restore the last valid sequence number of each group sender and tool access peer. Persist them with `Table.Sequence` and restore them after a restart, or a recorded telegram is accepted again.
+- `server.WithSecureAuthTimeout` and `server.DefaultSecureAuthTimeout` (10 s): a KNX IP Secure session or TCP connection of a secure server must authenticate within it.
+- `Metrics.OnDropped` reasons `source_address` and `session_replaced`.
+
+### Changed
+
+- A secure server ends sessions and TCP connections that do not authenticate in time; frames before authentication no longer keep them open, and when all are taken a new one replaces the oldest that has not authenticated. The capacity check comes before the key agreement.
+- On a secure server, a tunnel's telegrams carry only its own individual address as source; others are dropped with a negative L_Data.con.
+- Secure routing timer synchronisation collects answers for the whole synchronisation window and uses the newest timer value; `routing.Listen` with `WithSecure` therefore takes the whole window (about 3.3 s at the default latency), and frames are accepted only after it. `secure.RoutingTimer.Next` returns strictly increasing values.
+- The tunnelling client bounds every TCP write (plain and KNX IP Secure) by the request timeout: a server that stops reading ends the connection (`knx.ErrConnectionLost`) instead of blocking `Send`, the heartbeat and `Close`, and `Send` honours its context during the write. `Close` bounds its own writes by 1 s.
+- `keyring.Load`, `LoadFile` and `Parse` refuse documents over 4 MiB, nested deeper than 64 levels or with more than 262144 elements as `knx.ErrMalformed` before the signature is checked; duplicate attributes, mismatched end tags and a latency outside 0..65535 ms are refused too. `LoadFile` reads through `Load`.
+- `datasecure.AddSender` only raises a known sender's sequence number.
+- Replies the server cannot encode are logged at debug level.
+- The server's DISCONNECT_REQUEST for a connection opened in a UDP secure session is sent inside the session; the routing timer synchronisation runs under the server's WaitGroup, so `Close` waits for it.
+
+### Fixed
+
+- `datasecure.Table`: an S-A_Sync_Req whose sequence number is not above the sender's last tool access frame let that number be used again, so a repeated sync request with its tool access frame was answered (client surrogate, `mgmt.Responder`, the server's own device with `WithToolKey`). The sync request now opens its sequence number only when it is new.
+- `secure.Session.Unwrap` accepted a SECURE_WRAPPER sealed by the session itself; it is now refused. The tunnelling client never picks the go-knx server's default serial number.
+- Secure routing accepted the same SECURE_WRAPPER again within the latency tolerance; each is now accepted once.
+- Secure routing timer synchronisation took the first matching answer, even an older one.
+- The server replaced a live connection when all 255 channels were in use; such a request is now refused with E_NO_MORE_CONNECTIONS.
+- An extended search answered a repeated DIB type once per repetition; each type is answered once. With more than 62 tunnelling addresses, TUNNELLING_INFO lists the first 62 slots and KNX_ADDRESSES the first 126 addresses, so the blocks encode.
+- KNX IP Secure over UDP: the client drops unparsable or unexpected datagrams during the handshake instead of aborting it; the handshake timeout still applies.
+
+### Documentation
+
+- SECURITY.md, ARCHITECTURE.md, API.md, ERRORS.md, LIMITATIONS.md and OBSERVABILITY.md describe the new bounds, the persisted replay state, and that remote management of a secure server's own device stays plain without `WithToolKey`.
+
+---
+
 ## v0.10.0
 
 **Date:** 2026-11-08

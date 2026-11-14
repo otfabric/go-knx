@@ -109,20 +109,37 @@ type Device struct {
 // password or a modified file.
 var ErrSignature = fmt.Errorf("%w: keyring: signature verification failed (wrong password or modified file)", knx.ErrSecurity)
 
-// LoadFile reads a keyring file.
+// Bounds of a keyring document. ETS keyrings are a few kilobytes and
+// a handful of levels deep; the bounds are generous and keep an
+// unverified document from consuming unbounded memory or stack.
+const (
+	maxSize     = 4 << 20 // octets (4 MiB)
+	maxDepth    = 64
+	maxElements = 1 << 18
+)
+
+// maxLatency bounds the backbone latency tolerance, in milliseconds.
+const maxLatency = 65535
+
+// LoadFile reads a keyring file of at most 4 MiB.
 func LoadFile(path, password string) (*Keyring, error) {
-	b, err := os.ReadFile(filepath.Clean(path))
+	f, err := os.Open(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
-	return Parse(b, password)
+	defer func() { _ = f.Close() }()
+	return Load(f, password)
 }
 
-// Load reads a keyring.
+// Load reads a keyring of at most 4 MiB; a longer input is
+// rejected as knx.ErrMalformed without reading further.
 func Load(r io.Reader, password string) (*Keyring, error) {
-	b, err := io.ReadAll(r)
+	b, err := io.ReadAll(io.LimitReader(r, maxSize+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(b) > maxSize {
+		return nil, malformed("document larger than %d octets", maxSize)
 	}
 	return Parse(b, password)
 }
@@ -137,14 +154,19 @@ func ivFor(created string) []byte {
 	return h[:16]
 }
 
-// Parse decodes and decrypts a keyring.
+// Parse decodes and decrypts a keyring. Documents larger than 4 MiB,
+// nested deeper than 64 levels or with more than 262144 elements are
+// rejected as knx.ErrMalformed before the signature is checked.
 func Parse(b []byte, password string) (*Keyring, error) {
+	if len(b) > maxSize {
+		return nil, malformed("document larger than %d octets", maxSize)
+	}
 	b = bytes.TrimPrefix(b, []byte("\xEF\xBB\xBF"))
-	hash := passwordHash(password)
 	root, err := parseTree(b)
 	if err != nil {
 		return nil, err
 	}
+	hash := passwordHash(password)
 	if root.name != "Keyring" {
 		return nil, malformed("root element %q", root.name)
 	}
@@ -166,8 +188,8 @@ func Parse(b []byte, password string) (*Keyring, error) {
 		case "Backbone":
 			bb := &Backbone{MulticastAddress: e.attr("MulticastAddress")}
 			if v := e.attr("Latency"); v != "" {
-				ms, err := strconv.Atoi(v)
-				if err != nil {
+				ms, err := strconv.ParseUint(v, 10, 64)
+				if err != nil || ms > maxLatency {
 					return nil, malformed("backbone latency %q", v)
 				}
 				bb.Latency = time.Duration(ms) * time.Millisecond
@@ -381,10 +403,14 @@ func qname(n xml.Name) string {
 	return n.Local
 }
 
+// parseTree builds the element tree of a document of at most maxDepth
+// levels and maxElements elements. Duplicate attributes and end
+// elements that do not match their start element are rejected.
 func parseTree(b []byte) (*element, error) {
 	dec := xml.NewDecoder(bytes.NewReader(b))
 	var stack []*element
 	var root *element
+	count := 0
 	for {
 		tok, err := dec.RawToken()
 		if errors.Is(err, io.EOF) {
@@ -395,7 +421,16 @@ func parseTree(b []byte) (*element, error) {
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
+			if len(stack) >= maxDepth {
+				return nil, malformed("elements nested deeper than %d", maxDepth)
+			}
+			if count++; count > maxElements {
+				return nil, malformed("more than %d elements", maxElements)
+			}
 			e := &element{name: qname(t.Name), attrs: append([]xml.Attr(nil), t.Attr...)}
+			if err := uniqueAttrs(e); err != nil {
+				return nil, err
+			}
 			if len(stack) > 0 {
 				p := stack[len(stack)-1]
 				p.children = append(p.children, e)
@@ -409,6 +444,9 @@ func parseTree(b []byte) (*element, error) {
 			if len(stack) == 0 {
 				return nil, malformed("unbalanced end element")
 			}
+			if n := qname(t.Name); n != stack[len(stack)-1].name {
+				return nil, malformed("end element %q does not match %q", n, stack[len(stack)-1].name)
+			}
 			stack = stack[:len(stack)-1]
 		}
 	}
@@ -418,11 +456,27 @@ func parseTree(b []byte) (*element, error) {
 	return root, nil
 }
 
+// uniqueAttrs rejects an element that repeats an attribute.
+func uniqueAttrs(e *element) error {
+	if len(e.attrs) < 2 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(e.attrs))
+	for _, a := range e.attrs {
+		n := qname(a.Name)
+		if _, ok := seen[n]; ok {
+			return malformed("duplicate attribute %q in %q", n, e.name)
+		}
+		seen[n] = struct{}{}
+	}
+	return nil
+}
+
 // signature is the first 16 octets of the SHA-256 hash of the document's
 // canonical form: per element 0x01, its name and its attributes sorted
 // by name (without xmlns and Signature), each string preceded by its
 // length; 0x02 at the end of each element; finally the base64 keyring
-// key.
+// key. The recursion is bounded by maxDepth, enforced by parseTree.
 func signature(root *element, hash []byte) ([]byte, error) {
 	var b []byte
 	add := func(s string) error {

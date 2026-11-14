@@ -209,3 +209,138 @@ func TestSecureTransport(t *testing.T) {
 		t.Errorf("after close: %v", err)
 	}
 }
+
+// udpHandshake runs the handshake over UDP against a server socket that
+// script drives; it returns the handshake's result.
+func udpHandshake(t *testing.T, timeout time.Duration, script func(srv *net.UDPConn, client *net.UDPAddr)) (*secureTransport, error) {
+	t.Helper()
+	srv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	cl, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		script(srv, cl.LocalAddr().(*net.UDPAddr))
+	}()
+	server := netip.MustParseAddrPort(srv.LocalAddr().String())
+	hpai := knxnetip.NewHPAI(netip.MustParseAddrPort(cl.LocalAddr().String()))
+	cred, _ := secure.NewCredentials(2, "pw", "dev")
+	st, err := handshake(udpTransport{c: cl}, server, hpai, cred, timeout, time.Hour)
+	if err != nil {
+		_ = cl.Close()
+	}
+	<-done
+	return st, err
+}
+
+// Over UDP, stray datagrams from the server's address during the
+// handshake are dropped, not taken as the server's answer.
+func TestHandshakeUDPDropsStray(t *testing.T) {
+	dev, _ := secure.DeviceAuthenticationCode("dev")
+	st, err := udpHandshake(t, 2*time.Second, func(srv *net.UDPConn, client *net.UDPAddr) {
+		send := func(b []byte) { _, _ = srv.WriteToUDP(b, client) }
+		marshal := func(m knxnetip.Message) []byte { b, _ := knxnetip.Marshal(m); return b }
+		buf := make([]byte, 1024)
+		n, _, err := srv.ReadFromUDP(buf)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		m, _ := knxnetip.Parse(buf[:n])
+		req, ok := m.(*knxnetip.SessionRequest)
+		if !ok {
+			t.Errorf("first frame %v", m)
+			return
+		}
+		send([]byte{1, 2, 3})                                  // malformed
+		send(marshal(&knxnetip.ConnectResponse{Status: 0x22})) // not a session frame
+		send([]byte{6, 0x10, 0x09, 0x52, 0, 8, 0, 0})          // SESSION_RESPONSE header, short body
+		kp, _ := secure.NewKeyPair()
+		key, _ := kp.SessionKey(req.PublicKey)
+		sess := secure.NewSession(5, key, [6]byte{1})
+		send(marshal(&knxnetip.SessionResponse{SessionID: 5, PublicKey: kp.Public, MAC: secure.ResponseMAC(dev, 5, req.PublicKey, kp.Public)}))
+		if _, _, err := srv.ReadFromUDP(buf); err != nil { // SESSION_AUTHENTICATE
+			t.Error(err)
+			return
+		}
+		send([]byte{1, 2, 3})
+		send(marshal(&knxnetip.SessionStatus{Status: knxnetip.SessionAuthFailed})) // not wrapped
+		other := secure.NewSession(6, key, [6]byte{1})
+		b, _ := other.Marshal(&knxnetip.SessionStatus{Status: knxnetip.SessionAuthFailed}) // other session
+		send(b)
+		b, _ = sess.Marshal(&knxnetip.SessionStatus{Status: knxnetip.SessionAuthSuccess})
+		send(b)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.stream() {
+		t.Error("stream over UDP")
+	}
+	_ = st.inner.close()
+	st.keepalive.Stop()
+}
+
+// The handshake deadline still bounds a server that sends only stray
+// datagrams; a SESSION_STATUS before the session still refuses it.
+func TestHandshakeUDPBounded(t *testing.T) {
+	for name, tc := range map[string]struct {
+		answer []byte
+		want   error
+	}{
+		"stray only": {[]byte{1, 2, 3}, knx.ErrTimeout},
+		"refused": {func() []byte {
+			b, _ := knxnetip.Marshal(&knxnetip.SessionStatus{Status: knxnetip.SessionAuthFailed})
+			return b
+		}(), knx.ErrRejected},
+	} {
+		start := time.Now()
+		_, err := udpHandshake(t, 300*time.Millisecond, func(srv *net.UDPConn, client *net.UDPAddr) {
+			buf := make([]byte, 1024)
+			if _, _, err := srv.ReadFromUDP(buf); err != nil {
+				t.Error(err)
+				return
+			}
+			_, _ = srv.WriteToUDP(tc.answer, client)
+		})
+		if !errors.Is(err, tc.want) {
+			t.Errorf("%s: %v, want %v", name, err, tc.want)
+		}
+		if d := time.Since(start); d > 2*time.Second {
+			t.Errorf("%s: handshake took %v", name, d)
+		}
+	}
+}
+
+// A server that answers the key exchange and then sends only stray
+// datagrams times the authentication out.
+func TestHandshakeUDPNoStatus(t *testing.T) {
+	dev, _ := secure.DeviceAuthenticationCode("dev")
+	_, err := udpHandshake(t, 300*time.Millisecond, func(srv *net.UDPConn, client *net.UDPAddr) {
+		buf := make([]byte, 1024)
+		n, _, err := srv.ReadFromUDP(buf)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		m, _ := knxnetip.Parse(buf[:n])
+		req, ok := m.(*knxnetip.SessionRequest)
+		if !ok {
+			t.Errorf("first frame %v", m)
+			return
+		}
+		kp, _ := secure.NewKeyPair()
+		b, _ := knxnetip.Marshal(&knxnetip.SessionResponse{SessionID: 5, PublicKey: kp.Public, MAC: secure.ResponseMAC(dev, 5, req.PublicKey, kp.Public)})
+		_, _ = srv.WriteToUDP(b, client)
+		_, _ = srv.WriteToUDP([]byte{1, 2, 3}, client)
+	})
+	if !errors.Is(err, knx.ErrTimeout) {
+		t.Errorf("%v, want ErrTimeout", err)
+	}
+}

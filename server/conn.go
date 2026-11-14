@@ -191,6 +191,17 @@ func (c *tconn) onRequest(p peer, m *knxnetip.TunnellingRequest) {
 	}
 	if ld.Source == 0 {
 		ld.Source = c.addr
+	} else if c.s.o.secure != nil && ld.Source != c.addr {
+		// A secure tunnel sends with its own (bound) address only.
+		c.s.o.metrics.OnDropped(net.UDPAddrFromAddrPort(p.addr), "source_address")
+		c.s.o.logger.Debugf("server: channel %d: drop a telegram with source %s (tunnel address %s)", c.channel, ld.Source, c.addr)
+		con := ld.Clone()
+		con.MsgCode = cemi.LDataCon
+		con.Ctrl1 |= cemi.Ctrl1ConfirmError
+		if b, err := cemi.Marshal(con); err == nil {
+			c.enqueue(out{cemi: b})
+		}
+		return
 	}
 	// Deliver first, then confirm: an L_Data.con says the telegram is on
 	// the network, so the devices have it when the client learns it was

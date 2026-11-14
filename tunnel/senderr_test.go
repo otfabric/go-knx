@@ -20,6 +20,9 @@ import (
 type closedTransport struct{ stream_ bool }
 
 func (closedTransport) writeTo([]byte, netip.AddrPort) error { return net.ErrClosed }
+func (closedTransport) writeContext(context.Context, []byte, netip.AddrPort) error {
+	return net.ErrClosed
+}
 func (closedTransport) readFrom([]byte) (int, netip.AddrPort, error) {
 	return 0, netip.AddrPort{}, net.ErrClosed
 }

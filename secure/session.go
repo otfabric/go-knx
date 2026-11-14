@@ -100,7 +100,11 @@ type Session struct {
 }
 
 // NewSession returns a session with identifier id and the session key;
-// serial is the KNX serial number sent in its wrappers.
+// serial is the KNX serial number sent in its wrappers. Both ends of a
+// session seal with the same key, so Unwrap tells the directions apart
+// by the serial number: the two ends must use different serial numbers.
+// The tunnel client picks a random one (00FA plus 4 random octets); the
+// server uses its configured serial number (server.WithSerial).
 func NewSession(id uint16, key Key, serial [6]byte) *Session {
 	return &Session{ID: id, key: key, serial: serial}
 }
@@ -133,10 +137,16 @@ func (s *Session) Marshal(m knxnetip.Message) ([]byte, error) {
 }
 
 // Unwrap verifies a SECURE_WRAPPER of the session and returns its frame.
-// Sequence numbers must increase: a repeated or older one is a replay.
+// Sequence numbers must increase: a repeated or older one is a replay. A
+// wrapper with this session's own serial number was sealed by this end
+// and is refused, so a frame sent back to its sender is not taken as the
+// peer's.
 func (s *Session) Unwrap(w *knxnetip.SecureWrapper) ([]byte, error) {
 	if w.SessionID != s.ID {
 		return nil, fmt.Errorf("%w: secure: session %d, want %d", knx.ErrSecurity, w.SessionID, s.ID)
+	}
+	if w.Serial == s.serial {
+		return nil, fmt.Errorf("%w: secure: wrapper with the session's own serial number", knx.ErrSecurity)
 	}
 	seq := Uint48(w.Sequence)
 	s.mu.Lock()

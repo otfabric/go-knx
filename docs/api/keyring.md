@@ -143,7 +143,7 @@ Keyring is a decrypted keyring.
 func Load(r io.Reader, password string) (*Keyring, error)
 ```
 
-Load reads a keyring.
+Load reads a keyring of at most 4 MiB; a longer input is rejected as knx.ErrMalformed without reading further.
 
 #### func LoadFile
 
@@ -151,7 +151,7 @@ Load reads a keyring.
 func LoadFile(path, password string) (*Keyring, error)
 ```
 
-LoadFile reads a keyring file.
+LoadFile reads a keyring file of at most 4 MiB.
 
 #### func Parse
 
@@ -159,7 +159,7 @@ LoadFile reads a keyring file.
 func Parse(b []byte, password string) (*Keyring, error)
 ```
 
-Parse decodes and decrypts a keyring.
+Parse decodes and decrypts a keyring. Documents larger than 4 MiB, nested deeper than 64 levels or with more than 262144 elements are rejected as knx.ErrMalformed before the signature is checked.
 
 #### func (Keyring) BackboneKey
 
