@@ -227,6 +227,13 @@ func (d *Device) Object(name string) (*GroupObject, bool) {
 
 // OnChange sets the handler called, synchronously, after a telegram
 // changed a group object. It must not block.
+//
+// The handler runs on the goroutine that calls Handle and may call the
+// device's methods. In a server (server.Server.AddDevice) that goroutine
+// is the server's: the handler may call the server's methods but not its
+// Close (call it from another goroutine), and a handler that does not
+// return normally is stopped there and logged by the server at error
+// level with its stack; the device then sends no answer to that telegram.
 func (d *Device) OnChange(f func(Event)) {
 	d.mu.Lock()
 	d.onChange = f

@@ -3,6 +3,7 @@
 package tunnel
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -91,7 +92,7 @@ func secureDialAsync(t *testing.T, cred secure.Credentials, script func(s *scrip
 		t.Fatal(err)
 	}
 	srv := netip.MustParseAddrPort(ln.Addr().String())
-	st, err := handshake(&tcpTransport{c: c, server: srv}, srv, knxnetip.TCPHPAI(), cred, 2*time.Second, testKeepAlive)
+	st, err := handshake(context.Background(), &tcpTransport{c: c, server: srv}, srv, knxnetip.TCPHPAI(), cred, 2*time.Second, testKeepAlive)
 	if err != nil {
 		_ = c.Close()
 	}
@@ -210,6 +211,72 @@ func TestSecureTransport(t *testing.T) {
 	}
 }
 
+// TestSecureCloseStopsKeepAlive: closing a secure session stops its keep
+// alive timer for good. The closing SESSION_STATUS is a frame of the
+// session like any other, but it does not start the timer again.
+func TestSecureCloseStopsKeepAlive(t *testing.T) {
+	dev, _ := secure.DeviceAuthenticationCode("dev")
+	cred, _ := secure.NewCredentials(2, "pw", "dev")
+	closing := make(chan knxnetip.SessionStatusCode, 1)
+	st, done, err := secureDialAsync(t, cred, func(s *scripted) {
+		s.respond(dev)
+		if _, ok := s.read().(*knxnetip.SecureWrapper); !ok {
+			t.Error("no SESSION_AUTHENTICATE")
+		}
+		s.writeWrapped(&knxnetip.SessionStatus{Status: knxnetip.SessionAuthSuccess})
+		// A frame of the session, the client's closing status, then the
+		// end of the stream.
+		for range 2 {
+			w, ok := s.read().(*knxnetip.SecureWrapper)
+			if !ok {
+				return
+			}
+			f, err := s.sess.Unwrap(w)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if m, _ := knxnetip.Parse(f); m != nil {
+				if st, ok := m.(*knxnetip.SessionStatus); ok {
+					closing <- st.Status
+				}
+			}
+		}
+		_, _ = io.Copy(io.Discard, s.c)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A frame of the session starts the timer again while it is open.
+	if err := st.send(&knxnetip.ConnectionStateRequest{Channel: 1, Control: knxnetip.TCPHPAI()}); err != nil {
+		t.Fatal(err)
+	}
+	st.mu.Lock()
+	armed := st.keepalive.Reset(st.idle)
+	st.mu.Unlock()
+	if !armed {
+		t.Fatal("the keep alive timer is not armed in an open session")
+	}
+	if err := st.close(); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	select {
+	case status := <-closing:
+		if status != knxnetip.SessionClose {
+			t.Errorf("session status %d at close, want SessionClose", status)
+		}
+	default:
+		t.Error("no closing SESSION_STATUS")
+	}
+	st.mu.Lock()
+	armed = st.keepalive.Stop()
+	st.mu.Unlock()
+	if armed {
+		t.Error("the keep alive timer was armed after close")
+	}
+}
+
 // udpHandshake runs the handshake over UDP against a server socket that
 // script drives; it returns the handshake's result.
 func udpHandshake(t *testing.T, timeout time.Duration, script func(srv *net.UDPConn, client *net.UDPAddr)) (*secureTransport, error) {
@@ -231,7 +298,7 @@ func udpHandshake(t *testing.T, timeout time.Duration, script func(srv *net.UDPC
 	server := netip.MustParseAddrPort(srv.LocalAddr().String())
 	hpai := knxnetip.NewHPAI(netip.MustParseAddrPort(cl.LocalAddr().String()))
 	cred, _ := secure.NewCredentials(2, "pw", "dev")
-	st, err := handshake(udpTransport{c: cl}, server, hpai, cred, timeout, time.Hour)
+	st, err := handshake(context.Background(), udpTransport{c: cl}, server, hpai, cred, timeout, time.Hour)
 	if err != nil {
 		_ = cl.Close()
 	}

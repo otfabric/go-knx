@@ -12,6 +12,7 @@ import (
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/internal/fakeknx"
+	"github.com/otfabric/go-knx/internal/leak"
 	"github.com/otfabric/go-knx/knxnetip"
 	"github.com/otfabric/go-knx/routing"
 	"github.com/otfabric/go-knx/secure"
@@ -74,6 +75,58 @@ func TestSecureReceive(t *testing.T) {
 	defer cancel()
 	if f, err := c.Receive(cx); err == nil {
 		t.Fatalf("delivered %v", f)
+	}
+}
+
+// L5 and L14: Listen with WithSecure returns after the whole timer
+// synchronisation window. A context that ends inside the window ends
+// Listen with the context's error: no Conn, no goroutine and no socket are
+// left.
+func TestSecureListenContextEnds(t *testing.T) {
+	leak.Check(t)
+	_, _, g, _ := listen(t) // skips where the group cannot be joined
+	opts := []routing.Option{routing.WithGroup(g.String()), routing.WithSecure(backbone, 100*time.Millisecond)}
+	if lo := fakeknx.MulticastInterface(); lo != "" {
+		opts = append(opts, routing.WithInterface(lo))
+	}
+	for name, tc := range map[string]struct {
+		ctx  func() (context.Context, context.CancelFunc)
+		want error
+	}{
+		// The window is 420 ms at this latency.
+		"deadline": {func() (context.Context, context.CancelFunc) {
+			return context.WithTimeout(context.Background(), 20*time.Millisecond)
+		}, context.DeadlineExceeded},
+		"cancelled": {func() (context.Context, context.CancelFunc) {
+			cx, cancel := context.WithCancel(context.Background())
+			cancel()
+			return cx, cancel
+		}, context.Canceled},
+	} {
+		t.Run(name, func(t *testing.T) {
+			before := openFDs()
+			cx, cancel := tc.ctx()
+			defer cancel()
+			c, err := routing.Listen(cx, opts...)
+			if c != nil {
+				c.Close()
+				t.Fatalf("Listen returned a Conn and %v although its context ended inside the synchronisation window", err)
+			}
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("Listen = %v, want an error matching %v", err, tc.want)
+			}
+			if after := openFDs(); before >= 0 && after != before {
+				t.Errorf("%d descriptors open after the failed Listen, %d before", after, before)
+			}
+		})
+	}
+	// With a context that lasts, the same options give a Conn.
+	c, err := routing.Listen(ctx(t), opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

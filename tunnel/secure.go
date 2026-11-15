@@ -38,19 +38,51 @@ var errSessionClosed = errors.New("tunnel: the server closed the secure session"
 // handshake establishes a secure session with the server's control
 // endpoint: the key exchange (SESSION_REQUEST with the client's control
 // endpoint hpai, SESSION_RESPONSE), then the user's authentication
-// (SESSION_AUTHENTICATE, SESSION_STATUS).
-func handshake(t transport, server netip.AddrPort, hpai knxnetip.HPAI, cred secure.Credentials, timeout, keepAlive time.Duration) (*secureTransport, error) {
+// (SESSION_AUTHENTICATE, SESSION_STATUS). It is bounded by timeout and by
+// ctx, whichever ends first: when ctx ends first, by its deadline or by
+// cancellation, handshake returns ctx's error.
+func handshake(ctx context.Context, t transport, server netip.AddrPort, hpai knxnetip.HPAI, cred secure.Credentials, timeout, keepAlive time.Duration) (*secureTransport, error) {
+	deadline := time.Now().Add(timeout)
+	d, ctxBound := ctx.Deadline()
+	if ctxBound = ctxBound && d.Before(deadline); ctxBound {
+		deadline = d
+	}
+	_ = t.setDeadline(deadline)
+	// Cancellation ends the waits of the handshake too. The callback must
+	// not outlive the handshake: it would cut the reads of the session.
+	fired := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(fired)
+		_ = t.setDeadline(time.Now())
+	})
+	st, err := exchangeKeys(ctx, t, server, hpai, cred, keepAlive)
+	if !stop() {
+		<-fired
+	}
+	_ = t.setDeadline(time.Time{})
+	if err != nil {
+		if cerr := ctx.Err(); cerr != nil {
+			return nil, cerr
+		}
+		if ctxBound && !time.Now().Before(deadline) {
+			return nil, context.DeadlineExceeded
+		}
+		return nil, err
+	}
+	return st, nil
+}
+
+// exchangeKeys is the handshake under the deadline handshake set.
+func exchangeKeys(ctx context.Context, t transport, server netip.AddrPort, hpai knxnetip.HPAI, cred secure.Credentials, keepAlive time.Duration) (*secureTransport, error) {
 	kp, err := secure.NewKeyPair()
 	if err != nil {
 		return nil, err
 	}
-	_ = t.setDeadline(time.Now().Add(timeout))
-	defer func() { _ = t.setDeadline(time.Time{}) }()
 	b, err := knxnetip.Marshal(&knxnetip.SessionRequest{Control: hpai, PublicKey: kp.Public})
 	if err != nil {
 		return nil, err
 	}
-	if err := t.writeTo(b, server); err != nil {
+	if err := t.writeContext(ctx, b, server); err != nil {
 		return nil, fmt.Errorf("tunnel: send SESSION_REQUEST: %w", err)
 	}
 	st := &secureTransport{inner: t, server: server, buf: make([]byte, knxnetip.MaxFrameLen+1)}
@@ -89,7 +121,11 @@ func handshake(t transport, server netip.AddrPort, hpai knxnetip.HPAI, cred secu
 	}
 	st.sess = secure.NewSession(resp.SessionID, key, serial)
 	auth := &knxnetip.SessionAuthenticate{UserID: cred.UserID, MAC: secure.AuthenticateMAC(cred.UserKey, cred.UserID, kp.Public, resp.PublicKey)}
-	if err := st.send(auth); err != nil {
+	ab, err := knxnetip.Marshal(auth)
+	if err != nil {
+		return nil, err
+	}
+	if err := st.writeContext(ctx, ab, server); err != nil {
 		return nil, fmt.Errorf("tunnel: send SESSION_AUTHENTICATE: %w", err)
 	}
 	for {
@@ -190,7 +226,9 @@ func (t *secureTransport) writeContext(ctx context.Context, b []byte, to netip.A
 		return err
 	}
 	t.mu.Lock()
-	if t.keepalive != nil {
+	// A closed transport sends its closing status and nothing after it:
+	// the keep alive timer is not started again.
+	if t.keepalive != nil && !t.closed {
 		t.keepalive.Reset(t.idle)
 	}
 	t.mu.Unlock()
@@ -243,7 +281,8 @@ func (t *secureTransport) readFrom(buf []byte) (int, netip.AddrPort, error) {
 	}
 }
 
-// close ends the session (SESSION_STATUS close) and the connection.
+// close ends the session (SESSION_STATUS close) and the connection. The
+// keep alive timer is stopped and stays stopped.
 func (t *secureTransport) close() error {
 	t.mu.Lock()
 	already := t.closed

@@ -10,15 +10,21 @@ Every error matches one of the sentinels of the root package with
 | `knx.ErrUnsupported` | A service, protocol version, datapoint type or feature not implemented | decoders, `dpt.Lookup`, `apdu.ParseGroupValue` |
 | `knx.ErrInvalidOption` | An option or argument a function cannot be called with | constructors, `dpt.ParseID` |
 | `knx.ErrInvalidValue` | A value outside its type's range, data of the wrong size, a frame that would not encode to a valid one | `dpt.Type.Encode/Decode`, encoders |
-| `knx.ErrClosed` | The connection, client or server was closed | every type with Close |
+| `knx.ErrClosed` | The connection, client or server was closed | `tunnel.Conn` (`Send`, `Receive`), `routing.Conn.Receive` and a `Send` that waits, `client.Client`, `server.Server.Start`; the calls that do not return it after `Close` yet are in [LIMITATIONS.md](LIMITATIONS.md) |
 | `knx.ErrTimeout` | No answer in time: CONNECT_RESPONSE, DESCRIPTION_RESPONSE, group read | tunnel, discovery, client |
-| `knx.ErrConnectionLost` | The tunnel is gone: no ACK twice, heartbeat failed, server disconnected; over TCP, a write the server does not take within the request timeout | tunnel |
+| `knx.ErrConnectionLost` | The tunnel is gone: no ACK twice (for a tunnelling or a feature request), no ACK within the request timeout for a request whose caller had left, heartbeat failed, server disconnected; over TCP, a write the server does not take within the request timeout | tunnel |
 | `knx.ErrRejected` | The peer refused with a KNXnet/IP status code | tunnel (CONNECT_RESPONSE, TUNNELLING_ACK) |
 | `knx.ErrBusy` | A limit: E_NO_MORE_CONNECTIONS, E_NO_MORE_UNIQUE_CONNECTIONS, a full queue | tunnel |
 | `knx.ErrNotConfirmed` | The L_Data.con reported an error or did not arrive | tunnel.Send |
 | `knx.ErrSecurity` | A KNX IP Secure or KNX Data Secure failure: a tag that does not verify, a replayed sequence number, a missing key, an exhausted sending sequence. Secure connections never fall back to plain ones | secure, datasecure, keyring |
 | `keyring.ErrSignature` | A keyring file whose signature does not verify: the password is wrong or the file was modified. Nothing of the file is used. Matches `knx.ErrSecurity` | `keyring.Parse`, `keyring.Load`, `keyring.LoadFile` |
 | `knx.ErrMalformed` (keyring) | A keyring over 4 MiB, nested deeper than 64 levels, with more than 262144 elements, duplicate attributes, mismatched end tags or a latency outside 0..65535 ms; refused before the signature is checked, nothing of the file is used | `keyring.Parse`, `keyring.Load`, `keyring.LoadFile` |
+
+A call whose context ends returns the context's error
+(`context.Canceled`, `context.DeadlineExceeded`); which calls also match
+`knx.ErrTimeout` at a deadline is in [API.md](API.md#bounds).
+`routing.Listen` with `WithSecure` and `tunnel.Dial` return it when the
+context ends during the timer synchronisation or the secure handshake.
 
 No operation is retried implicitly. `ErrConnectionLost` or
 `ErrNotConfirmed` from `tunnel.Conn.Send` leaves open whether the frame

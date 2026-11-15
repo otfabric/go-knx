@@ -1048,6 +1048,35 @@ func TestColours(t *testing.T) {
 		_, err := xyy.Encode(v)
 		wantInvalid(t, "xyY", err)
 	}
+	// The limits of each field encode; a value that is not a finite
+	// number is refused in every field, whatever the others hold.
+	for _, v := range []XYY{{}, {X: 1, Y: 1, Brightness: 100}, {X: math.SmallestNonzeroFloat64}, {Brightness: math.SmallestNonzeroFloat64}} {
+		if _, err := xyy.Encode(v); err != nil {
+			t.Errorf("Encode(%+v): %v", v, err)
+		}
+	}
+	for _, bad := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		for field, v := range map[string]XYY{
+			"x":          {X: bad, Y: 0.5, Brightness: 50, ColorValid: true, BrightnessValid: true},
+			"y":          {X: 0.5, Y: bad, Brightness: 50, ColorValid: true, BrightnessValid: true},
+			"brightness": {X: 0.5, Y: 0.5, Brightness: bad, ColorValid: true, BrightnessValid: true},
+		} {
+			if b, err := xyy.Encode(v); !errors.Is(err, knx.ErrInvalidValue) {
+				t.Errorf("Encode with %s = %v: % X, %v; want ErrInvalidValue", field, bad, b, err)
+			}
+		}
+	}
+	// Parse takes the text of a float as strconv does; Encode refuses it.
+	for _, in := range []string{"NaN,0.5,50", "0.5,nan,50", "0.5,0.5,NaN", "Inf,0.5,50", "0.5,0.5,-Inf"} {
+		v, err := xyy.Parse(in)
+		if err != nil {
+			t.Errorf("Parse(%q): %v", in, err)
+			continue
+		}
+		if b, err := xyy.Encode(v); !errors.Is(err, knx.ErrInvalidValue) {
+			t.Errorf("Encode(Parse(%q)) = % X, %v; want ErrInvalidValue", in, b, err)
+		}
+	}
 	if v, err := xyy.Parse("0.5, 0.25, 50"); err != nil || v != c {
 		t.Errorf("Parse = %v, %v", v, err)
 	}

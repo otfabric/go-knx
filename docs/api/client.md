@@ -42,7 +42,10 @@ MaxPropertyData is the most property data PropertyWrite sends: the TPDU of an A\
 
 ```go
 type Client struct {
-	// contains filtered or unexported fields
+
+	// answers waiting for the link
+	// answers that found the queue full
+
 }
 ```
 
@@ -151,6 +154,8 @@ func (c *Client) OnTelegram(f func(Telegram)) (remove func())
 ```
 
 OnTelegram calls f, from the client's reader goroutine, for every group telegram; it must not block. The returned function removes it.
+
+f may call the methods of the client that do not wait for a telegram (Subscribe, OnTelegram, Err, Done, the returned function), but not Close: Close waits for the reader, which is running f, so call it from another goroutine. A read (GroupRead, GroupReadAll) or a Device request made from f gets no answer while f runs. An f that does not return normally is stopped there and logged at error level with its stack; the reader goes on as if f had returned.
 
 #### func (Client) Subscribe
 

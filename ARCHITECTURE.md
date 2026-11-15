@@ -62,17 +62,46 @@
 |---|---|---|
 | `tunnel.Conn` | reader, heartbeat, supervisor (reconnect) | `Close`, or a lost connection without reconnect |
 | `routing.Conn` | reader | `Close` |
-| `client.Client` | reader of its link | `Close` (closes the link) or link failure |
+| `client.Client` | reader of its link; with Data Secure, one sender of its answers to individually addressed requests | `Close` (closes the link) or link failure |
 | `server.Server` | reader per socket, janitor, one sender per tunnelling connection (bounded by the number of tunnelling addresses), one routing sender with routing | `Close` |
 
 Every queue is bounded (inbound telegrams, per-connection sends,
-subscriptions); when one is full the telegram is dropped and
-`Metrics.OnDropped` is called. Every wait has a deadline or a context;
-the tunnelling client bounds each TCP write by the request timeout (a
-write the server does not take ends the connection) and the writes of
-`Close` by 1 s.
-`Close` is idempotent and returns after all goroutines have ended (tested
-with `internal/leak`).
+subscriptions, a client's answers with Data Secure); when one is full the
+telegram is dropped and `Metrics.OnDropped` is called (a subscription
+counts its own drops, the answers are logged). The limits are listed in
+[SECURITY.md](SECURITY.md#resource-limits).
+
+Waits end with a deadline, the caller's context or `Close`. `Send` of a
+`tunnel.Conn` or `routing.Conn` takes turns: the wait for the turn, for the
+acknowledgement, for the confirmation and for the routing flow control
+each end with the context of that `Send` or with `Close`. The KNX IP Secure
+handshake of `tunnel.Dial` is bounded by the connect timeout and by the
+context of `Dial`. The tunnelling client bounds each TCP write by the
+request timeout (a write the server does not take ends the connection) and
+the writes of `Close` by 1 s. The timer synchronisation of secure routing
+is the one wait a context does not shorten: it takes its whole window, and
+`routing.Listen` fails when its context ends inside it.
+
+`Close` is safe to call more than once and from several goroutines. The
+first call returns after the goroutines have ended and the timers are
+stopped (tested with `internal/leak`): the keep alive timer of a secure
+tunnel is not started again by its closing frame, and the notify timer of
+secure routing is stopped after a notify it was sending. Of concurrent
+calls to `server.Server.Close` only the first waits; the others return at
+once. A `Start` that fails closes the sockets it opened.
+
+The loops that accept connections and read sockets go on after an error
+other than a closed socket, but pause first: 5 ms, twice as long after each
+further error up to 1 s, 5 ms again after a success (`internal/backoff`).
+`Close` ends a pause.
+
+The application's callbacks (`client.Client.OnTelegram`,
+`server.Server.Subscribe`, the `OnChange` handler of a device in a server)
+run on these goroutines with no lock held. They may call the methods of the
+client or server, except `Close`, which waits for the goroutine they run
+on. A callback that does not return normally is stopped where the library
+called it and logged at error level with its stack (`internal/guard`); the
+goroutine goes on.
 
 ## Tunnelling client state machine
 
@@ -81,7 +110,7 @@ disconnected ──Dial──▶ connecting ──CONNECT_RESPONSE E_NO_ERROR─
 connecting ──refusal / no response in 10 s──▶ closed (Dial returns the error)
 connected ──Send: request, wait 1 s for TUNNELLING_ACK, repeat once──▶ connected
 connected ──second ACK missing / heartbeat failed 3× / server DISCONNECT_REQUEST──▶ lost
-lost ──WithReconnect──▶ reconnecting ──backoff 1 s … 30 s──▶ connected (new channel, counters reset)
+lost ──WithReconnect──▶ reconnecting ──backoff 1 s … 30 s, jittered──▶ connected (new channel, counters reset)
 lost ──otherwise──▶ closed (Err() matches knx.ErrConnectionLost)
 any ──Close──▶ DISCONNECT_REQUEST (wait ≤ 1 s) ──▶ closed
 ```
@@ -90,7 +119,23 @@ Receiving: a TUNNELLING_REQUEST with the expected sequence number is
 acknowledged and delivered; the previous number (a repetition whose ACK
 was lost) is acknowledged and dropped; any other is dropped without ACK.
 Sending allows one unacknowledged request at a time; an L_Data.req also
-waits for its L_Data.con (3 s) unless `WithConfirm(false)`.
+waits for its L_Data.con (3 s) unless `WithConfirm(false)`. A feature
+request (tunnelling v2) is a request of the same sequence counter: over
+UDP it is acknowledged and repeated once like a tunnelling request.
+
+A sequence number is consumed by its acknowledgement and carries one
+frame. When the context of a `Send` ends after the request was written and
+before its TUNNELLING_ACK, the request stays outstanding: it is not
+repeated, and the next `Send` or feature call first waits for that
+acknowledgement, for what is left of the request timeout, before it sends
+under the next number. Without the acknowledgement the connection is lost,
+as for a request that is not acknowledged twice. After a reconnection the
+outstanding request is forgotten with the connection it was sent on.
+
+Reconnecting waits a random time between half the backoff and the backoff
+before each attempt (the backoff starts at the minimum of `WithReconnect`
+and doubles up to its maximum), so that clients which lost the same server
+do not all come back at once.
 
 ## Server
 
@@ -120,7 +165,9 @@ waits for its L_Data.con (3 s) unless `WithConfirm(false)`.
   that has not authenticated. A secure tunnel's telegrams carry only its
   own address. A connection request with no free channel is refused
   (E_NO_MORE_CONNECTIONS). The routing timer synchronisation runs under
-  the server's WaitGroup.
+  the server's WaitGroup, for its whole window whatever becomes of the
+  context of `Start`; `Close` ends it. No routing frame is accepted before
+  the window has passed.
 - Busmonitor connections receive L_Busmon.ind (TP1 frame, status,
   timestamp) of every standard frame. Busmonitor and link layer
   tunnelling exclude each other (E_NO_MORE_CONNECTIONS), as the standard

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -37,15 +38,87 @@ type metrics struct {
 	decode      int
 	disconnects []error
 	sent        map[uint16]int
+	drops       chan string    // every OnDropped reason, for tests that wait for one
+	framec      chan sentFrame // every frame sent, for tests that wait for one
 }
 
-func newMetrics() *metrics { return &metrics{dropped: map[string]int{}, sent: map[uint16]int{}} }
+// sentFrame is a frame the server sent: its service, its length on the
+// wire and when it was sent.
+type sentFrame struct {
+	service uint16
+	size    int
+	at      time.Time
+}
+
+func newMetrics() *metrics {
+	return &metrics{dropped: map[string]int{}, sent: map[uint16]int{}, drops: make(chan string, 1024), framec: make(chan sentFrame, 1024)}
+}
 
 func (m *metrics) OnRetransmit(net.Addr, uint8) { m.mu.Lock(); m.retransmits++; m.mu.Unlock() }
 func (m *metrics) OnDropped(_ net.Addr, r string) {
 	m.mu.Lock()
 	m.dropped[r]++
 	m.mu.Unlock()
+	select {
+	case m.drops <- r:
+	default:
+	}
+}
+
+// waitDrop returns when the server has reported a drop for reason; drops
+// for other reasons before it are skipped.
+func (m *metrics) waitDrop(t testing.TB, reason string) {
+	t.Helper()
+	deadline := time.After(wait)
+	for {
+		select {
+		case r := <-m.drops:
+			if r == reason {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for a drop with reason %q", reason)
+		}
+	}
+}
+
+// waitFrame returns the next frame of service the server sent.
+func (m *metrics) waitFrame(t testing.TB, service knxnetip.ServiceType) sentFrame {
+	t.Helper()
+	deadline := time.After(wait)
+	for {
+		select {
+		case f := <-m.framec:
+			if f.service == uint16(service) {
+				return f
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for the server to send %s", service)
+		}
+	}
+}
+
+// recv returns the next value of ch, or fails the test naming what did not
+// arrive.
+func recv[T any](t testing.TB, ch <-chan T, what string) T {
+	t.Helper()
+	var v T
+	select {
+	case v = <-ch:
+	case <-time.After(wait):
+		t.Fatalf("timed out waiting for %s", what)
+	}
+	return v
+}
+
+// openFDs returns the number of open file descriptors of the process, or
+// -1 where /dev/fd is not available.
+func openFDs() int {
+	entries, err := os.ReadDir("/dev/fd")
+	if err != nil {
+		return -1
+	}
+	return len(entries)
 }
 func (m *metrics) OnDecodeError(net.Addr, error) { m.mu.Lock(); m.decode++; m.mu.Unlock() }
 func (m *metrics) OnDisconnect(_ net.Addr, _ uint8, err error) {
@@ -53,10 +126,15 @@ func (m *metrics) OnDisconnect(_ net.Addr, _ uint8, err error) {
 	m.disconnects = append(m.disconnects, err)
 	m.mu.Unlock()
 }
-func (m *metrics) OnFrameSent(_ net.Addr, svc uint16, _ int) {
+func (m *metrics) OnFrameSent(_ net.Addr, svc uint16, size int) {
+	f := sentFrame{service: svc, size: size, at: time.Now()}
 	m.mu.Lock()
 	m.sent[svc]++
 	m.mu.Unlock()
+	select {
+	case m.framec <- f:
+	default:
+	}
 }
 
 func (m *metrics) get(f func(m *metrics) int) int {

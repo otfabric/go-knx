@@ -31,6 +31,7 @@ import (
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/cemi"
+	"github.com/otfabric/go-knx/internal/backoff"
 	"github.com/otfabric/go-knx/internal/flowctl"
 	"github.com/otfabric/go-knx/internal/mcast"
 	"github.com/otfabric/go-knx/internal/udp"
@@ -71,7 +72,9 @@ type secureOptions struct {
 // latency tolerance of the backbone (0: secure.DefaultLatency). Listen
 // then synchronises the multicast timer: it collects the answers of the
 // other secure routers for the whole synchronisation window (about 3.3 s
-// at the default latency) and uses the newest timer value.
+// at the default latency) and uses the newest timer value. The window is
+// not shortened: a context that ends inside it makes Listen fail with
+// the context's error.
 func WithSecure(key secure.Key, latency time.Duration) Option {
 	return func(o *options) error {
 		if latency < 0 {
@@ -187,7 +190,10 @@ type Conn struct {
 	group netip.AddrPort
 	flow  *flowctl.Controller
 
-	sendMu sync.Mutex
+	// turn is the send turn: Send holds it while it waits for the flow
+	// control and transmits. A Send that waits for the turn leaves when
+	// its context ends or the Conn closes.
+	turn   chan struct{}
 	mu     sync.Mutex
 	echoes map[[32]byte]time.Time
 	timer  *secure.RoutingTimer
@@ -199,7 +205,9 @@ type Conn struct {
 	wg      sync.WaitGroup
 }
 
-// Listen joins the routing multicast group.
+// Listen joins the routing multicast group. With [WithSecure] it returns
+// after the timer synchronisation; when ctx ends before that, it closes
+// the socket and returns an error matching ctx.Err().
 func Listen(ctx context.Context, opts ...Option) (*Conn, error) {
 	o := options{address: DefaultIndividualAddress, group: "224.0.23.12:3671", rate: DefaultRate, queueSize: DefaultQueueSize, ttl: DefaultTTL, logger: knx.NopLogger(), metrics: knx.NopMetrics{}}
 	o.serial[0], o.serial[1] = 0x00, 0xFA
@@ -230,15 +238,21 @@ func Listen(ctx context.Context, opts ...Option) (*Conn, error) {
 	if ifIP.IsValid() {
 		_ = mcast.Configure(sock, &ifIP, o.loopback, o.ttl)
 	}
-	c := &Conn{o: o, sock: sock, group: group, flow: flowctl.New(o.rate), echoes: map[[32]byte]time.Time{},
+	c := &Conn{o: o, sock: sock, group: group, flow: flowctl.New(o.rate), echoes: map[[32]byte]time.Time{}, turn: make(chan struct{}, 1),
 		inbound: make(chan cemi.Frame, o.queueSize), events: make(chan Event, 16), closing: make(chan struct{})}
 	if o.secure != nil {
 		c.timer = secure.NewRoutingTimer(o.secure.key, o.serial, o.secure.latency, c.sendNotify)
 	}
 	c.wg.Add(1)
-	go c.readLoop()
+	go c.readLoop(sock.ReadFromUDPAddrPort)
 	if c.timer != nil {
 		c.timer.Synchronize(ctx)
+		if !c.timer.Authenticated() {
+			// ctx ended inside the synchronisation window: without a
+			// synchronised timer the Conn accepts and sends nothing.
+			_ = c.Close()
+			return nil, fmt.Errorf("routing: timer synchronisation: %w", ctx.Err())
+		}
 	}
 	return c, nil
 }
@@ -265,6 +279,11 @@ func (c *Conn) Group() netip.AddrPort { return c.group }
 // source of 0.0.0 is replaced by the Conn's individual address. It
 // waits for the pause after the previous indication and for the flow
 // control of a ROUTING_BUSY, and refuses frames with hop count 0.
+//
+// Sends take turns. Every wait of Send ends when ctx ends (with ctx's
+// error) or the Conn closes (knx.ErrClosed): the wait for the turn while
+// another Send waits for the flow control, and the wait for the flow
+// control itself.
 func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	if ld, ok := f.(*cemi.LData); ok {
 		if ld.HopCount() == 0 {
@@ -283,8 +302,10 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	if err != nil {
 		return err
 	}
-	c.sendMu.Lock()
-	defer c.sendMu.Unlock()
+	if err := c.acquire(ctx); err != nil {
+		return err
+	}
+	defer func() { <-c.turn }()
 	// A ROUTING_BUSY received while waiting extends the wait.
 	for d := c.flow.Delay(); d > 0; d = c.flow.Delay() {
 		if err := sleep(ctx, c.closing, d); err != nil {
@@ -306,6 +327,24 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	}
 	c.flow.Sent()
 	return c.transmit(ctx, frame, knxnetip.RoutingIndicationType)
+}
+
+// acquire takes the send turn. A turn that is free is taken at once;
+// otherwise acquire waits for it until ctx ends or the Conn closes.
+func (c *Conn) acquire(ctx context.Context) error {
+	select {
+	case c.turn <- struct{}{}:
+		return nil
+	default:
+	}
+	select {
+	case c.turn <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.closing:
+		return knx.ErrClosed
+	}
 }
 
 func randUint16() uint16 {
@@ -372,17 +411,27 @@ func (c *Conn) Receive(ctx context.Context) (cemi.Frame, error) {
 // (bounded; older ones are dropped when not read).
 func (c *Conn) Events() <-chan Event { return c.events }
 
-func (c *Conn) readLoop() {
+// readLoop reads the socket with read until it is closed. After a read
+// error it reads on, but only after a pause that grows while errors
+// follow each other (internal/backoff), and it ends when the Conn closes
+// during a pause.
+func (c *Conn) readLoop(read func([]byte) (int, netip.AddrPort, error)) {
 	defer c.wg.Done()
 	buf := make([]byte, knxnetip.MaxFrameLen+1)
+	var retry backoff.Loop
 	for {
-		n, from, err := c.sock.ReadFromUDPAddrPort(buf)
+		n, from, err := read(buf)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
+			c.o.logger.Debugf("routing: read: %v", err)
+			if !retry.Wait(c.closing) {
+				return
+			}
 			continue
 		}
+		retry.Reset()
 		from = netip.AddrPortFrom(from.Addr().Unmap(), from.Port())
 		fa := net.UDPAddrFromAddrPort(from)
 		if c.o.loopback {

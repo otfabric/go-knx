@@ -51,7 +51,8 @@ type RoutingTimer struct {
 	t             *time.Timer
 	gen           uint64
 	stopped       bool
-	lastTx        uint64 // last value returned by Next
+	sending       sync.WaitGroup // notifies being sent from the notify timer
+	lastTx        uint64         // last value returned by Next
 	txSeen        bool
 	seen          map[seenWrapper]struct{}
 }
@@ -146,7 +147,8 @@ func (r *RoutingTimer) delays(update bool) (lo, hi time.Duration) {
 }
 
 // syncWindow returns how long Synchronize collects answers: the latest
-// update notify of a follower plus twice the latency tolerance.
+// update notify of a follower plus twice the latency tolerance; r.mu must
+// be held.
 func (r *RoutingTimer) syncWindow() time.Duration {
 	_, hi := r.delays(true)
 	return hi + 2*r.latency
@@ -157,27 +159,46 @@ func (r *RoutingTimer) syncWindow() time.Duration {
 // an answer this router becomes the time keeper. An answer only raises
 // the timer, so the newest answer wins and a stale one cannot set it
 // back. Frames are accepted only after it returns.
+//
+// The window is not shortened: when ctx ends before the window has
+// passed, Synchronize returns with the timer unsynchronised. Authenticated
+// then reports false, Accept refuses every frame, the router does not
+// become time keeper and no periodic notify is scheduled. An answer
+// received until then has still raised the timer, and a later
+// Synchronize starts a new window.
 func (r *RoutingTimer) Synchronize(ctx context.Context) {
 	e := &expectedNotify{tag: randomTag()}
 	r.mu.Lock()
 	r.expect = e
 	v := r.value()
+	window := r.syncWindow()
 	r.mu.Unlock()
 	r.send(NewTimerNotify(r.key, v, r.serial, e.tag))
-	t := time.NewTimer(r.syncWindow())
+	t := time.NewTimer(window)
 	defer t.Stop()
+	whole := false
 	select {
 	case <-t.C:
+		whole = true
 	case <-ctx.Done():
+		// A window that has passed counts, whatever became of ctx since.
+		select {
+		case <-t.C:
+			whole = true
+		default:
+		}
 	}
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.expect = nil
+	if !whole {
+		return
+	}
 	if !e.answered {
 		r.timekeeper = true
 	}
 	r.authenticated = true
 	r.reschedule(nil)
-	r.mu.Unlock()
 }
 
 // Authenticated reports whether the timer is synchronised.
@@ -341,16 +362,23 @@ func (r *RoutingTimer) expired(gen uint64, u *update) {
 	m := NewTimerNotify(r.key, r.value(), serial, tag)
 	r.timekeeper = true
 	r.reschedule(nil)
+	// Counted while r.mu is held and the timer is not stopped, so Stop
+	// waits for this notify or finds none.
+	r.sending.Add(1)
 	r.mu.Unlock()
+	defer r.sending.Done()
 	r.send(m)
 }
 
-// Stop stops the notify timer.
+// Stop stops the notify timer and waits for a notify the timer is
+// sending: once it returns, the timer does not call the send function
+// again. It must not be called from the send function.
 func (r *RoutingTimer) Stop() {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.stopped = true
 	if r.t != nil {
 		r.t.Stop()
 	}
+	r.mu.Unlock()
+	r.sending.Wait()
 }

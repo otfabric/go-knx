@@ -270,7 +270,7 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 			until = nextSend
 		}
 		_ = s.conn.SetReadDeadline(until)
-		n, from, err := udp.Read(s.conn.ReadFromUDPAddrPort, buf)
+		n, from, err := udp.Read(s.conn.ReadFromUDPAddrPort, buf, nil)
 		if err != nil {
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
@@ -351,7 +351,7 @@ func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, 
 		}
 		_ = s.conn.SetReadDeadline(time.Now().Add(step))
 		for {
-			n, from, err := udp.Read(s.conn.ReadFromUDPAddrPort, buf)
+			n, from, err := udp.Read(s.conn.ReadFromUDPAddrPort, buf, nil)
 			if err != nil {
 				if ctx.Err() != nil {
 					return nil, ctx.Err()

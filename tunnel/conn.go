@@ -18,7 +18,8 @@
 // the Conn is closed. Over TCP every write is bounded by the request
 // timeout; a write the server does not take in time loses the connection,
 // so neither Send nor Close waits on a server that stops reading. A Conn is safe for concurrent use; sends are
-// serialised, as tunnelling allows one unacknowledged request at a time.
+// serialised, as tunnelling allows one unacknowledged request at a time:
+// a Send waits for its turn until its context ends or the Conn closes.
 package tunnel
 
 import (
@@ -33,6 +34,7 @@ import (
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/cemi"
+	"github.com/otfabric/go-knx/internal/backoff"
 	"github.com/otfabric/go-knx/internal/udp"
 	"github.com/otfabric/go-knx/knxnetip"
 )
@@ -57,12 +59,19 @@ type Conn struct {
 	// generation gen: there is nothing left to disconnect.
 	remoteClosed bool
 
-	sendMu sync.Mutex
-	ackCh  chan *knxnetip.TunnellingAck
-	featCh chan *knxnetip.TunnellingFeature
-	connCh chan *knxnetip.ConnectResponse
-	csCh   chan *knxnetip.ConnectionStateResponse
-	discCh chan *knxnetip.DisconnectResponse
+	// turn is the send turn: Send and the feature calls hold it for one
+	// request and its acknowledgement. Waiting for it ends with the
+	// caller's context or with the Conn.
+	turn chan struct{}
+	// unacked is the request of a caller that left before its
+	// TUNNELLING_ACK arrived; the next holder of the turn settles it.
+	// Only the holder of the turn reads or writes it.
+	unacked *unackedRequest
+	ackCh   chan *knxnetip.TunnellingAck
+	featCh  chan *knxnetip.TunnellingFeature
+	connCh  chan *knxnetip.ConnectResponse
+	csCh    chan *knxnetip.ConnectionStateResponse
+	discCh  chan *knxnetip.DisconnectResponse
 
 	conMu   sync.Mutex
 	conWait *confirmWait
@@ -78,6 +87,16 @@ type Conn struct {
 type lostEvent struct {
 	gen uint64
 	err error
+}
+
+// unackedRequest is a request that was written but whose acknowledgement
+// nobody waits for any more: the server may have taken it, so its
+// sequence number is not free for another frame.
+type unackedRequest struct {
+	gen      uint64
+	ch, seq  uint8
+	deadline time.Time // end of the request timeout of its last transmission
+	lost     bool      // the request timeout passed without an acknowledgement
 }
 
 type confirmWait struct {
@@ -115,6 +134,9 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 	if o.tcp && o.reconnect {
 		return nil, invalid("WithTCP and WithReconnect: reconnect over TCP is not implemented")
 	}
+	// closing is the Conn's: it also ends the pause of the UDP reader
+	// after a read error.
+	closing := make(chan struct{})
 	var tr transport
 	if o.tcp {
 		d := net.Dialer{Timeout: o.connectTimeout}
@@ -133,7 +155,7 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		if err != nil {
 			return nil, fmt.Errorf("tunnel: listen %s: %w", local, err)
 		}
-		tr = udpTransport{c: sock}
+		tr = udpTransport{c: sock, done: closing}
 	}
 	var hpai knxnetip.HPAI
 	switch {
@@ -153,7 +175,7 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		hpai = knxnetip.NewHPAI(netip.AddrPortFrom(ip, bound.Port()))
 	}
 	if o.secure != nil {
-		st, err := handshake(tr, server, hpai, *o.secure, o.connectTimeout, o.sessionKeepAlive)
+		st, err := handshake(ctx, tr, server, hpai, *o.secure, o.connectTimeout, o.sessionKeepAlive)
 		if err != nil {
 			_ = tr.close()
 			return nil, err
@@ -162,6 +184,7 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 	}
 	c := &Conn{
 		o: o, tr: tr, server: server, hpai: hpai,
+		turn:    make(chan struct{}, 1),
 		featCh:  make(chan *knxnetip.TunnellingFeature, 4),
 		ackCh:   make(chan *knxnetip.TunnellingAck, 1),
 		connCh:  make(chan *knxnetip.ConnectResponse, 1),
@@ -169,7 +192,7 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		discCh:  make(chan *knxnetip.DisconnectResponse, 1),
 		inbound: make(chan cemi.Frame, o.queueSize),
 		lost:    make(chan lostEvent, 1),
-		closing: make(chan struct{}),
+		closing: closing,
 		done:    make(chan struct{}),
 	}
 	c.setState(knx.StateConnecting, nil)
@@ -333,13 +356,28 @@ func drain[T any](ch chan T) {
 // comes back on a new channel, but the frame is not resent there; the
 // caller decides whether repeating it is safe (a read is, a toggle may not
 // be).
+//
+// Sends take turns, and a Send that waits for its turn returns when ctx
+// ends (ctx's error) or the Conn closes. When ctx ends after the request
+// was written and before its TUNNELLING_ACK, Send returns ctx's error and
+// the request stays outstanding: it is not repeated, the server may have
+// taken it, and its sequence number is used for no other frame. The next
+// Send or feature call first waits for that acknowledgement, for what is
+// left of the request timeout, and then sends under the next sequence
+// number; when the acknowledgement did not come, the connection is
+// considered lost (knx.ErrConnectionLost).
 func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	b, err := cemi.Marshal(f)
 	if err != nil {
 		return err
 	}
-	c.sendMu.Lock()
-	defer c.sendMu.Unlock()
+	if err := c.acquire(ctx); err != nil {
+		return err
+	}
+	defer c.release()
+	if err := c.settle(ctx); err != nil {
+		return err
+	}
 	c.mu.Lock()
 	state, ch, seq, dataEP, gen := c.state, c.channel, c.txSeq, c.dataEP, c.gen
 	c.mu.Unlock()
@@ -375,8 +413,6 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	if _, err := knxnetip.Marshal(req); err != nil {
 		return err
 	}
-	drain(c.ackCh)
-	acked := false
 	if c.tr.stream() {
 		// TCP is reliable: tunnelling requests are not acknowledged. The
 		// write is bounded by ctx and the write timeout; one ctx ends
@@ -387,51 +423,10 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 			}
 			return c.sendError(gen, err)
 		}
-		acked = true
-	}
-	for attempt := 0; attempt < 2 && !acked; attempt++ {
-		if attempt > 0 {
-			c.o.metrics.OnRetransmit(net.UDPAddrFromAddrPort(dataEP), ch)
-			c.o.logger.Debugf("tunnel: no ACK for sequence %d, repeating", seq)
-		}
-		if err := c.write(dataEP, req); err != nil {
-			return c.sendError(gen, err)
-		}
-		t := time.NewTimer(c.o.requestTimeout)
-	wait:
-		for {
-			select {
-			case ack := <-c.ackCh:
-				if ack.Channel != ch || ack.Seq != seq {
-					continue // a late ACK of an earlier request
-				}
-				t.Stop()
-				if ack.Status != knxnetip.StatusNoError {
-					return &knxnetip.StatusError{Service: knxnetip.TunnellingAckType, Status: ack.Status}
-				}
-				acked = true
-				break wait
-			case <-t.C:
-				break wait
-			case <-ctx.Done():
-				t.Stop()
-				return ctx.Err()
-			case <-c.closing:
-				t.Stop()
-				return knx.ErrClosed
-			}
-		}
-	}
-	if !acked {
-		err := fmt.Errorf("%w: tunnel: no TUNNELLING_ACK for sequence %d on channel %d", knx.ErrConnectionLost, seq, ch)
-		c.signalLost(gen, err)
+		c.advance(gen)
+	} else if err := c.exchange(ctx, gen, ch, seq, dataEP, req, func(err error) error { return c.sendError(gen, err) }); err != nil {
 		return err
 	}
-	c.mu.Lock()
-	if c.gen == gen {
-		c.txSeq++
-	}
-	c.mu.Unlock()
 
 	if wait == nil {
 		return nil
@@ -451,6 +446,151 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	case <-c.closing:
 		return knx.ErrClosed
 	}
+}
+
+// acquire takes the send turn. A turn that is free is taken at once;
+// otherwise acquire waits for it until ctx ends or the Conn closes.
+func (c *Conn) acquire(ctx context.Context) error {
+	select {
+	case c.turn <- struct{}{}:
+		return nil
+	default:
+	}
+	select {
+	case c.turn <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.closing:
+		return knx.ErrClosed
+	}
+}
+
+func (c *Conn) release() { <-c.turn }
+
+// advance consumes the sequence number of an acknowledged request of
+// connection generation gen.
+func (c *Conn) advance(gen uint64) {
+	c.mu.Lock()
+	if c.gen == gen {
+		c.txSeq++
+	}
+	c.mu.Unlock()
+}
+
+// exchange is the sender side of the sequence counter over UDP: it
+// writes req, which carries sequence number seq, and waits for its
+// TUNNELLING_ACK, repeating the request once after the request timeout.
+// An acknowledged request consumes the sequence number; a request that is
+// not acknowledged twice loses the connection. A write that fails is
+// reported through writeError. When ctx ends during the wait, the request
+// is left to settle. The caller holds the send turn.
+func (c *Conn) exchange(ctx context.Context, gen uint64, ch, seq uint8, dataEP netip.AddrPort, req knxnetip.Message, writeError func(error) error) error {
+	drain(c.ackCh)
+	for attempt := range 2 {
+		if attempt > 0 {
+			c.o.metrics.OnRetransmit(net.UDPAddrFromAddrPort(dataEP), ch)
+			c.o.logger.Debugf("tunnel: no ACK for sequence %d, repeating", seq)
+		}
+		if err := c.write(dataEP, req); err != nil {
+			return writeError(err)
+		}
+		deadline := time.Now().Add(c.o.requestTimeout)
+		t := time.NewTimer(c.o.requestTimeout)
+	wait:
+		for {
+			select {
+			case ack := <-c.ackCh:
+				if ack.Channel != ch || ack.Seq != seq {
+					continue // a late ACK of an earlier request
+				}
+				t.Stop()
+				if ack.Status != knxnetip.StatusNoError {
+					return &knxnetip.StatusError{Service: knxnetip.TunnellingAckType, Status: ack.Status}
+				}
+				c.advance(gen)
+				return nil
+			case <-t.C:
+				break wait
+			case <-ctx.Done():
+				t.Stop()
+				c.unacked = &unackedRequest{gen: gen, ch: ch, seq: seq, deadline: deadline}
+				return ctx.Err()
+			case <-c.closing:
+				t.Stop()
+				return knx.ErrClosed
+			}
+		}
+	}
+	err := fmt.Errorf("%w: tunnel: no TUNNELLING_ACK for sequence %d on channel %d", knx.ErrConnectionLost, seq, ch)
+	c.signalLost(gen, err)
+	return err
+}
+
+// settle ends the exchange of a request whose caller left before its
+// acknowledgement arrived. It waits for that TUNNELLING_ACK until the
+// request timeout of the request has passed and then lets the sequence
+// counter advance, so that the next request does not carry the number of
+// a frame the server may have taken. The request is not repeated: its
+// caller gave it up. Without the acknowledgement the connection is lost,
+// as for any request that is not acknowledged, and stays so for every
+// later call until it is closed or reconnected. The caller holds the send
+// turn.
+func (c *Conn) settle(ctx context.Context) error {
+	p := c.unacked
+	if p == nil {
+		return nil
+	}
+	c.mu.Lock()
+	current := c.gen == p.gen && c.state == knx.StateConnected
+	c.mu.Unlock()
+	if !current {
+		// The connection the request was sent on is gone, and its
+		// sequence counter with it.
+		c.unacked = nil
+		return nil
+	}
+	if !p.lost {
+		acked := func(ack *knxnetip.TunnellingAck) bool {
+			if ack.Channel != p.ch || ack.Seq != p.seq {
+				return false // a late ACK of an earlier request
+			}
+			c.unacked = nil
+			if ack.Status == knxnetip.StatusNoError {
+				c.advance(p.gen)
+			}
+			return true
+		}
+		// The acknowledgement that came while nobody waited is kept.
+		select {
+		case ack := <-c.ackCh:
+			if acked(ack) {
+				return nil
+			}
+		default:
+		}
+		t := time.NewTimer(time.Until(p.deadline))
+		defer t.Stop()
+	wait:
+		for {
+			select {
+			case ack := <-c.ackCh:
+				if acked(ack) {
+					return nil
+				}
+			case <-t.C:
+				break wait
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-c.closing:
+				return knx.ErrClosed
+			}
+		}
+		p.lost = true
+	}
+	err := fmt.Errorf("%w: tunnel: no TUNNELLING_ACK for sequence %d on channel %d", knx.ErrConnectionLost, p.seq, p.ch)
+	c.signalLost(p.gen, err)
+	return err
 }
 
 // sendError maps a failed write of Send to the error contract: after
@@ -824,12 +964,14 @@ func (c *Conn) supervise(parent context.Context) {
 			_ = c.write(c.server, &knxnetip.DisconnectRequest{Channel: ch, Control: c.hpai})
 		}
 		c.setState(knx.StateReconnecting, ev.err)
-		backoff := c.o.reconnectMin
+		// Each wait is a random time in the upper half of the backoff:
+		// clients that lost the same server do not all come back at once.
+		pause := c.o.reconnectMin
 		for {
 			select {
 			case <-c.closing:
 				return
-			case <-time.After(backoff):
+			case <-time.After(backoff.Jitter(pause, c.o.jitter)):
 			}
 			ctx, cancel := context.WithCancel(parent)
 			go func() {
@@ -849,8 +991,8 @@ func (c *Conn) supervise(parent context.Context) {
 				return
 			}
 			c.o.logger.Debugf("tunnel: reconnect: %v", err)
-			if backoff *= 2; backoff > c.o.reconnectMax {
-				backoff = c.o.reconnectMax
+			if pause *= 2; pause > c.o.reconnectMax {
+				pause = c.o.reconnectMax
 			}
 		}
 	}

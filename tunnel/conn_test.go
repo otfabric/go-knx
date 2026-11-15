@@ -1134,17 +1134,27 @@ func TestContextCancel(t *testing.T) {
 	f := dial(t, tunnel.WithRequestTimeout(time.Minute))
 	c, cancel := context.WithCancel(context.Background())
 	res := f.sendCtx(c, groupWrite(1))
-	f.expectRequest()
+	first := f.expectRequest()
 	cancel()
 	if err := result(t, res); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Send: %v", err)
 	}
-	// Canceled while waiting for the confirmation.
-	c, cancel = context.WithCancel(context.Background())
-	res = f.sendCtx(c, groupWrite(2))
+	// The request of the cancelled Send is acknowledged late; the next
+	// one carries the next sequence number (TestSendContextEndsBeforeAck).
+	f.ack(first.Seq, knxnetip.StatusNoError)
+	// Canceled while waiting for the confirmation: the context is asked
+	// once for the wait for the ACK and again for the wait for the
+	// L_Data.con.
+	parent, cancel := context.WithCancel(context.Background())
+	steps := newStepCtx(parent)
+	res = f.sendCtx(steps, groupWrite(2))
 	req := f.expectRequest()
+	if req.Seq != first.Seq+1 {
+		t.Fatalf("sequence %d after a cancelled request with %d", req.Seq, first.Seq)
+	}
+	recv(t, steps.steps, "Send to wait for the ACK")
 	f.ack(req.Seq, knxnetip.StatusNoError)
-	pending(t, res)
+	recv(t, steps.steps, "Send to wait for the confirmation")
 	cancel()
 	if err := result(t, res); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Send: %v", err)

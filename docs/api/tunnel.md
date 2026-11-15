@@ -16,7 +16,7 @@ The connection state machine:
 	lost ──otherwise──▶ closed (Err reports why)
 	any ──Close──▶ DISCONNECT_REQUEST ──▶ closed
 
-One goroutine reads the socket and one sends heartbeats; both end when the Conn is closed. Over TCP every write is bounded by the request timeout; a write the server does not take in time loses the connection, so neither Send nor Close waits on a server that stops reading. A Conn is safe for concurrent use; sends are serialised, as tunnelling allows one unacknowledged request at a time.
+One goroutine reads the socket and one sends heartbeats; both end when the Conn is closed. Over TCP every write is bounded by the request timeout; a write the server does not take in time loses the connection, so neither Send nor Close waits on a server that stops reading. A Conn is safe for concurrent use; sends are serialised, as tunnelling allows one unacknowledged request at a time: a Send waits for its turn until its context ends or the Conn closes.
 
 ## Constants
 
@@ -64,6 +64,14 @@ type Conn struct {
 	// incremented on every (re)connection
 	// remoteClosed is set when the server disconnected the channel of
 	// generation gen: there is nothing left to disconnect.
+
+	// turn is the send turn: Send and the feature calls hold it for one
+	// request and its acknowledgement. Waiting for it ends with the
+	// caller's context or with the Conn.
+
+	// unacked is the request of a caller that left before its
+	// TUNNELLING_ACK arrived; the next holder of the turn settles it.
+	// Only the holder of the turn reads or writes it.
 
 }
 ```
@@ -116,7 +124,7 @@ Err returns why the Conn closed: nil after Close, otherwise an error matching kn
 func (c *Conn) FeatureGet(ctx context.Context, f knxnetip.FeatureID) ([]byte, error)
 ```
 
-FeatureGet reads an interface feature of the server (TUNNELLING\_FEATURE\_GET, tunnelling v2) and returns its value.
+FeatureGet reads an interface feature of the server (TUNNELLING\_FEATURE\_GET, tunnelling v2) and returns its value. Over UDP the request is acknowledged and repeated like the request of Send.
 
 #### func (Conn) FeatureSet
 
@@ -124,7 +132,7 @@ FeatureGet reads an interface feature of the server (TUNNELLING\_FEATURE\_GET, t
 func (c *Conn) FeatureSet(ctx context.Context, f knxnetip.FeatureID, value []byte) error
 ```
 
-FeatureSet writes an interface feature of the server (TUNNELLING\_FEATURE\_SET, tunnelling v2).
+FeatureSet writes an interface feature of the server (TUNNELLING\_FEATURE\_SET, tunnelling v2). Over UDP the request is acknowledged and repeated like the request of Send.
 
 #### func (Conn) IndividualAddress
 
@@ -159,6 +167,8 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error
 Send sends a cEMI frame on the tunnel and waits for its acknowledgement. The request is repeated once if no TUNNELLING\_ACK arrives within the request timeout; if the second attempt fails too the connection is considered lost. For an L\_Data.req Send also waits for the L\_Data.con (unless WithConfirm(false)) and returns an error matching knx.ErrNotConfirmed if it reports an error or does not arrive.
 
 Send never repeats a frame on its own beyond that one TUNNELLING\_REQUEST repetition. An error matching knx.ErrConnectionLost (or ErrNotConfirmed) does not tell whether the frame reached the bus: the server may have received it before the tunnel was lost. With WithReconnect the tunnel comes back on a new channel, but the frame is not resent there; the caller decides whether repeating it is safe (a read is, a toggle may not be).
+
+Sends take turns, and a Send that waits for its turn returns when ctx ends (ctx's error) or the Conn closes. When ctx ends after the request was written and before its TUNNELLING\_ACK, Send returns ctx's error and the request stays outstanding: it is not repeated, the server may have taken it, and its sequence number is used for no other frame. The next Send or feature call first waits for that acknowledgement, for what is left of the request timeout, and then sends under the next sequence number; when the acknowledgement did not come, the connection is considered lost (knx.ErrConnectionLost).
 
 #### func (Conn) Server
 
@@ -313,7 +323,7 @@ WithQueueSize bounds the inbound telegram queue (default 256). When it is full, 
 func WithReconnect(min, max time.Duration) Option
 ```
 
-WithReconnect makes a lost connection reconnect with exponential backoff between min and max, until the Conn is closed. Telegrams sent while reconnecting fail with knx.ErrConnectionLost.
+WithReconnect makes a lost connection reconnect with exponential backoff between min and max, until the Conn is closed: the backoff starts at min and doubles after each failed attempt up to max, and each attempt waits a random time between half the backoff and the backoff, so that clients which lost the same server do not come back together. Telegrams sent while reconnecting fail with knx.ErrConnectionLost.
 
 #### func WithRequestTimeout
 

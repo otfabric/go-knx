@@ -56,7 +56,7 @@ verified for conformance, and not certified
 | Feature | Covered | Not covered |
 |---|---|---|
 | Secure tunnelling (`tunnel.WithSecure`, `server.WithSecure`) | X25519 session over TCP or UDP (`tunnel.WithUDP`), user authentication, device authentication (client verifies when given the code), SECURE_WRAPPER with replay protection, keep alive, close; server binds users to tunnelling addresses, device management for user 1 only, ends sessions that do not authenticate within `server.WithSecureAuthTimeout` (10 s; frames before authentication do not extend a session, and when all sessions or TCP connections are taken a new one replaces the oldest that has not authenticated), drops a tunnel's telegrams whose source is not its own address (negative L_Data.con), ends sessions idle for the session timeout (60 s, `server.WithSecureSessionTimeout`; the client sends a keep alive after 30 s idle, `tunnel.WithSessionKeepAlive`) | secure device management by remote tools beyond property access |
-| Secure routing (`routing.WithSecure`, `server.WithSecureRouting`) | backbone key, timer synchronisation as keeper or follower (answers are collected for the whole synchronisation window and the newest is used), latency tolerance, each frame accepted once within it (at most 4096 remembered; more are dropped until older ones expire); plain routing frames dropped | — |
+| Secure routing (`routing.WithSecure`, `server.WithSecureRouting`) | backbone key, timer synchronisation as keeper or follower (answers are collected for the whole synchronisation window and the newest is used; no frame is accepted before the window has passed, and a context that ends inside it leaves the timer unsynchronised), latency tolerance, each frame accepted once within it (at most 4096 remembered; more are dropped until older ones expire); plain routing frames dropped | a timer value kept across restarts: a router that hears no time keeper starts its own timer (see below) |
 | Data Secure (`datasecure`, `client.WithDataSecure`) | S-A_Data with authentication and confidentiality (or authentication only) for group communication, per sender sequence numbers; S-A_Sync request and response; answering S-A_Sync and group object diagnostics with the device's tool key (the surrogate a tool such as Calimero uses to send secured group telegrams) | asking group peers by S-A_Sync automatically |
 | Data Secure tool access (`client.Device`, `client.WithToolKey`, `server.WithToolKey`, `mgmt.Responder`) | remote device management secured with the device's tool key: S-A_Sync, then S-A_Data with tool access, connectionless and in transport connections, as tool and as device; a secured device ignores plain management | device-to-device link keys (P2P key table), secure commissioning with the factory key (FDSK), setting the security mode by function property |
 | Keyrings (`keyring`) | signature check, decryption, lookups, writing test keyrings; input bounded (4 MiB, nesting depth 64, 262144 elements) before the signature is checked | — |
@@ -72,6 +72,20 @@ Behaviour that matters for security:
   (`Metrics.OnDecodeError` / `OnDropped`), never delivered. A secure
   session refuses frames carrying its own serial number; the two ends of
   a session must use different KNX serial numbers.
+- The timer synchronisation of secure routing always takes its whole
+  window (about 3.3 s at the default latency), and routing frames are
+  accepted only after it. `routing.Listen` whose context ends inside the
+  window returns the context's error and no `Conn`; a server runs the
+  synchronisation until the window has passed or `Close`, whatever becomes
+  of the context `Start` was called with.
+- A secure router that hears no time keeper during its synchronisation
+  window becomes time keeper with its own timer, which counts from 0 when
+  the process starts. Until the timer of another router or of an accepted
+  frame raises it, it accepts every authentic routing frame whose timer
+  value is above its own, whenever that frame was sealed. What a router
+  refuses as outdated therefore depends on a synchronisation with a time
+  keeper that runs: start a router while the other routers of its backbone
+  are up.
 - A Data Secure table remembers the last sequence number of each sender
   only while it runs. Persist `Table.Senders()` and
   `Table.ToolSequences()` together with `Table.Sequence()`, and restore
@@ -96,7 +110,16 @@ Behaviour that matters for security:
   for every tunnelling user: `server.WithSecure` protects the KNXnet/IP
   connections, `server.WithToolKey` the device.
 - The tunnelling client bounds every TCP write by the request timeout and
-  drops stray datagrams during the KNX IP Secure handshake over UDP.
+  drops stray datagrams during the KNX IP Secure handshake over UDP. The
+  handshake ends with the connect timeout or with the context of `Dial`,
+  whichever is first.
+- A client with Data Secure sends its answers to individually addressed
+  requests (S-A_Sync_Res, the answer to a tool request) from one goroutine,
+  through a queue of 16: an answer that finds the queue full is dropped
+  and logged at debug level, and each send gets 5 s.
+- A `Send` of `routing.Conn` or `tunnel.Conn` (and a tunnelling feature
+  call) that waits for its turn behind another returns when its context
+  ends or the connection closes.
 - A Data Secure table starts its sending sequence number at the
   milliseconds since 2018-01-05 when none is given; persist
   `Table.Sequence()` if the clock may go backwards.
@@ -122,9 +145,44 @@ knxctl reads secrets from environment variables or the keyring by default
 (`KNXCTL_KEYRING_PASSWORD`, `KNXCTL_USER_PASSWORD`, ...); command-line
 flags exist for tests and should be avoided on shared hosts.
 
+## Resource limits
+
+What a peer can make go-knx hold or do is bounded. The limits, where they
+are enforced and the test of each:
+
+| Limit | Value | Set by | Enforced | Test |
+|---|---|---|---|---|
+| KNXnet/IP frame | 1024 octets (`knxnetip.MaxFrameLen`) | — | `knxnetip.Parse`, `Marshal`; `ReadFrame` refuses a longer total length after the header, before it reads or allocates the body | knxnetip `TestReadFrameAllocationBudget`, `TestParseAllocationBudget`, `TestReadFrame`, `TestAppendTooLong` |
+| Description blocks of a frame | what a frame holds (509 of two octets) | — | `knxnetip.ParseDIBs`: allocation per block of the input, none by a declared length | knxnetip `TestParseDIBsAllocationBudget` |
+| Keyring document | 4 MiB, 64 levels, 262144 elements | — | `keyring.Parse`, `Load`, `LoadFile`, before the signature is checked | keyring `TestParseAllocationBudgetAtLimits`, `TestLimits`, `TestMalformed` |
+| Inbound queue of a tunnel | 256 frames | `tunnel.WithQueueSize` | newer frames are acknowledged and dropped (`queue_full`) | tunnel `TestQueueFull` |
+| Inbound queue of a routing `Conn` | 256 frames | `routing.WithQueueSize` | newer frames are dropped (`queue_full`) | routing `TestReceiveErrorsAndQueue` |
+| Routing events | 16 | — | an event that does not fit is dropped | routing `TestLostMessageAndEventOverflow` |
+| Own indications remembered to recognise their echo | 1024, for 2 s | — | `routing.Conn` with `WithLoopback` | routing `TestEchoSuppression` |
+| Routing indications sent | 50 per second, no bursts | `routing.WithRate`, `server.WithRoutingRate` | `Send` waits its turn; the server queues | routing `TestRateLimit`, server `TestRoutingOutbound` |
+| Secure routing frames remembered | 4096 within the latency tolerance | — | `secure.RoutingTimer.Accept` refuses further ones until older ones expire | secure `TestRoutingTimerAcceptBounded` |
+| Tunnelling connections of a server | one per tunnelling address, 255 channels | `server.WithTunnelAddresses` | E_NO_MORE_CONNECTIONS | server `TestConnectRefusals`, `TestChannelsExhausted` |
+| Device management connections of a server | 4 | — | E_NO_MORE_CONNECTIONS | server `TestDeviceManagementLimit` |
+| TCP connections and UDP secure sessions of a server | tunnelling addresses + 4, each | — | a further connection is closed; on a secure server it replaces the oldest that has not authenticated | server `TestTCPLimitPlain`, `TestSecureTCPUnauthenticated`, `TestSecureSessionUDPSpoofedRequests` |
+| Time to authenticate a secure session | 10 s | `server.WithSecureAuthTimeout` | the session or TCP connection ends | server `TestSecureSessionUDPUnauthenticatedKeepAlive`, `TestSecureTCPUnauthenticated` |
+| Send queue of a server's connection, routing send queue | 128 frames | `server.WithQueueSize` | a frame that does not fit is dropped (`queue_full`, `routing_rate`) | server `TestQueueFull`, `TestRoutingOutbound` |
+| Telegrams of a subscription | the buffer given to `Subscribe` | the caller | dropped and counted (`Subscription.Dropped`) | client `TestSubscribe` |
+| Responses of `GroupReadAll` | 1000 | `client.WithMaxResponses` | it returns when it has them | client `TestGroupReadAllMaxResponses` |
+| Answers of a client with Data Secure waiting for the link | 16, sent by one goroutine, 5 s each | — | an answer that does not fit is dropped (debug log) | client `TestAnswersBounded`, `TestAnswersEndWithClose` |
+| Property data of `Device.PropertyWrite` | 250 octets | — | refused before sending | client `TestPropertyWriteTooLong` |
+| Servers of `discovery.Search` | 256 | `discovery.WithMaxResults` | it returns when it has them | discovery `TestSearchMaxResults` |
+| Pause after an accept or read error of a socket | 5 ms, doubling to 1 s while errors follow each other | — | the server's accept and read loops, `routing.Conn`, the tunnelling client and discovery | server `TestAcceptLoopPausesAfterErrors`, `TestReadLoopPausesAfterErrors`, routing `TestReadLoopPausesAfterErrors`, internal/udp `TestReadPausesAfterDatagramErrors` |
+| Wait between reconnection attempts of a tunnel | a random time in the upper half of a backoff from 1 s to 30 s | `tunnel.WithReconnect` | the supervisor of a `tunnel.Conn` | tunnel `TestReconnectWaitsAreJittered`, internal/backoff `TestJitter` |
+
+Two more queues are bounded and drop without a counter: the frames of a
+managed device waiting for a `client.Device` (32) and the responses
+waiting for a pending group read (16). The rate of datagrams per source
+address is not limited.
+
 ## Known limitations
 
 - Routing write deadlines are 1 s: a blocked multicast send drops the
   telegram rather than stalling the server.
-- The server accepts tunnelling requests from the client's IP address
-  (control or data endpoint); it does not pin the source port.
+- The server takes the frames of a tunnelling connection over UDP from the
+  client's control or data endpoint only, address and port. A host that
+  forges both can still send datagrams in the client's name, as said above.

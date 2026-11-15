@@ -47,7 +47,9 @@ import (
 	"github.com/otfabric/go-knx/cemi"
 	"github.com/otfabric/go-knx/datasecure"
 	"github.com/otfabric/go-knx/device"
+	"github.com/otfabric/go-knx/internal/backoff"
 	"github.com/otfabric/go-knx/internal/flowctl"
+	"github.com/otfabric/go-knx/internal/guard"
 	"github.com/otfabric/go-knx/internal/mcast"
 	"github.com/otfabric/go-knx/internal/udp"
 	"github.com/otfabric/go-knx/knxnetip"
@@ -118,6 +120,7 @@ type Server struct {
 	sessionID uint16 // last secure session identifier
 	usessions map[uint16]*udpSession
 	rtimer    *secure.RoutingTimer // secure routing
+	rsynced   chan struct{}        // closed when its synchronisation has ended
 	closing   chan struct{}
 	wg        sync.WaitGroup
 }
@@ -151,7 +154,7 @@ func New(opts ...Option) (*Server, error) {
 	if o.secureRouting != nil && !o.routing {
 		return nil, invalid("WithSecureRouting needs WithRouting(true)")
 	}
-	s := &Server{o: o, usessions: map[uint16]*udpSession{}, conns: map[uint8]*tconn{}, tcpConns: map[*tcpConn]struct{}{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), startTime: time.Now()}
+	s := &Server{o: o, usessions: map[uint16]*udpSession{}, conns: map[uint8]*tconn{}, tcpConns: map[*tcpConn]struct{}{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), rsynced: make(chan struct{}), startTime: time.Now()}
 	if o.routing {
 		s.flow = flowctl.New(o.routingRate)
 		s.routeQ = make(chan []byte, o.queueSize)
@@ -179,6 +182,14 @@ func (s *Server) AddDevice(d *device.Device) {
 
 // Subscribe calls f, synchronously, for every telegram on the virtual
 // network; it must not block. The returned function removes it.
+//
+// f runs on the goroutine that distributes the telegram: a reader of the
+// server, its janitor, or the caller of Send, GroupWrite or Transmit. It
+// may call the server's methods, the returned function included, but not
+// Close: Close waits for the goroutine f runs on, so call it from another
+// goroutine. Several goroutines may call f at the same time. An f that
+// does not return normally is stopped there and logged at error level
+// with its stack; the telegram is distributed as if f had returned.
 func (s *Server) Subscribe(f func(Telegram)) (cancel func()) {
 	s.mu.Lock()
 	s.tapID++
@@ -192,7 +203,10 @@ func (s *Server) Subscribe(f func(Telegram)) (cancel func()) {
 	}
 }
 
-// Start opens the sockets and starts serving in the background.
+// Start opens the sockets and starts serving in the background. A Start
+// that fails leaves no socket open. ctx bounds the name resolution of
+// Start; the server, and with secure routing its timer synchronisation,
+// run until Close.
 func (s *Server) Start(ctx context.Context) error {
 	s.mu.Lock()
 	if s.started {
@@ -244,6 +258,9 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		if s.o.routing {
 			_ = main.Close()
+			if preTCP != nil {
+				_ = preTCP.Close()
+			}
 			return invalid("routing needs the listen port to be the multicast group's port %d", s.group.Port())
 		}
 		if s.o.discovery {
@@ -289,20 +306,24 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.o.routing {
 		s.wg.Add(1)
 	}
+	// The timer is published with the sockets, under s.mu: a Close that
+	// runs from here on stops it.
+	var rtimer *secure.RoutingTimer
 	if s.o.routing && s.o.secureRouting != nil {
 		s.wg.Add(1) // the timer synchronisation
+		rtimer = secure.NewRoutingTimer(s.o.secureRouting.key, s.o.serial, s.o.secureRouting.latency, func(m *knxnetip.TimerNotify) { s.write(s.group, m) })
+		s.rtimer = rtimer
 	}
 	s.mu.Unlock()
 	s.o.logger.Infof("server: listening on %s (tcp %t, discovery %t, routing %t)", main.LocalAddr(), s.o.tcp, s.o.discovery, s.o.routing)
-	if s.o.routing && s.o.secureRouting != nil {
-		s.rtimer = secure.NewRoutingTimer(s.o.secureRouting.key, s.o.serial, s.o.secureRouting.latency, func(m *knxnetip.TimerNotify) { s.write(s.group, m) })
-	}
-	go s.readLoop(main)
-	if s.rtimer != nil {
+	go s.readLoop(main.ReadFromUDPAddrPort)
+	if rtimer != nil {
 		go func() {
 			defer s.wg.Done()
-			// Close ends the synchronisation too.
-			sctx, cancel := context.WithCancel(ctx)
+			// The synchronisation outlives Start: it keeps the values of
+			// ctx but not its cancellation or deadline, so that it always
+			// takes its whole window. Close ends it.
+			sctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 			defer cancel()
 			go func() {
 				select {
@@ -311,15 +332,16 @@ func (s *Server) Start(ctx context.Context) error {
 				case <-sctx.Done():
 				}
 			}()
-			s.rtimer.Synchronize(sctx)
+			rtimer.Synchronize(sctx)
+			close(s.rsynced)
 		}()
 	}
 	go s.janitor()
 	if disc != nil {
-		go s.readLoop(disc)
+		go s.readLoop(disc.ReadFromUDPAddrPort)
 	}
 	if s.tcpLn != nil {
-		go s.acceptLoop(s.tcpLn)
+		go s.acceptLoop(s.tcpLn.AcceptTCP)
 	}
 	if s.o.routing {
 		go s.routingSender()
@@ -452,7 +474,7 @@ func (s *Server) Close() error {
 	for _, c := range s.conns {
 		conns = append(conns, c)
 	}
-	main, disc, ln := s.main, s.disc, s.tcpLn
+	main, disc, ln, rtimer := s.main, s.disc, s.tcpLn, s.rtimer
 	tcps := make([]*tcpConn, 0, len(s.tcpConns))
 	for t := range s.tcpConns {
 		tcps = append(tcps, t)
@@ -461,8 +483,8 @@ func (s *Server) Close() error {
 	for _, c := range conns {
 		s.disconnect(c, true, nil)
 	}
-	if s.rtimer != nil {
-		s.rtimer.Stop()
+	if rtimer != nil {
+		rtimer.Stop()
 	}
 	close(s.closing)
 	if ln != nil {
@@ -528,17 +550,27 @@ func (s *Server) dataEndpoint(m *knxnetip.ConnectRequest, from netip.AddrPort) k
 	return s.endpoint(from)
 }
 
-func (s *Server) readLoop(c *net.UDPConn) {
+// readLoop reads a socket with read until it is closed. After a read
+// error it reads on, but only after a pause that grows while errors
+// follow each other (internal/backoff), and it ends when the server
+// closes during a pause.
+func (s *Server) readLoop(read func([]byte) (int, netip.AddrPort, error)) {
 	defer s.wg.Done()
 	buf := make([]byte, knxnetip.MaxFrameLen+1)
+	var retry backoff.Loop
 	for {
-		n, from, err := c.ReadFromUDPAddrPort(buf)
+		n, from, err := read(buf)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
+			s.o.logger.Debugf("server: read: %v", err)
+			if !retry.Wait(s.closing) {
+				return
+			}
 			continue
 		}
+		retry.Reset()
 		from = netip.AddrPortFrom(from.Addr().Unmap(), from.Port())
 		fa := net.UDPAddrFromAddrPort(from)
 		m, err := knxnetip.Parse(buf[:n])
@@ -1169,8 +1201,10 @@ func (s *Server) distribute(t Telegram, origin *tconn) {
 	}
 	s.mu.Unlock()
 
+	// The application's code runs with no lock held; a call that does
+	// not return normally is logged and the telegram goes on.
 	for _, tap := range taps {
-		tap(t)
+		guard.Report(s.o.logger, guard.Run("server.Subscribe", func() { tap(t) }))
 	}
 	ind := f
 	if f.MsgCode != cemi.LDataInd {
@@ -1209,7 +1243,10 @@ func (s *Server) distribute(t Telegram, origin *tconn) {
 		}
 	}
 	for _, d := range devices {
-		for _, resp := range d.Handle(ind) {
+		// Handle calls the device's OnChange handler.
+		var resps []*cemi.LData
+		guard.Report(s.o.logger, guard.Run("device.Device.Handle", func() { resps = d.Handle(ind) }))
+		for _, resp := range resps {
 			s.distribute(Telegram{Origin: FromDevice, Frame: resp}, nil)
 		}
 	}

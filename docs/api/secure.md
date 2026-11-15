@@ -187,6 +187,7 @@ type RoutingTimer struct {
 
 	// timer value minus local milliseconds
 
+	// notifies being sent from the notify timer
 	// last value returned by Next
 
 }
@@ -240,7 +241,7 @@ Next returns the timer value for an outgoing SECURE\_WRAPPER. Values strictly in
 func (r *RoutingTimer) Stop()
 ```
 
-Stop stops the notify timer.
+Stop stops the notify timer and waits for a notify the timer is sending: once it returns, the timer does not call the send function again. It must not be called from the send function.
 
 #### func (RoutingTimer) Synchronize
 
@@ -249,6 +250,8 @@ func (r *RoutingTimer) Synchronize(ctx context.Context)
 ```
 
 Synchronize sends a TIMER\_NOTIFY and collects the answers for the whole synchronisation window (about 3.3 s at DefaultLatency); without an answer this router becomes the time keeper. An answer only raises the timer, so the newest answer wins and a stale one cannot set it back. Frames are accepted only after it returns.
+
+The window is not shortened: when ctx ends before the window has passed, Synchronize returns with the timer unsynchronised. Authenticated then reports false, Accept refuses every frame, the router does not become time keeper and no periodic notify is scheduled. An answer received until then has still raised the timer, and a later Synchronize starts a new window.
 
 #### func (RoutingTimer) TimeKeeper
 

@@ -37,6 +37,7 @@ func connectedConn(stream bool) *Conn {
 		state: knx.StateConnected, channel: 1, gen: 1,
 		dataEP: netip.MustParseAddrPort("127.0.0.1:3671"),
 		ackCh:  make(chan *knxnetip.TunnellingAck, 1),
+		turn:   make(chan struct{}, 1),
 		lost:   make(chan lostEvent, 1), closing: make(chan struct{}),
 	}
 }

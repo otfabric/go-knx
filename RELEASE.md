@@ -5,6 +5,53 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.11.1
+
+**Date:** 2026-11-15
+**Previous release:** v0.11.0
+
+## Summary
+
+Lifecycle and timing of the tunnelling client, the routing connection, the group client and the server. Sends take turns that end with the caller's context; a tunnelling request keeps its sequence number until it is acknowledged; feature requests are acknowledged and repeated; the KNX IP Secure handshake follows the context of `Dial`; the timer synchronisation of secure routing always takes its whole window; reconnection waits are jittered; the loops that accept and read pause after an error; application callbacks that do not return normally are logged. No exported identifier is added, removed or changed.
+
+## Changes
+
+### Changed
+
+- Secure routing: a timer synchronisation counts only when its whole window has passed. `routing.Listen` with `WithSecure` (and `client.ListenRouting`) returns the context's error and no `Conn` when its context ends inside the window, and closes its socket. `secure.RoutingTimer.Synchronize` then leaves the timer unsynchronised: `Authenticated` reports false, `Accept` refuses every frame, the router is not time keeper and no periodic notify is scheduled; a later `Synchronize` starts a new window. A server runs the synchronisation for its whole window whatever becomes of the context `Start` was called with; `Close` ends it.
+- `routing.Conn.Send`, `tunnel.Conn.Send`, `FeatureGet` and `FeatureSet` take turns, and a call that waits for its turn returns when its context ends (the context's error) or the `Conn` closes (`knx.ErrClosed`). A turn that is free is taken as before.
+- A client with `WithDataSecure` sends its answers to individually addressed requests (S-A_Sync_Res, the answer to a tool request) from one goroutine, in order, through a queue of 16. An answer that finds the queue full is dropped and logged at debug level; each send gets 5 s.
+- `tunnel.Dial` with `WithSecure`: the KNX IP Secure handshake ends with the connect timeout or with the context of `Dial`, whichever is first. When the context ends first, by its deadline or by cancellation, `Dial` returns the context's error.
+- `tunnel.WithReconnect`: each reconnection attempt waits a random time between half the backoff and the backoff (the backoff still starts at the minimum and doubles to the maximum), so that clients which lost the same server do not come back together.
+- The server's accept and read loops, the reader of `routing.Conn`, and the UDP reads of the tunnelling client and of discovery pause after an error other than a closed socket: 5 ms, twice as long after each further error up to 1 s, 5 ms again after a success. `Close` ends a pause. The error is logged at debug level by the server and by `routing.Conn`.
+- `client.Client.OnTelegram`, `server.Server.Subscribe` and the `OnChange` handler of a virtual device in a server: a callback that does not return normally is stopped where the library called it and logged at error level with its stack; the reader or the server goes on. The comments say what a callback may call and that it calls `Close` from another goroutine.
+- `secure.RoutingTimer.Stop` waits for a notify the timer is sending, so `Close` of a `routing.Conn` or a server returns after it. `Stop` must not be called from the send function.
+
+### Fixed
+
+- `tunnel.Conn.Send` whose context ended between its TUNNELLING_REQUEST and the TUNNELLING_ACK returned without consuming the sequence number, although the server may have taken the frame; the next telegram then went out under the same number, which a server takes for a repetition. The request now stays outstanding: it is not repeated, and the next `Send` or feature call first waits for its acknowledgement, for what is left of the request timeout, before it sends under the next number. Without the acknowledgement the connection is lost (`knx.ErrConnectionLost`), as for a request that is not acknowledged twice.
+- `tunnel.Conn.FeatureGet` and `FeatureSet` over UDP wrote the request once and advanced the sequence number at once. They now wait for the TUNNELLING_ACK, repeat the request once and consume the sequence number when it is acknowledged, like `Send`; a feature request that is not acknowledged twice loses the connection.
+- A secure tunnel's keep alive timer was started again by the SESSION_STATUS that closes the session; it now stays stopped after `Close`.
+- `server.Start` that refuses routing on a port other than the group's left the TCP listener it had opened; it now closes it.
+- `server.Start` published the routing timer outside the server's lock; a `Close` that ran during `Start` could leave the timer running. The timer is now published with the sockets. `secure.RoutingTimer.Synchronize` read the time keeper state without the timer's lock.
+- `dpt` 242.600 (xyY): `Encode` took a NaN in x, y or the brightness and encoded an unspecified value; it now returns `knx.ErrInvalidValue`, as the other float types do.
+
+### Documentation
+
+- SECURITY.md: a table of the resource limits with the test of each; what a secure router does when it hears no time keeper; the server's endpoint check as the code has it. OBSERVABILITY.md: every reason of `Metrics.OnDropped` (17, compared with the code by `TestDropReasonsDocumented`) and the log entry of a callback. LIMITATIONS.md: what calls return after `Close`, which sentinels an expired deadline matches, shared telegrams, no dialer option. ARCHITECTURE.md, API.md and ERRORS.md: waits, `Close`, callbacks and the sequence counter as the code has them. TESTING.md: the lifecycle contract matrix (L1–L16), how the tests wait, the allocation budgets, the command of the benchmarks. CONFORMANCE.md, OTFABRIC-CONVENTIONS.md and the comment of `internal/pbkdf2` no longer state superseded versions and gates.
+
+### Tests
+
+- Lifecycle contract tests for `tunnel.Conn`, `routing.Conn`, `client.Client`, `client.Device` and `server.Server`: concurrent `Close`, cancelled requests, acknowledgements of an earlier connection, callbacks that call the library or end it, construction failures with a count of the open descriptors.
+- Allocation budgets for `knxnetip.ReadFrame`, `Parse`, `ParseDIBs` and `keyring.Parse` at their limits.
+- The routing timer, the pauses of the loops and the reconnect jitter are tested on the clock of `testing/synctest`; several tests wait for an event where they slept.
+
+### CI
+
+- The nightly tier runs the tests with `GOARCH=386`. The release workflow builds, vets and tests otfabric/knxctl against the candidate before the tag is created.
+
+---
+
 ## v0.11.0
 
 **Date:** 2026-11-14

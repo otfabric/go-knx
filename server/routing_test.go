@@ -97,16 +97,23 @@ func TestRoutingOutbound(t *testing.T) {
 	if err := c.Send(ctx(t), write(ga, 1)); err != nil {
 		t.Fatal(err)
 	}
-	eventually(t, "routing indication", func() bool { return sent() == 1 })
-	// Hop count 0 is not routed.
+	first := m.waitFrame(t, knxnetip.RoutingIndicationType)
+	// Hop count 0 is not routed. A longer telegram follows it: the server
+	// sends indications in order, so when that one is out, the one with
+	// hop count 0 would have been sent before it.
 	f := write(ga, 2)
 	f.SetHopCount(0)
 	if err := s.Send(f); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(150 * time.Millisecond)
-	if sent() != 1 {
-		t.Fatal("hop count 0 routed")
+	if err := s.GroupWrite(ga, apdu.GroupValue{Data: []byte{3, 3}}); err != nil {
+		t.Fatal(err)
+	}
+	if next := m.waitFrame(t, knxnetip.RoutingIndicationType); next.size != first.size+1 {
+		t.Fatalf("an indication of %d octets followed the first of %d: hop count 0 routed", next.size, first.size)
+	}
+	if sent() != 2 {
+		t.Fatalf("%d indications sent, want 2", sent())
 	}
 	// At 10/s indications are 100 ms apart: a burst is queued, not sent
 	// back to back, and what does not fit in the queue (2, plus the one
@@ -119,9 +126,9 @@ func TestRoutingOutbound(t *testing.T) {
 	if d := dropped(); d < 2 {
 		t.Fatalf("dropped %d of a burst of 6 with a queue of 2", d)
 	}
-	eventually(t, "queued indications", func() bool { return sent()+dropped() == 7 })
+	eventually(t, "queued indications", func() bool { return sent()+dropped() == 8 })
 	if d := time.Since(start); d < 150*time.Millisecond {
-		t.Fatalf("%d queued indications sent within %v at 10/s", sent()-1, d)
+		t.Fatalf("%d queued indications sent within %v at 10/s", sent()-2, d)
 	}
 }
 
@@ -146,13 +153,15 @@ func TestRoutingBusyPausesServer(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	time.Sleep(150 * time.Millisecond)
-	if n := sent(); n != 0 {
-		t.Fatalf("%d indications sent during ROUTING_BUSY", n)
+	// None is sent during the pause: the first goes out after it.
+	if d := m.waitFrame(t, knxnetip.RoutingIndicationType).at.Sub(start); d < 250*time.Millisecond {
+		t.Fatalf("the first indication was sent %v after ROUTING_BUSY with a wait of 300 ms", d)
 	}
-	eventually(t, "indications after the pause", func() bool { return sent() == 3 })
-	if d := time.Since(start); d < 250*time.Millisecond {
-		t.Fatalf("indications sent %v after ROUTING_BUSY with a wait of 300 ms", d)
+	for range 2 {
+		m.waitFrame(t, knxnetip.RoutingIndicationType)
+	}
+	if n := sent(); n != 3 {
+		t.Fatalf("%d indications sent, want 3", n)
 	}
 	if n := m.get(func(m *metrics) int { return m.dropped["routing_rate"] }); n != 0 {
 		t.Fatalf("%d indications dropped", n)

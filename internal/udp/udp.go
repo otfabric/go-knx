@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/otfabric/go-knx"
+	"github.com/otfabric/go-knx/internal/backoff"
 )
 
 // ResolveEndpoint parses "host", "host:port" or ":port" into an IPv4
@@ -124,11 +125,22 @@ func DatagramError(err error) bool {
 // Read calls read until it returns a datagram or an error that is not a
 // [DatagramError], dropping the datagrams that failed: one oversized or
 // refused datagram must not end a reader whose deadline still runs.
-func Read(read func([]byte) (int, netip.AddrPort, error), buf []byte) (int, netip.AddrPort, error) {
+//
+// After a datagram error Read pauses before it reads again: 5 ms after
+// the first, twice as long after each further one in the same call, at
+// most 1 s (internal/backoff), so that an error that persists does not
+// keep the reader busy. When done is closed during a pause, the owner is
+// closing the socket and Read returns net.ErrClosed; a nil done never
+// ends a pause early.
+func Read(read func([]byte) (int, netip.AddrPort, error), buf []byte, done <-chan struct{}) (int, netip.AddrPort, error) {
+	var retry backoff.Loop
 	for {
 		n, from, err := read(buf)
 		if !DatagramError(err) {
 			return n, from, err
+		}
+		if !retry.Wait(done) {
+			return 0, netip.AddrPort{}, net.ErrClosed
 		}
 	}
 }

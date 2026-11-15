@@ -167,7 +167,7 @@ func TestSecureRouting(t *testing.T) {
 	key := secure.Key{1, 2, 3}
 	s, m, _, local := startRouter(t, server.WithSecureRouting(key, 100*time.Millisecond))
 	c := dialTunnel(t, s)
-	time.Sleep(600 * time.Millisecond) // the timer synchronisation
+	recv(t, s.TimerSynchronized(), "the end of the timer synchronisation")
 	p := fakeknx.Listen(t)
 	plain, _ := knxnetip.Marshal(&knxnetip.RoutingIndication{CEMI: indication(5, 6)})
 	w, _ := secure.Seal(key, 0, 1<<40, [6]byte{0, 0xfa, 1}, 1, plain)

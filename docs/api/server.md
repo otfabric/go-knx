@@ -338,6 +338,7 @@ type Server struct {
 	// last secure session identifier
 
 	// secure routing
+	// closed when its synchronisation has ended
 
 }
 ```
@@ -414,7 +415,7 @@ Serve starts the server and blocks until ctx is done, then closes it.
 func (s *Server) Start(ctx context.Context) error
 ```
 
-Start opens the sockets and starts serving in the background.
+Start opens the sockets and starts serving in the background. A Start that fails leaves no socket open. ctx bounds the name resolution of Start; the server, and with secure routing its timer synchronisation, run until Close.
 
 #### func (Server) Subscribe
 
@@ -423,6 +424,8 @@ func (s *Server) Subscribe(f func(Telegram)) (cancel func())
 ```
 
 Subscribe calls f, synchronously, for every telegram on the virtual network; it must not block. The returned function removes it.
+
+f runs on the goroutine that distributes the telegram: a reader of the server, its janitor, or the caller of Send, GroupWrite or Transmit. It may call the server's methods, the returned function included, but not Close: Close waits for the goroutine f runs on, so call it from another goroutine. Several goroutines may call f at the same time. An f that does not return normally is stopped there and logged at error level with its stack; the telegram is distributed as if f had returned.
 
 #### func (Server) Transmit
 

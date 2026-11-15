@@ -83,18 +83,26 @@ func TestSurrogate(t *testing.T) {
 	// Frames that fail: replay, plain individual frames.
 	l.in <- sealed
 	l.in <- cmd
-	time.Sleep(100 * time.Millisecond)
+	// None of the three is answered. A request that is answered follows
+	// them: the client handles frames and sends answers in order, so its
+	// answer is the fifth frame only if the three sent nothing.
+	last := [6]byte{8, 8, 8, 8, 8, 8}
+	marker, _ := datasecure.SyncRequest(toolKey, cemi.LDataInd, tool, own, 0, 4, [6]byte{}, last)
+	l.in <- marker
+	waitSent(t, l, 5)
 	l.mu.Lock()
-	n := len(l.sent)
+	n, answer5 := len(l.sent), l.sent[4]
 	l.mu.Unlock()
-	if n != 4 {
-		t.Errorf("%d frames sent, want 4", n)
+	if _, _, err := datasecure.OpenSyncResponse(toolKey, answer5, last); n != 5 || err != nil {
+		t.Errorf("%d frames sent, the fifth %s (%v); want 5 with the answer to the last request as the fifth", n, answer5, err)
 	}
 }
 
+// waitSent returns when the link has sent n frames: it waits for the
+// link's signal of each Send, not for time to pass.
 func waitSent(t *testing.T, l *link, n int) {
 	t.Helper()
-	deadline := time.Now().Add(wait)
+	deadline := time.After(wait)
 	for {
 		l.mu.Lock()
 		got := len(l.sent)
@@ -102,10 +110,11 @@ func waitSent(t *testing.T, l *link, n int) {
 		if got >= n {
 			return
 		}
-		if time.Now().After(deadline) {
+		select {
+		case <-l.sentc:
+		case <-deadline:
 			t.Fatalf("%d frames sent, want %d", got, n)
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
 }
 
@@ -154,13 +163,23 @@ func TestSurrogateSyncReplay(t *testing.T) {
 	n++ // the request is still answered
 	waitSent(t, l, n)
 	l.in <- recWrite.Clone()
-	time.Sleep(100 * time.Millisecond)
+	// The repeated tool frame sends nothing. A request that is answered
+	// follows it: the client handles frames and sends answers in order,
+	// so that answer is the next frame only if the tool frame sent none.
+	last := [6]byte{8, 8, 8, 8, 8, 8}
+	marker, _ := datasecure.SyncRequest(toolKey, cemi.LDataInd, tool, own, 0, 2000, [6]byte{}, last)
+	l.in <- marker
+	n++
+	waitSent(t, l, n)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if len(l.sent) != n {
 		t.Fatalf("%d frames sent, want %d", len(l.sent), n)
 	}
-	for _, f := range l.sent[n-1:] {
+	if _, _, err := datasecure.OpenSyncResponse(toolKey, l.sent[n-1], last); err != nil {
+		t.Errorf("the last frame is not the answer to the last request: %v", err)
+	}
+	for _, f := range l.sent[n-2:] {
 		if _, ok := f.Group(); ok {
 			t.Errorf("group write sent for the repeated tool frame: %s", f)
 		}

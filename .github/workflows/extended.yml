@@ -46,6 +46,22 @@ jobs:
           go-version-file: go.mod
       - run: make captures-extended
 
+  # Platform width (otfabric/engineering standards/testing.md#platform-width):
+  # the tests also run where int has 32 bits. ubuntu runners execute 386
+  # binaries; the race detector does not exist for 386. The multicast tests
+  # skip where the runner does not loop multicast back.
+  test-386:
+    name: Tests on a 32-bit architecture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Tests (GOARCH=386)
+        run: GOARCH=386 go test -count=1 ./...
+
   repeat:
     name: Whole suite, five times (race)
     runs-on: ubuntu-24.04

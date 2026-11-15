@@ -49,8 +49,19 @@ Calls that wait for a peer, or collect its answers, are bounded even when the ca
 | `server` secure sessions | a session or TCP connection that does not authenticate within `DefaultSecureAuthTimeout` (10 s) ends | `server.WithSecureAuthTimeout` |
 | `keyring` `Load`, `LoadFile`, `Parse` | 4 MiB, nesting depth 64, 262144 elements | none |
 | `tunnel.Conn.Send` | a frame too long for one KNXnet/IP datagram (once secured, too) returns `knx.ErrInvalidValue`; the connection stays up | none |
+| `tunnel.Conn.Send`, `FeatureGet`, `FeatureSet`, `routing.Conn.Send` | one at a time; a call that waits for its turn returns when its context ends or the `Conn` closes | the context |
+| `tunnel.Dial` with `WithSecure` | the KNX IP Secure handshake ends with the connect timeout or the context, whichever is first | `tunnel.WithConnectTimeout`, the context |
+| `routing.Listen` with `WithSecure` | returns after the whole timer synchronisation window (about 3.3 s at the default latency); a context that ends inside it gives the context's error and no `Conn` | the latency of `routing.WithSecure` |
+| `tunnel.WithReconnect` | each attempt waits a random time between half the backoff and the backoff (1 s doubling to 30 s by default) | `tunnel.WithReconnect(min, max)` |
+| `client` with `WithDataSecure` | at most 16 answers to individually addressed requests wait for the link; further ones are dropped | none |
 
-A cancelled context ends a call with an error matching `context.Canceled`; an expired deadline with one matching `knx.ErrTimeout` (and `context.DeadlineExceeded`).
+Every limit, with its test, is in [SECURITY.md](SECURITY.md#resource-limits).
+
+A cancelled context ends a call with an error matching `context.Canceled`. An expired deadline ends a `client.Device` or `devmgmt` call with an error matching `knx.ErrTimeout` and `context.DeadlineExceeded`, `client.GroupRead` with one matching `knx.ErrTimeout`, and `tunnel.Conn.Send`, `routing.Conn.Send`, `tunnel.Dial` and `routing.Listen` with one matching `context.DeadlineExceeded` ([LIMITATIONS.md](LIMITATIONS.md)).
+
+## Callbacks
+
+`client.Client.OnTelegram`, `server.Server.Subscribe` and `device.Device.OnChange` call the application on a goroutine of the library; they must not block. A callback may call the client's or server's methods except `Close`, which waits for that goroutine: call it from another one. In a client and a server, a callback that does not return normally is stopped there and logged at error level with its stack ([OBSERVABILITY.md](OBSERVABILITY.md#application-callbacks)).
 
 ## Security
 

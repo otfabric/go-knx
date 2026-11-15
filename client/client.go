@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/otfabric/go-knx"
@@ -30,6 +31,7 @@ import (
 	"github.com/otfabric/go-knx/cemi"
 	"github.com/otfabric/go-knx/datasecure"
 	"github.com/otfabric/go-knx/dpt"
+	"github.com/otfabric/go-knx/internal/guard"
 	"github.com/otfabric/go-knx/routing"
 	"github.com/otfabric/go-knx/tunnel"
 )
@@ -40,6 +42,16 @@ const DefaultReadTimeout = 3 * time.Second
 // DefaultMaxResponses is the number of responses GroupReadAll keeps
 // unless WithMaxResponses sets another.
 const DefaultMaxResponses = 1000
+
+// Answers of a client with Data Secure to individually addressed
+// requests (S-A_Sync_Res, the answer to a tool request): at most
+// maxPendingAnswers wait for the link at a time, one goroutine sends
+// them in order, and each send gets answerTimeout. An answer that finds
+// the queue full is dropped.
+const (
+	maxPendingAnswers = 16
+	answerTimeout     = 5 * time.Second
+)
 
 // Link carries cEMI frames: *tunnel.Conn and *routing.Conn implement it.
 type Link interface {
@@ -87,6 +99,9 @@ type Client struct {
 	err     error
 	devices map[knx.IndividualAddress]*Device
 
+	answers        chan *cemi.LData // answers waiting for the link
+	answersDropped atomic.Uint64    // answers that found the queue full
+
 	done   chan struct{}
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -125,12 +140,17 @@ func WithLogger(l knx.Logger) Option {
 func New(link Link, opts ...Option) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{link: link, prio: knx.PriorityLow, logger: knx.NopLogger(), subs: map[*Subscription]struct{}{},
-		waiters: map[*waiter]struct{}{}, hooks: map[int]func(Telegram){}, done: make(chan struct{}), cancel: cancel}
+		waiters: map[*waiter]struct{}{}, hooks: map[int]func(Telegram){}, done: make(chan struct{}), cancel: cancel,
+		answers: make(chan *cemi.LData, maxPendingAnswers)}
 	for _, o := range opts {
 		o(c)
 	}
 	c.wg.Add(1)
 	go c.readLoop(ctx)
+	if c.secure != nil {
+		c.wg.Add(1)
+		go c.answerLoop(ctx)
+	}
 	return c
 }
 
@@ -390,6 +410,14 @@ func (c *Client) read(ctx context.Context, g knx.GroupAddress, first bool, opts 
 
 // OnTelegram calls f, from the client's reader goroutine, for every group
 // telegram; it must not block. The returned function removes it.
+//
+// f may call the methods of the client that do not wait for a telegram
+// (Subscribe, OnTelegram, Err, Done, the returned function), but not
+// Close: Close waits for the reader, which is running f, so call it from
+// another goroutine. A read (GroupRead, GroupReadAll) or a Device request
+// made from f gets no answer while f runs. An f that does not return
+// normally is stopped there and logged at error level with its stack;
+// the reader goes on as if f had returned.
 func (c *Client) OnTelegram(f func(Telegram)) (remove func()) {
 	c.mu.Lock()
 	c.hookID++
@@ -519,13 +547,34 @@ func (c *Client) individual(ctx context.Context, ld *cemi.LData) {
 			return
 		}
 	}
-	c.wg.Go(func() {
-		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		if err := c.link.Send(sctx, res); err != nil {
-			c.logger.Debugf("client: S-A_Sync_Res to %s: %v", ld.Source, err)
+	select {
+	case c.answers <- res:
+	default:
+		c.answersDropped.Add(1)
+		c.logger.Debugf("client: answer to %s dropped: %d answers wait for the link", ld.Source, maxPendingAnswers)
+	}
+}
+
+// answerLoop sends the queued answers, one at a time and in order, each
+// within answerTimeout. It ends with the reader: on Close or when the
+// link failed.
+func (c *Client) answerLoop(ctx context.Context) {
+	defer c.wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.done:
+			return
+		case res := <-c.answers:
+			sctx, cancel := context.WithTimeout(ctx, answerTimeout)
+			err := c.link.Send(sctx, res)
+			cancel()
+			if err != nil {
+				c.logger.Debugf("client: answer to %s: %v", knx.IndividualAddress(res.Destination), err)
+			}
 		}
-	})
+	}
 }
 
 // Group object diagnostics (interface object type 9, PID 66), the
@@ -668,7 +717,9 @@ func (c *Client) deliver(t Telegram) {
 	for _, s := range subs {
 		s.deliver(t)
 	}
+	// The application's code runs with no lock held; a call that does
+	// not return normally is logged and the reader goes on.
 	for _, h := range hooks {
-		h(t)
+		guard.Report(c.logger, guard.Run("client.OnTelegram", func() { h(t) }))
 	}
 }

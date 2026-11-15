@@ -37,10 +37,12 @@ type link struct {
 	fail    chan error
 	closed  chan struct{}
 	closeMu sync.Once
+	closes  int
+	sentc   chan struct{} // signalled by every Send
 }
 
 func newLink() *link {
-	return &link{in: make(chan cemi.Frame, 64), fail: make(chan error, 1), closed: make(chan struct{})}
+	return &link{in: make(chan cemi.Frame, 64), fail: make(chan error, 1), closed: make(chan struct{}), sentc: make(chan struct{}, 1)}
 }
 
 func (l *link) Send(_ context.Context, f cemi.Frame) error {
@@ -49,6 +51,10 @@ func (l *link) Send(_ context.Context, f cemi.Frame) error {
 	l.sent = append(l.sent, ld)
 	err, on := l.sendErr, l.onSend
 	l.mu.Unlock()
+	select {
+	case l.sentc <- struct{}{}:
+	default:
+	}
 	if err != nil {
 		return err
 	}
@@ -72,6 +78,9 @@ func (l *link) Receive(ctx context.Context) (cemi.Frame, error) {
 }
 
 func (l *link) Close() error {
+	l.mu.Lock()
+	l.closes++
+	l.mu.Unlock()
 	l.closeMu.Do(func() { close(l.closed) })
 	return l.closeErr
 }

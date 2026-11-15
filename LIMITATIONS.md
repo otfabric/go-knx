@@ -66,7 +66,37 @@ What go-knx does not do, or does with restrictions. Feature status:
 - **Secure routing** remembers at most 4096 frames within the latency
   tolerance to refuse repeats; beyond that new frames are dropped until
   older ones expire. `routing.Listen` with `WithSecure` takes the whole
-  synchronisation window (about 3.3 s at the default latency).
+  synchronisation window (about 3.3 s at the default latency): give it a
+  context that lasts longer, or it returns the context's error. A router
+  that hears no time keeper in that window starts its own timer at the
+  time since the process started ([SECURITY.md](SECURITY.md)).
+- **After Close** not every call returns `knx.ErrClosed` yet:
+  `routing.Conn.Send` returns the error of the closed socket;
+  `server.Server.Send`, `GroupWrite` and `Transmit` return nil and still
+  reach the taps and the virtual devices; a request of a `client.Device`
+  that was closed goes to the link; `tunnel.Conn.FeatureGet` and
+  `FeatureSet` return an error matching `knx.ErrConnectionLost`.
+- **Expired deadlines** do not match the same sentinels everywhere:
+  `client.Device` and `devmgmt` return an error matching `knx.ErrTimeout`
+  and `context.DeadlineExceeded`, `client.GroupRead` one matching
+  `knx.ErrTimeout` only, and `tunnel.Conn.Send`, `routing.Conn.Send` and
+  `tunnel.Dial` the context's error.
+- **Delivered telegrams are shared**: one `client.Telegram` (its `Frame`
+  and `Value.Data`) goes to every subscription, callback and pending read,
+  and a `server.Subscribe` tap gets the frame the server then distributes.
+  Treat them as read-only. `cemi.NewGroupFrame` keeps the TPDU slice it is
+  given.
+- **Callbacks and Close**: `Close` of a client or server waits for the
+  goroutine that runs a callback, so a callback calls it from another
+  goroutine. A concurrent second `server.Server.Close` returns at once,
+  before the first has finished.
+- **No dialer option**: `tunnel.Dial` (and with it `devmgmt.Dial` and
+  `client.DialTunnel`) opens its own TCP connection or UDP socket; an
+  application cannot supply the connection. UDP tunnels use an
+  unconnected socket.
+- **A request whose caller left** before its TUNNELLING_ACK is not
+  repeated: when the acknowledgement does not come within the request
+  timeout, the next `Send` reports the connection as lost.
 - **Keyrings** are read up to 4 MiB, 64 levels deep and 262144 elements.
 - **Data Secure replay state** lives in the table: an application that
   does not persist `Table.Senders`, `Table.ToolSequences` and

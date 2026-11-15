@@ -38,7 +38,11 @@ DefaultIndividualAddress is the source address a Conn puts in telegrams sent wit
 
 ```go
 type Conn struct {
-	// contains filtered or unexported fields
+
+	// turn is the send turn: Send holds it while it waits for the flow
+	// control and transmits. A Send that waits for the turn leaves when
+	// its context ends or the Conn closes.
+
 }
 ```
 
@@ -50,7 +54,7 @@ Conn is a routing endpoint.
 func Listen(ctx context.Context, opts ...Option) (*Conn, error)
 ```
 
-Listen joins the routing multicast group.
+Listen joins the routing multicast group. With [WithSecure](#func-withsecure) it returns after the timer synchronisation; when ctx ends before that, it closes the socket and returns an error matching ctx.Err().
 
 #### func (Conn) Close
 
@@ -99,6 +103,8 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error
 ```
 
 Send sends a cEMI frame (an L\_Data.ind) as a ROUTING\_INDICATION; a source of 0.0.0 is replaced by the Conn's individual address. It waits for the pause after the previous indication and for the flow control of a ROUTING\_BUSY, and refuses frames with hop count 0.
+
+Sends take turns. Every wait of Send ends when ctx ends (with ctx's error) or the Conn closes (knx.ErrClosed): the wait for the turn while another Send waits for the flow control, and the wait for the flow control itself.
 
 ### type Event
 
@@ -191,7 +197,7 @@ WithRate bounds the indications sent per second (default 50; 0: no limit): conse
 func WithSecure(key secure.Key, latency time.Duration) Option
 ```
 
-WithSecure enables KNX IP Secure routing with the backbone key and the latency tolerance of the backbone (0: secure.DefaultLatency). Listen then synchronises the multicast timer: it collects the answers of the other secure routers for the whole synchronisation window (about 3.3 s at the default latency) and uses the newest timer value.
+WithSecure enables KNX IP Secure routing with the backbone key and the latency tolerance of the backbone (0: secure.DefaultLatency). Listen then synchronises the multicast timer: it collects the answers of the other secure routers for the whole synchronisation window (about 3.3 s at the default latency) and uses the newest timer value. The window is not shortened: a context that ends inside it makes Listen fail with the context's error.
 
 #### func WithSerialNumber
 

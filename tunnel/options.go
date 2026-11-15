@@ -68,6 +68,9 @@ type options struct {
 	reconnectMax      time.Duration
 	sessionKeepAlive  time.Duration
 	stateFunc         func(knx.State, error)
+	// jitter is the random source of the reconnect waits: a uniform
+	// value in [0, n]. nil is crypto/rand; tests set it.
+	jitter func(n int64) int64
 }
 
 func defaultOptions() options {
@@ -261,8 +264,12 @@ func WithQueueSize(n int) Option {
 }
 
 // WithReconnect makes a lost connection reconnect with exponential
-// backoff between min and max, until the Conn is closed. Telegrams sent
-// while reconnecting fail with knx.ErrConnectionLost.
+// backoff between min and max, until the Conn is closed: the backoff
+// starts at min and doubles after each failed attempt up to max, and
+// each attempt waits a random time between half the backoff and the
+// backoff, so that clients which lost the same server do not come back
+// together. Telegrams sent while reconnecting fail with
+// knx.ErrConnectionLost.
 func WithReconnect(min, max time.Duration) Option {
 	return func(o *options) error {
 		if min <= 0 || max < min {

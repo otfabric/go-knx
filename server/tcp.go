@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/otfabric/go-knx/internal/backoff"
 	"github.com/otfabric/go-knx/knxnetip"
 )
 
@@ -67,20 +68,29 @@ func (t *tcpConn) write(m knxnetip.Message) {
 
 func (t *tcpConn) close() { t.once.Do(func() { _ = t.c.Close() }) }
 
-// acceptLoop accepts TCP connections, at most maxTCP at a time. On a
-// secure server, when all are taken, a new connection replaces the oldest
-// one that has not authenticated.
-func (s *Server) acceptLoop(ln *net.TCPListener) {
+// acceptLoop accepts TCP connections with accept, at most maxTCP at a
+// time. On a secure server, when all are taken, a new connection replaces
+// the oldest one that has not authenticated. After an accept error it
+// accepts on, but only after a pause that grows while errors follow each
+// other (internal/backoff), and it ends when the server closes during a
+// pause.
+func (s *Server) acceptLoop(accept func() (*net.TCPConn, error)) {
 	defer s.wg.Done()
 	sem := make(chan struct{}, s.maxTCP())
+	var retry backoff.Loop
 	for {
-		c, err := ln.AcceptTCP()
+		c, err := accept()
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
+			s.o.logger.Debugf("server: accept: %v", err)
+			if !retry.Wait(s.closing) {
+				return
+			}
 			continue
 		}
+		retry.Reset()
 		if !s.acquireTCP(sem) {
 			s.o.logger.Warnf("server: refuse tcp %s: too many connections", c.RemoteAddr())
 			_ = c.Close()

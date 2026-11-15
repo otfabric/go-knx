@@ -1031,6 +1031,13 @@ var xyyCodec = codec{
 		if !ok {
 			return nil, errValue("%v (%T) is not a dpt.XYY", v, v)
 		}
+		// A NaN passes no range check (every comparison with it is
+		// false), so it is refused first; the infinities are out of range.
+		for _, f := range [...]float64{c.X, c.Y, c.Brightness} {
+			if math.IsNaN(f) {
+				return nil, errValue("xyY %v: %v is not a finite number", c, f)
+			}
+		}
 		if c.X < 0 || c.X > 1 || c.Y < 0 || c.Y > 1 || c.Brightness < 0 || c.Brightness > 100 {
 			return nil, errValue("xyY %v out of range (x, y 0..1, brightness 0..100)", c)
 		}

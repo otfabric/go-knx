@@ -27,7 +27,8 @@ func (e *FeatureError) Error() string {
 func (e *FeatureError) Is(target error) bool { return target == knx.ErrRejected }
 
 // FeatureGet reads an interface feature of the server
-// (TUNNELLING_FEATURE_GET, tunnelling v2) and returns its value.
+// (TUNNELLING_FEATURE_GET, tunnelling v2) and returns its value. Over UDP
+// the request is acknowledged and repeated like the request of Send.
 func (c *Conn) FeatureGet(ctx context.Context, f knxnetip.FeatureID) ([]byte, error) {
 	r, err := c.feature(ctx, knxnetip.TunnellingFeatureGetType, f, nil)
 	if err != nil {
@@ -37,30 +38,43 @@ func (c *Conn) FeatureGet(ctx context.Context, f knxnetip.FeatureID) ([]byte, er
 }
 
 // FeatureSet writes an interface feature of the server
-// (TUNNELLING_FEATURE_SET, tunnelling v2).
+// (TUNNELLING_FEATURE_SET, tunnelling v2). Over UDP the request is
+// acknowledged and repeated like the request of Send.
 func (c *Conn) FeatureSet(ctx context.Context, f knxnetip.FeatureID, value []byte) error {
 	_, err := c.feature(ctx, knxnetip.TunnellingFeatureSetType, f, value)
 	return err
 }
 
+// feature sends a feature request and waits for its response. Over UDP
+// the request is acknowledged like a tunnelling request: it is repeated
+// once when no TUNNELLING_ACK arrives within the request timeout, the
+// sequence number is consumed by the acknowledgement, and a request that
+// is not acknowledged twice loses the connection. Over TCP there is no
+// acknowledgement.
 func (c *Conn) feature(ctx context.Context, t knxnetip.ServiceType, f knxnetip.FeatureID, value []byte) (*knxnetip.TunnellingFeature, error) {
-	c.sendMu.Lock()
-	defer c.sendMu.Unlock()
+	if err := c.acquire(ctx); err != nil {
+		return nil, err
+	}
+	defer c.release()
+	if err := c.settle(ctx); err != nil {
+		return nil, err
+	}
 	c.mu.Lock()
-	state, ch, seq, dataEP := c.state, c.channel, c.txSeq, c.dataEP
+	state, ch, seq, dataEP, gen := c.state, c.channel, c.txSeq, c.dataEP, c.gen
 	c.mu.Unlock()
 	if state != knx.StateConnected {
 		return nil, fmt.Errorf("%w: tunnel: %s", knx.ErrConnectionLost, state)
 	}
 	drain(c.featCh)
-	drain(c.ackCh)
 	req := &knxnetip.TunnellingFeature{Type: t, Channel: ch, Seq: seq, Feature: f, Value: value}
-	if err := c.write(dataEP, req); err != nil {
+	if c.tr.stream() {
+		if err := c.write(dataEP, req); err != nil {
+			return nil, err
+		}
+		c.advance(gen)
+	} else if err := c.exchange(ctx, gen, ch, seq, dataEP, req, func(err error) error { return err }); err != nil {
 		return nil, err
 	}
-	c.mu.Lock()
-	c.txSeq++
-	c.mu.Unlock()
 	timer := time.NewTimer(c.o.confirmTimeout)
 	defer timer.Stop()
 	for {
@@ -73,8 +87,6 @@ func (c *Conn) feature(ctx context.Context, t knxnetip.ServiceType, f knxnetip.F
 				return nil, &FeatureError{Feature: f, ReturnCode: r.ReturnCode}
 			}
 			return r, nil
-		case <-c.ackCh:
-			// The UDP acknowledgement of the request; the response follows.
 		case <-timer.C:
 			return nil, fmt.Errorf("%w: tunnel: no TUNNELLING_FEATURE_RESPONSE for feature 0x%02X", knx.ErrTimeout, uint8(f))
 		case <-ctx.Done():

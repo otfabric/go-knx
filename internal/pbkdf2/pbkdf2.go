@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 // Package pbkdf2 implements PBKDF2 (RFC 8018) with HMAC-SHA256: the key
-// derivation of KNX IP Secure passwords and of keyrings. Go 1.24 has
-// crypto/pbkdf2; this package keeps go-knx building with Go 1.23.
+// derivation of KNX IP Secure passwords and of keyrings. The standard
+// library has crypto/pbkdf2 since Go 1.24; this package dates from when
+// go-knx built with Go 1.23 and is kept as it is.
 package pbkdf2
 
 import (

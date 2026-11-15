@@ -34,7 +34,12 @@ type transport interface {
 	setDeadline(t time.Time) error
 }
 
-type udpTransport struct{ c *net.UDPConn }
+type udpTransport struct {
+	c *net.UDPConn
+	// done is closed when the Conn closes: it ends the pause of a reader
+	// that waits after a read error. nil ends no pause early.
+	done <-chan struct{}
+}
 
 func (t udpTransport) writeTo(b []byte, to netip.AddrPort) error {
 	_, err := t.c.WriteToUDPAddrPort(b, to)
@@ -51,7 +56,7 @@ func (t udpTransport) writeContext(ctx context.Context, b []byte, to netip.AddrP
 }
 
 func (t udpTransport) readFrom(buf []byte) (int, netip.AddrPort, error) {
-	n, from, err := udp.Read(t.c.ReadFromUDPAddrPort, buf)
+	n, from, err := udp.Read(t.c.ReadFromUDPAddrPort, buf, t.done)
 	return n, netip.AddrPortFrom(from.Addr().Unmap(), from.Port()), err
 }
 

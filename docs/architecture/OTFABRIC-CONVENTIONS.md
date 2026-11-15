@@ -12,7 +12,7 @@ Sibling links point at the default branch of each repository.
 | Library | [go-canbus](https://github.com/otfabric/go-canbus), [go-ethernetip](https://github.com/otfabric/go-ethernetip), [go-profinet](https://github.com/otfabric/go-profinet) | Most recent and complete: zero dependencies, typed errors, Logger/Metrics, interop suites pinned by digest, fuzzing, coverage gates |
 | CLI | [canbusctl](https://github.com/otfabric/canbusctl), [ethernetipctl](https://github.com/otfabric/ethernetipctl), [profinetctl](https://github.com/otfabric/profinetctl) | cobra command tree, `internal/errs` + `internal/output`, versioned JSON, stable exit codes |
 | Interop | [canbus-interop](https://github.com/otfabric/canbus-interop), [ethernetip-interop](https://github.com/otfabric/ethernetip-interop), [profinet-interop](https://github.com/otfabric/profinet-interop) | One adapter image per third-party stack, a container contract with JSON result documents, `versions.yaml`, pinned base images |
-| CI | [otfabric/.github](https://github.com/otfabric/.github) `go-ci.yml`, `go-package-release.yml`, `go-binary-release.yml` (`@v2`) | Organisation-wide reusable workflows |
+| CI | [otfabric/.github](https://github.com/otfabric/.github) `go-ci.yml`, `go-package-release.yml`, `go-binary-release.yml`, `docs-check.yml`, `pr-changes.yml` (pinned by tag, `@v3.8.0` in go-knx) | Organisation-wide reusable workflows |
 
 ## Library (go-knx)
 
@@ -27,7 +27,7 @@ Sibling links point at the default branch of each repository.
 | SPDX header `// SPDX-License-Identifier: MIT` on every Go file; MIT LICENSE "Copyright (c) 2026 OT Fabric" | all siblings | all files |
 | `Makefile` targets `check test coverage coverage-check fuzz bench cross interop interop-images coverpkg-check`, `GOWORK=off`, gofmt of the go.mod Go version | go-canbus `Makefile` | `Makefile` (no code generator: no `generate` target) |
 | `.golangci.yml` v2 with errcheck, govet, ineffassign, staticcheck, misspell, godot, nilerr, exhaustive | go-canbus `.golangci.yml` | copied |
-| Coverage across library packages with `-coverpkg`, gated in `make coverage-check`, uploaded to Codecov with OIDC; `codecov.yml` targets | go-canbus `codecov.yml`, `.github/workflows/ci.yml` | gate 85 % (task requirement), 90 % for the codec packages tracked in TESTING.md |
+| Coverage across library packages with `-coverpkg`, gated in `make coverage-check`, uploaded to Codecov with OIDC; `codecov.yml` targets | go-canbus `codecov.yml`, `.github/workflows/ci.yml` | gate 90 % overall (`COVER_MIN`) and 85 % per package (`COVER_PKG_MIN`), see TESTING.md |
 | `interop/` behind the build tag `interop`, consuming the interop repo's images pinned by digest; `KNX_REQUIRE_*` env vars turn skips into failures in CI | go-canbus `interop/harness_test.go`, `CANBUS_REQUIRE_VCAN` | `interop/` (tag `interop`), `KNX_REQUIRE_INTEROP`, `KNX_REQUIRE_MULTICAST` |
 | Documentation set: README, ARCHITECTURE, API, ERRORS, OBSERVABILITY, INTEROPERABILITY, SECURITY, CONTRIBUTING, TESTING, RELEASE (versioned `## vX.Y.Z` sections closed by `---`) | go-canbus, go-ethernetip | same set, plus `docs/standards/`, `docs/IMPLEMENTATION-STATUS.md` (task deliverables) |
 | Durable mission state | go-canbus `PROGRESS.md`, go-profinet `docs/FEATURE-STATUS.md` | `docs/IMPLEMENTATION-STATUS.md` |
@@ -42,7 +42,7 @@ Sibling links point at the default branch of each repository.
 | Typed errors with stable codes and exit codes 0–10 | canbusctl `internal/errs/errs.go`, `docs/exitcodes.md` | adapted: `rejected` replaces `safety` (exit 9) |
 | Passive by default; transmitting commands are explicit | canbusctl root help | `group write/respond/answer/read` are the only commands that send telegrams |
 | `version` and `completion` commands | canbusctl | same |
-| Release with `go-binary-release.yml@v2` (bump none/patch/minor/major) | canbusctl `.github/workflows/release.yml` | same |
+| Release with `go-binary-release.yml`, pinned by tag (bump none/patch/minor/major) | canbusctl `.github/workflows/release.yml` | same (`@v3.8.0`) |
 
 ## Interop (knx-interop)
 
@@ -62,6 +62,6 @@ Sibling links point at the default branch of each repository.
   routing need IP multicast between all participants, which a host test
   binary does not share with containers on macOS or in most CI setups.
   go-knx's own `interop/` suite covers the unicast scenarios from the host.
-- **Coverage gate 85 %** (go-canbus uses 90 %): the task sets 85 % overall
-  and 90 % for the codec packages.
+- **Coverage gate**: 90 % overall, as go-canbus has it, and 85 % for each
+  package (`make coverage-check coverage-pkg-check`).
 - **No code generator**: the DPT registry is a reviewed table in Go.

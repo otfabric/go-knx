@@ -409,7 +409,9 @@ func TestHostileSequence(t *testing.T) {
 		t.Fatal("sequence 1 not acknowledged")
 	}
 	eventually(t, 2*time.Second, "delivery of sequence 1", func() bool { return count(2) == 1 })
-	time.Sleep(100 * time.Millisecond)
+	// The server's reader takes the datagrams of one client in order and
+	// delivers on the same goroutine: with sequence 1 delivered, the
+	// requests sent before it have had their effect.
 	for v, want := range map[byte]int{1: 1, 2: 1, 5: 0, 6: 0, 7: 0} {
 		if n := count(v); n != want {
 			t.Errorf("value %d delivered %d times, want %d", v, n, want)
@@ -491,7 +493,18 @@ func TestHostileSpoofedChannelFrames(t *testing.T) {
 		if _, err := h.WriteToUDPAddrPort(b, netip.MustParseAddrPort(addr)); err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(200 * time.Millisecond)
+		// The server answers the request it refuses: its answer tells
+		// that it has handled the request.
+		buf := make([]byte, 64)
+		_ = h.SetReadDeadline(time.Now().Add(2 * time.Second))
+		n, _, err := h.ReadFromUDPAddrPort(buf)
+		if err != nil {
+			t.Fatalf("no answer to the DISCONNECT_REQUEST from another port: %v", err)
+		}
+		m, err := knxnetip.Parse(buf[:n])
+		if resp, ok := m.(*knxnetip.DisconnectResponse); err != nil || !ok || resp.Status != knxnetip.StatusConnectionID {
+			t.Fatalf("answer %v (%v), want a DISCONNECT_RESPONSE with E_CONNECTION_ID", m, err)
+		}
 		if len(s.Connections()) == 0 {
 			t.Fatal("the server took a DISCONNECT_REQUEST for a channel from another port of the client's address")
 		}
