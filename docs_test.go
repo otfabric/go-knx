@@ -52,7 +52,9 @@ func TestDropReasonsDocumented(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, section, found := strings.Cut(string(doc), "\n## Drop reasons\n")
+	// A Windows checkout may convert the line endings.
+	text := strings.ReplaceAll(string(doc), "\r\n", "\n")
+	_, section, found := strings.Cut(text, "\n## Drop reasons\n")
 	if !found {
 		t.Fatal(`OBSERVABILITY.md has no section "Drop reasons"`)
 	}
