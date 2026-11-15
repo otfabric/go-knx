@@ -417,6 +417,11 @@ func TestChannelsExhausted(t *testing.T) {
 	if len(after) != 255 || !sameConnections(before, after) {
 		t.Fatalf("connections changed: %d -> %d", len(before), len(after))
 	}
+	// Goroutines of the refused requests may still be ending: wait for the
+	// count to settle before comparing.
+	for deadline := time.Now().Add(2 * time.Second); runtime.NumGoroutine() > g && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if n := runtime.NumGoroutine(); n > g {
 		t.Errorf("goroutines %d -> %d", g, n)
 	}
