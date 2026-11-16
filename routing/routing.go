@@ -26,6 +26,8 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,6 +57,7 @@ type options struct {
 	group     string
 	rate      int
 	maxPause  time.Duration
+	maxCount  int
 	queueSize int
 	loopback  bool
 	ttl       int
@@ -145,6 +148,23 @@ func WithMaxBusyPause(d time.Duration) Option {
 	}
 }
 
+// WithMaxBusyCount bounds the busy counter of the flow control to n. Each
+// ROUTING_BUSY that arrives more than 10 ms after the previous one raises
+// the counter by one, and it sets the random extension of the pause (up
+// to the counter × 50 ms), how long the reduced rate lasts after the
+// pause (the counter × 100 ms) and how reduced it is (a gap of the
+// counter + 1 times the normal one). 0, the default, leaves the counter
+// unbounded. A negative n is knx.ErrInvalidOption.
+func WithMaxBusyCount(n int) Option {
+	return func(o *options) error {
+		if n < 0 {
+			return invalid("max busy count %d", n)
+		}
+		o.maxCount = n
+		return nil
+	}
+}
+
 // WithQueueSize bounds the inbound queue (default 256).
 func WithQueueSize(n int) Option {
 	return func(o *options) error {
@@ -223,8 +243,19 @@ type Conn struct {
 
 // Listen joins the routing multicast group. With [WithSecure] it returns
 // after the timer synchronisation; when ctx ends before that, it closes
-// the socket and returns an error matching ctx.Err().
+// the socket and returns an error matching ctx.Err(). An error of an
+// expired deadline matches knx.ErrTimeout too.
 func Listen(ctx context.Context, opts ...Option) (*Conn, error) {
+	c, err := listen(ctx, opts...)
+	if err != nil {
+		return nil, deadline(err)
+	}
+	return c, nil
+}
+
+// listen is Listen; Listen makes the error of an expired deadline match
+// knx.ErrTimeout too.
+func listen(ctx context.Context, opts ...Option) (*Conn, error) {
 	o := options{address: DefaultIndividualAddress, group: "224.0.23.12:3671", rate: DefaultRate, queueSize: DefaultQueueSize, ttl: DefaultTTL, logger: knx.NopLogger(), metrics: knx.NopMetrics{}}
 	o.serial[0], o.serial[1] = 0x00, 0xFA
 	_, _ = rand.Read(o.serial[2:])
@@ -257,6 +288,7 @@ func Listen(ctx context.Context, opts ...Option) (*Conn, error) {
 	c := &Conn{o: o, sock: sock, group: group, flow: flowctl.New(o.rate), echoes: map[[32]byte]time.Time{}, turn: make(chan struct{}, 1),
 		inbound: make(chan cemi.Frame, o.queueSize), events: make(chan Event, 16), closing: make(chan struct{})}
 	c.flow.SetMaxPause(o.maxPause)
+	c.flow.SetMaxCount(o.maxCount)
 	if o.secure != nil {
 		c.timer = secure.NewRoutingTimer(o.secure.key, o.serial, o.secure.latency, c.sendNotify)
 	}
@@ -300,9 +332,17 @@ func (c *Conn) Group() netip.AddrPort { return c.group }
 // Sends take turns. Every wait of Send ends when ctx ends (with ctx's
 // error) or the Conn closes (knx.ErrClosed): the wait for the turn while
 // another Send waits for the flow control, and the wait for the flow
-// control itself. After Close, Send returns knx.ErrClosed and sends
-// nothing.
+// control itself. A Send whose context deadline passes, in a wait or
+// during the write, returns an error matching knx.ErrTimeout and
+// context.DeadlineExceeded. After Close, Send returns knx.ErrClosed and
+// sends nothing.
 func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
+	return deadline(c.send(ctx, f))
+}
+
+// send is Send; Send makes the error of an expired deadline match
+// knx.ErrTimeout too.
+func (c *Conn) send(ctx context.Context, f cemi.Frame) error {
 	if c.closed() {
 		return errClosed
 	}
@@ -355,9 +395,27 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 			// Close came during the write.
 			return fmt.Errorf("%w: %w", knx.ErrClosed, err)
 		}
+		if d, ok := ctx.Deadline(); ok && errors.Is(err, os.ErrDeadlineExceeded) && !time.Now().Before(d) {
+			// The write ended at ctx's deadline, the write deadline
+			// transmit set.
+			return fmt.Errorf("%w: %w", err, context.DeadlineExceeded)
+		}
 		return err
 	}
 	return nil
+}
+
+// deadline makes the error of a call whose context deadline passed match
+// knx.ErrTimeout too: Send and Listen. An error whose message names the
+// package already does not get the name again.
+func deadline(err error) error {
+	if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, knx.ErrTimeout) {
+		return err
+	}
+	if strings.HasPrefix(err.Error(), "routing: ") {
+		return fmt.Errorf("%w: %w", knx.ErrTimeout, err)
+	}
+	return fmt.Errorf("%w: routing: %w", knx.ErrTimeout, err)
 }
 
 // errClosed is the error of a Send after Close.

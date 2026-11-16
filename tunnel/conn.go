@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -111,8 +112,20 @@ type confirmWait struct {
 }
 
 // Dial connects to the KNXnet/IP server at addr ("192.168.1.10",
-// "192.168.1.10:3671") and establishes a tunnelling connection.
+// "192.168.1.10:3671") and establishes a tunnelling connection. When the
+// deadline of ctx passes first, Dial returns an error matching
+// knx.ErrTimeout and context.DeadlineExceeded.
 func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
+	c, err := dial(ctx, addr, opts...)
+	if err != nil {
+		return nil, deadline(err)
+	}
+	return c, nil
+}
+
+// dial is Dial; Dial makes the error of an expired deadline match
+// knx.ErrTimeout too.
+func dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 	o := defaultOptions()
 	for _, opt := range opts {
 		if err := opt(&o); err != nil {
@@ -537,12 +550,16 @@ func (c *Conn) send(ctx context.Context, f cemi.Frame) error {
 }
 
 // deadline makes the error of a call whose context deadline passed match
-// knx.ErrTimeout too.
+// knx.ErrTimeout too: Send, the feature calls and Dial. An error whose
+// message names the package already does not get the name again.
 func deadline(err error) error {
-	if errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, knx.ErrTimeout) {
-		return fmt.Errorf("%w: tunnel: %w", knx.ErrTimeout, err)
+	if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, knx.ErrTimeout) {
+		return err
 	}
-	return err
+	if strings.HasPrefix(err.Error(), "tunnel: ") {
+		return fmt.Errorf("%w: %w", knx.ErrTimeout, err)
+	}
+	return fmt.Errorf("%w: tunnel: %w", knx.ErrTimeout, err)
 }
 
 // acquire takes the send turn. A turn that is free is taken at once;

@@ -118,6 +118,14 @@ func NewCredentials(userID uint8, userPassword, devicePassword string) (Credenti
 
 NewCredentials derives the credentials of a user from the passwords; an empty device password leaves DeviceCode nil.
 
+#### func (Credentials) Format
+
+```go
+func (c Credentials) Format(s fmt.State, verb rune)
+```
+
+Format writes String for the verbs package fmt passes to it, %#v and %d too. (encoding/json writes the keys as "(redacted)" through Key.)
+
 #### func (Credentials) GoString
 
 ```go
@@ -174,6 +182,14 @@ func UserPasswordKey(password string) (Key, error)
 
 UserPasswordKey derives the password key of a user from the password.
 
+#### func (Key) Format
+
+```go
+func (Key) Format(s fmt.State, verb rune)
+```
+
+Format writes "(redacted)" for the verbs package fmt passes to it, %d too: %v, %s, %q, %x and %X as with String, %#v as with GoString. (fmt calls no method of the value for %p, nor for %w outside fmt.Errorf.)
+
 #### func (Key) GoString
 
 ```go
@@ -189,6 +205,14 @@ func (Key) LogValue() slog.Value
 ```
 
 LogValue returns "(redacted)" for log/slog.
+
+#### func (Key) MarshalJSON
+
+```go
+func (Key) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON returns the JSON string "(redacted)", so that encoding/json does not write the key. Marshal \[16]byte(k) for the octets as before, or k\[:] for them in base64.
 
 #### func (Key) String
 
@@ -328,6 +352,14 @@ func NewSession(id uint16, key Key, serial [6]byte) *Session
 
 NewSession returns a session with identifier id and the session key; serial is the KNX serial number sent in its wrappers. Both ends of a session seal with the same key, so Unwrap tells the directions apart by the serial number: the two ends must use different serial numbers. The tunnel client picks a random one (00FA plus 4 random octets); the server uses its configured serial number (server.WithSerial).
 
+#### func (Session) Format
+
+```go
+func (s *Session) Format(f fmt.State, verb rune)
+```
+
+Format writes String for the verbs package fmt passes to it, %#v and %d too, so that the session key in its unexported fields is not printed.
+
 #### func (Session) Marshal
 
 ```go
@@ -335,6 +367,14 @@ func (s *Session) Marshal(m knxnetip.Message) ([]byte, error)
 ```
 
 Marshal wraps a message and encodes the SECURE\_WRAPPER.
+
+#### func (Session) String
+
+```go
+func (s *Session) String() string
+```
+
+String returns the session identifier with the session key redacted.
 
 #### func (Session) Unwrap
 

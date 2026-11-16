@@ -140,10 +140,15 @@ Behaviour that matters for security:
 
 Keys and passwords are never logged and never appear in error messages
 (errors name users and addresses only). The key types (`secure.Key`,
-`datasecure.Key`, `keyring.Key`), `secure.Credentials` and the keyring's
-`Backbone`, `Interface` and `Device` print as `(redacted)` with `%v`,
-`%s`, `%x`, `%q` and `%#v`, and log so with `log/slog`; `%d` and
-`encoding/json` still give the octets of a key. The library takes derived keys
+`datasecure.Key`, `keyring.Key`) print as `(redacted)` with the verbs of
+`fmt`, `%d` included, marshal to `"(redacted)"` with `encoding/json` and
+log so with `log/slog`. `secure.Credentials` and the keyring's
+`Backbone`, `Interface` and `Device` print their keys and passwords as
+`(redacted)` with the verbs of `fmt`, `%d` included, write them so with
+`encoding/json` (also inside a `keyring.Keyring`), and log so;
+`*datasecure.Table` and `*secure.Session` print a summary without keys.
+What this does not cover (`%p` of a key, `*secure.RoutingTimer`, other
+encoders) is in [LIMITATIONS.md](LIMITATIONS.md). The library takes derived keys
 (`secure.Key`) or passwords and derives them once (PBKDF2-HMAC-SHA256,
 65536 iterations); it keeps them in memory for the life of the connection.
 knxctl reads secrets from environment variables or the keyring by default
@@ -175,6 +180,7 @@ are enforced and the test of each:
 | Responses of `GroupReadAll` | 1000 | `client.WithMaxResponses` | it returns when it has them | client `TestGroupReadAllMaxResponses` |
 | Answers of a client with Data Secure waiting for the link | 16 (`client.DefaultMaxPendingAnswers`), sent by one goroutine, 5 s each | `client.WithMaxPendingAnswers`, 1 to 65536 | an answer that does not fit is dropped (debug log) | client `TestAnswersBounded`, `TestAnswersBoundedByOption`, `TestAnswersEndWithClose` |
 | Pause of the routing sender after a ROUTING_BUSY | the frame's wait time (up to 65.535 s) plus 0 … N × 50 ms | `routing.WithMaxBusyPause`, `server.WithRoutingMaxBusyPause` (a ceiling; none by default) | `internal/flowctl`, for `routing.Conn` and the server's routing sender | internal/flowctl `TestMaxPause`, routing `TestMaxBusyPause`, server `TestRoutingMaxBusyPause` |
+| Busy counter N of the routing sender, which sets the random extension, the reduced rate after the pause (gap × (N + 1)) and its duration (N × 100 ms) | one more per ROUTING_BUSY more than 10 ms after the previous one; no ceiling by default | `routing.WithMaxBusyCount`, `server.WithRoutingMaxBusyCount` | `internal/flowctl`, for `routing.Conn` and the server's routing sender | internal/flowctl `TestMaxCount`, routing `TestMaxBusyCount`, server `TestRoutingMaxBusyCount` |
 | Property data of `Device.PropertyWrite` | 250 octets | — | refused before sending | client `TestPropertyWriteTooLong` |
 | Servers of `discovery.Search` | 256 | `discovery.WithMaxResults` | it returns when it has them | discovery `TestSearchMaxResults` |
 | Pause after an accept or read error of a socket | 5 ms, doubling to 1 s while errors follow each other | — | the server's accept and read loops, `routing.Conn`, the tunnelling client and discovery | server `TestAcceptLoopPausesAfterErrors`, `TestReadLoopPausesAfterErrors`, routing `TestReadLoopPausesAfterErrors`, internal/udp `TestReadPausesAfterDatagramErrors` |

@@ -108,6 +108,14 @@ type Key [16]byte
 
 Key is an AES-128 group key.
 
+#### func (Key) Format
+
+```go
+func (Key) Format(s fmt.State, verb rune)
+```
+
+Format writes "(redacted)" for the verbs package fmt passes to it, %d too: %v, %s, %q, %x and %X as with String, %#v as with GoString. (fmt calls no method of the value for %p, nor for %w outside fmt.Errorf.)
+
 #### func (Key) GoString
 
 ```go
@@ -123,6 +131,14 @@ func (Key) LogValue() slog.Value
 ```
 
 LogValue returns "(redacted)" for log/slog.
+
+#### func (Key) MarshalJSON
+
+```go
+func (Key) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON returns the JSON string "(redacted)", so that encoding/json does not write the key. Marshal \[16]byte(k) for the octets as before, or k\[:] for them in base64.
 
 #### func (Key) String
 
@@ -242,6 +258,14 @@ func (t *Table) AddSender(a knx.IndividualAddress, last uint64)
 
 AddSender allows a sender with its last valid sequence number. A known sender's number is only raised, never lowered.
 
+#### func (Table) Format
+
+```go
+func (t *Table) Format(s fmt.State, verb rune)
+```
+
+Format writes String for the verbs package fmt passes to it, %#v and %d too, so that the keys in its unexported fields are not printed.
+
 #### func (Table) Incoming
 
 ```go
@@ -355,6 +379,14 @@ func (t *Table) SetToolSequence(a knx.IndividualAddress, last uint64)
 ```
 
 SetToolSequence restores the last valid tool access sequence number of a peer, as returned by ToolSequences. A known peer's number is only raised, never lowered.
+
+#### func (Table) String
+
+```go
+func (t *Table) String() string
+```
+
+String returns the number of entries of the table and its sequence number, with no key.
 
 #### func (Table) SyncRequest
 

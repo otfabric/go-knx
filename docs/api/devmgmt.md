@@ -99,13 +99,15 @@ func (c *Conn) PropRead(ctx context.Context, objType uint16, instance, pid uint8
 
 PropRead reads count elements (1..15) of a property from element start (1-based; start 0 reads the number of elements) and returns their octets.
 
+cEMI device management carries no correlation: the answer is the next M\_PropRead.con of the same object, instance, property and start. Before it sends the request, PropRead discards the frames queued on the tunnel, so that a confirmation that arrived after an earlier request ended is not taken for the answer; while it waits, it discards every frame that is not the answer. A confirmation that arrives after this request was sent is still taken for it. PropWrite does the same.
+
 #### func (Conn) PropWrite
 
 ```go
 func (c *Conn) PropWrite(ctx context.Context, objType uint16, instance, pid uint8, start uint16, count uint8, data []byte) error
 ```
 
-PropWrite writes count elements of a property from element start.
+PropWrite writes count elements of a property from element start. The frames queued before the request are discarded, as in PropRead.
 
 #### func (Conn) Tunnel
 

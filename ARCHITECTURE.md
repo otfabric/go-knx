@@ -80,7 +80,9 @@ context of `Dial`. The tunnelling client bounds each TCP write by the
 request timeout (a write the server does not take ends the connection) and
 the writes of `Close` by 1 s. The timer synchronisation of secure routing
 is the one wait a context does not shorten: it takes its whole window, and
-`routing.Listen` fails when its context ends inside it.
+`routing.Listen` fails when its context ends inside it. A deadline that
+ends a call is reported with an error matching `knx.ErrTimeout` and
+`context.DeadlineExceeded` (the calls are listed in API.md).
 
 `Close` is safe to call more than once and from several goroutines. The
 first call returns after the goroutines have ended and the timers are
@@ -207,7 +209,9 @@ do not all come back at once.
   A ceiling on the pause (`routing.WithMaxBusyPause`,
   `server.WithRoutingMaxBusyPause`, none by default) bounds each pause
   from the busy frame that starts or extends it; N and the reduced rate
-  are not changed by it.
+  are not changed by it. A ceiling on N (`routing.WithMaxBusyCount`,
+  `server.WithRoutingMaxBusyCount`, none by default) bounds the random
+  extension, the reduced rate and how long it lasts.
   `routing.Conn.Send` waits for its turn; the server queues indications
   in a bounded queue (`WithQueueSize`) drained by one sender goroutine and
   drops what does not fit (`OnDropped` "routing_rate").

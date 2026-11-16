@@ -210,6 +210,14 @@ func WithRouting(on bool) Option
 
 WithRouting enables KNXnet/IP routing: telegrams of tunnelling clients and devices are sent as ROUTING\_INDICATIONs to the multicast group, and indications from other routers are delivered to the clients and devices.
 
+#### func WithRoutingMaxBusyCount
+
+```go
+func WithRoutingMaxBusyCount(n int) Option
+```
+
+WithRoutingMaxBusyCount bounds the busy counter of the routing sender's flow control to n. Each ROUTING\_BUSY that arrives more than 10 ms after the previous one raises the counter by one, and it sets the random extension of the pause (up to the counter × 50 ms), how long the reduced rate lasts after the pause (the counter × 100 ms) and how reduced it is (a gap of the counter + 1 times the normal one). 0, the default, leaves the counter unbounded. A negative n is knx.ErrInvalidOption.
+
 #### func WithRoutingMaxBusyPause
 
 ```go

@@ -60,6 +60,7 @@ type options struct {
 	queueSize        int
 	routingRate      int
 	routingMaxPause  time.Duration
+	routingMaxCount  int
 	logger           knx.Logger
 	metrics          knx.Metrics
 	progMode         bool
@@ -350,6 +351,24 @@ func WithRoutingMaxBusyPause(d time.Duration) Option {
 			return invalid("routing max busy pause %v", d)
 		}
 		o.routingMaxPause = d
+		return nil
+	}
+}
+
+// WithRoutingMaxBusyCount bounds the busy counter of the routing
+// sender's flow control to n. Each ROUTING_BUSY that arrives more than
+// 10 ms after the previous one raises the counter by one, and it sets the
+// random extension of the pause (up to the counter × 50 ms), how long the
+// reduced rate lasts after the pause (the counter × 100 ms) and how
+// reduced it is (a gap of the counter + 1 times the normal one). 0, the
+// default, leaves the counter unbounded. A negative n is
+// knx.ErrInvalidOption.
+func WithRoutingMaxBusyCount(n int) Option {
+	return func(o *options) error {
+		if n < 0 {
+			return invalid("routing max busy count %d", n)
+		}
+		o.routingMaxCount = n
 		return nil
 	}
 }

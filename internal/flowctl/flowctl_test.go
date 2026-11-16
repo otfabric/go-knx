@@ -3,6 +3,7 @@
 package flowctl
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -258,4 +259,57 @@ func TestMaxPause(t *testing.T) {
 	}
 	var nilc *Controller
 	nilc.SetMaxPause(time.Second)
+}
+
+// SetMaxCount bounds the busy counter N: a series of ROUTING_BUSY frames
+// raises it to the ceiling and no further, and the random extension, the
+// reduced rate and the slow duration follow the bounded N. 0, or a
+// negative value, leaves it unbounded.
+func TestMaxCount(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		max  int
+		busy int
+		want int
+	}{
+		{"no ceiling", 0, 10, 10},
+		{"no ceiling, a long series", 0, 1000, 1000},
+		{"below the ceiling", 5, 4, 4},
+		{"at the ceiling", 5, 5, 5},
+		{"one over the ceiling", 5, 6, 5},
+		{"far over the ceiling", 5, 1000, 5},
+		{"ceiling of 1", 1, 1000, 1},
+		{"negative is no ceiling", -1, 10, 10},
+		{"ceiling of MaxInt", math.MaxInt, 10, 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, k := newTest(50, 0)
+			c.SetMaxCount(tc.max)
+			var end time.Time
+			for range tc.busy { // each more than BusyGap after the previous one
+				end = c.Busy(0)
+				k.advance(BusyGap + time.Millisecond)
+			}
+			if n := c.Counter(); n != tc.want {
+				t.Fatalf("N = %d after %d busy frames, want %d", n, tc.busy, tc.want)
+			}
+			if last := k.asked[len(k.asked)-1]; last != time.Duration(tc.want)*RandomStep {
+				t.Fatalf("random extension asked for up to %v, want N × 50 ms = %v", last, time.Duration(tc.want)*RandomStep)
+			}
+			c.Sent()
+			if d, want := c.Delay(), time.Duration(tc.want+1)*20*time.Millisecond; d != want {
+				t.Fatalf("gap %v after the pause, want (N + 1) × 20 ms = %v", d, want)
+			}
+			k.t = end.Add(time.Duration(tc.want)*SlowStep - time.Nanosecond)
+			if n := c.Counter(); n != tc.want {
+				t.Fatalf("N = %d at the end of the slow duration, want %d", n, tc.want)
+			}
+			k.t = end.Add(time.Duration(tc.want)*SlowStep + time.Duration(tc.want-1)*DecayStep)
+			if n := c.Counter(); n != 0 {
+				t.Fatalf("N = %d after the slow duration and the decay, want 0", n)
+			}
+		})
+	}
+	var nilc *Controller
+	nilc.SetMaxCount(1)
 }

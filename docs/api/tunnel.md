@@ -89,7 +89,7 @@ Conn is a KNXnet/IP tunnelling connection.
 func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error)
 ```
 
-Dial connects to the KNXnet/IP server at addr ("192.168.1.10", "192.168.1.10:3671") and establishes a tunnelling connection.
+Dial connects to the KNXnet/IP server at addr ("192.168.1.10", "192.168.1.10:3671") and establishes a tunnelling connection. When the deadline of ctx passes first, Dial returns an error matching knx.ErrTimeout and context.DeadlineExceeded.
 
 #### func (Conn) Channel
 
@@ -129,7 +129,7 @@ Err returns why the Conn closed: nil after Close, otherwise an error matching kn
 func (c *Conn) FeatureGet(ctx context.Context, f knxnetip.FeatureID) ([]byte, error)
 ```
 
-FeatureGet reads an interface feature of the server (TUNNELLING\_FEATURE\_GET, tunnelling v2) and returns its value. Over UDP the request is acknowledged and repeated like the request of Send.
+FeatureGet reads an interface feature of the server (TUNNELLING\_FEATURE\_GET, tunnelling v2) and returns its value. Over UDP the request is acknowledged and repeated like the request of Send. A FeatureGet whose context deadline passes, in any of its waits, returns an error matching knx.ErrTimeout and context.DeadlineExceeded.
 
 #### func (Conn) FeatureSet
 
@@ -137,7 +137,7 @@ FeatureGet reads an interface feature of the server (TUNNELLING\_FEATURE\_GET, t
 func (c *Conn) FeatureSet(ctx context.Context, f knxnetip.FeatureID, value []byte) error
 ```
 
-FeatureSet writes an interface feature of the server (TUNNELLING\_FEATURE\_SET, tunnelling v2). Over UDP the request is acknowledged and repeated like the request of Send.
+FeatureSet writes an interface feature of the server (TUNNELLING\_FEATURE\_SET, tunnelling v2). Over UDP the request is acknowledged and repeated like the request of Send. A FeatureSet whose context deadline passes, in any of its waits, returns an error matching knx.ErrTimeout and context.DeadlineExceeded.
 
 #### func (Conn) IndividualAddress
 

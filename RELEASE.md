@@ -5,6 +5,38 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.13.0
+
+**Date:** 2026-11-16
+**Previous release:** v0.12.0
+
+## Summary
+
+Deadlines, redaction and flow control. A deadline in `tunnel.Dial`, `tunnel.Conn.FeatureGet` and `FeatureSet`, `routing.Listen` and `routing.Conn.Send` gives an error matching `knx.ErrTimeout` and `context.DeadlineExceeded`, as in the other calls since v0.12.0. The key types print `(redacted)` with the verbs of `fmt`, `%d` included, and marshal to `"(redacted)"` in JSON; so do the keys and passwords of `secure.Credentials` and the keyring entries; a Data Secure table and a secure session print a summary without keys. `devmgmt` discards the confirmations queued before each request. New: a ceiling on the busy counter of the routing flow control, none by default.
+
+## Changes
+
+### Breaking
+
+- An expired deadline of `tunnel.Dial`, `tunnel.Conn.FeatureGet`, `FeatureSet`, `routing.Listen` and `routing.Conn.Send` gives an error matching `knx.ErrTimeout` and `context.DeadlineExceeded` (it was the context's error, or one wrapping it, matching `context.DeadlineExceeded` only); so do `client.DialTunnel`, `client.ListenRouting`, and `client.GroupWrite` and `GroupRespond` over routing, which return these errors. A `routing.Conn.Send` whose deadline had passed when it came to the write returned the error of the write (`i/o timeout`, matching neither) and now matches both; it sends nothing, as before. The message starts with `knx: timeout:`. Who notices: code that compares the error with `==` (`err == context.DeadlineExceeded`), or that reads the message. Restore path: `errors.Is(err, context.DeadlineExceeded)`; a cancelled context still gives an error matching `context.Canceled` only.
+- The key types `secure.Key`, `datasecure.Key` and `keyring.Key` print `(redacted)` with the verbs of `fmt` that call a method of the value: `%d`, `%o`, `%b`, `%c` and the others print it too (they printed the octets; `%v`, `%s`, `%x`, `%X`, `%q` and `%#v` print as in v0.12.0; `%p` and `%w` outside `fmt.Errorf` call none, LIMITATIONS.md). `encoding/json` writes a key as the string `"(redacted)"` (it wrote an array of 16 numbers), also inside `secure.Credentials`, `keyring.Backbone`, `keyring.Device` and `keyring.Keyring`; reading that JSON back into a key fails. `secure.Credentials`, `keyring.Backbone`, `keyring.Interface` and `keyring.Device` print with every verb of `fmt` as with `%v`, their keys and passwords `(redacted)` (`%d` printed their fields, the passwords of `Interface` and `Device` included). `encoding/json` writes the passwords of `keyring.Interface` and `keyring.Device` as `"(redacted)"`, an empty one as `""`, and their other fields as before; so inside a `keyring.Keyring`; read back, such a password is the text `(redacted)`. A struct of the caller's own that embeds a key type or one of these structs (rather than having it as a named field) takes its `Format` (and its `MarshalJSON`, where it has one), which print and write the embedded value only, also when the struct has a `String` method of its own. `*datasecure.Table` and `*secure.Session` print a summary without keys, `%#v` and `%d` too (they printed their fields, the keys included). Who notices: code that marshals a keyring, credentials or another value holding a key or password to JSON on purpose, or that prints one with `%d`. Restore path: marshal the fields it needs, for a key `k[:]` (base64) or `[16]byte(k)` (the array of numbers as before); for the passwords a type of its own with the same fields (`type plain keyring.Interface`, then `json.Marshal(plain(itf))`) or the `Password` field itself; a struct that embeds one of them names the field instead; print `k[:]`.
+- `devmgmt.Conn.PropRead` and `PropWrite` discard the frames queued on the tunnel before they send their request, so a confirmation that arrived after an earlier request timed out is no longer taken for the answer (they returned it when it was for the same object, instance, property and start). A confirmation that arrives after the request was sent is still taken: cEMI device management carries no correlation. Who notices: an application that reads a property again after a read timed out, which now gets the answer to its new request; and one that reads other frames of the connection with `Tunnel().Receive` and leaves them queued across a `PropRead` or `PropWrite` (the call discarded those that were ahead of its answer before too, but now also when the call fails before sending). Restore path: none by option; read those frames with `Tunnel().Receive` before the call.
+
+### Added
+
+- `routing.WithMaxBusyCount(n)` and `server.WithRoutingMaxBusyCount(n)`: a ceiling on the busy counter N of the routing flow control, which sets the random extension of the pause after a ROUTING_BUSY (up to N × 50 ms), the reduced rate after it (a gap N + 1 times the normal one) and how long that lasts (N × 100 ms). 0, the default, leaves N unbounded, so the rate a deployment sees is unchanged; a negative value is `knx.ErrInvalidOption`.
+- `Format` and `MarshalJSON` on `secure.Key`, `datasecure.Key`, `keyring.Key`, `keyring.Interface` and `keyring.Device`; `Format` on `secure.Credentials` and `keyring.Backbone`; `String` and `Format` on `*datasecure.Table` and `*secure.Session`.
+
+### Documentation
+
+- API.md: the calls that match `knx.ErrTimeout` and `context.DeadlineExceeded` at a deadline, the busy counter bound, what the key types and the table and session print. LIMITATIONS.md: the calls that return the context's error alone (`Receive`, `discovery`), the devmgmt confirmation that arrives after the next request, what the redaction does not cover. ERRORS.md: the `knx.ErrTimeout` row. SECURITY.md: the redaction, the busy counter limit with its option and tests. ARCHITECTURE.md and docs/IMPLEMENTATION-STATUS.md: the busy counter ceiling, deadlines, the devmgmt discard. TESTING.md: matrix row L7 for devmgmt. docs/api regenerated.
+
+### Tests
+
+- A late devmgmt confirmation followed by the next read of the same property; the busy counter ceiling in `internal/flowctl` (none, below, at, one over, far over, 1, negative, `MaxInt`) and through `routing.Conn` and the server, with and without the option; every `fmt` verb, `encoding/json` and `log/slog` of the key types, of the credentials and keyring entries with keys and passwords, of the values holding them and of a table and a session, and the verbs of v0.12.0 printing as before; the JSON fields of `keyring.Interface` and `keyring.Device` (with passwords, one empty, none; inside a `keyring.Keyring`) and the restore path through a type with the same fields; the deadline of `FeatureGet` and `FeatureSet` in each wait, of `tunnel.Dial` (CONNECT_RESPONSE, a dialer, the secure handshake over TCP and UDP; cancelled; the connect timeout), of `routing.Conn.Send` (the write, the pause, the turn; cancelled) and of `routing.Listen` with `WithSecure`.
+
+---
+
 ## v0.12.0
 
 **Date:** 2026-11-16

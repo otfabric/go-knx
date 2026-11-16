@@ -54,7 +54,7 @@ Conn is a routing endpoint.
 func Listen(ctx context.Context, opts ...Option) (*Conn, error)
 ```
 
-Listen joins the routing multicast group. With [WithSecure](#func-withsecure) it returns after the timer synchronisation; when ctx ends before that, it closes the socket and returns an error matching ctx.Err().
+Listen joins the routing multicast group. With [WithSecure](#func-withsecure) it returns after the timer synchronisation; when ctx ends before that, it closes the socket and returns an error matching ctx.Err(). An error of an expired deadline matches knx.ErrTimeout too.
 
 #### func (Conn) Close
 
@@ -104,7 +104,7 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error
 
 Send sends a cEMI frame (an L\_Data.ind) as a ROUTING\_INDICATION; a source of 0.0.0 is replaced by the Conn's individual address. It waits for the pause after the previous indication and for the flow control of a ROUTING\_BUSY, and refuses frames with hop count 0.
 
-Sends take turns. Every wait of Send ends when ctx ends (with ctx's error) or the Conn closes (knx.ErrClosed): the wait for the turn while another Send waits for the flow control, and the wait for the flow control itself. After Close, Send returns knx.ErrClosed and sends nothing.
+Sends take turns. Every wait of Send ends when ctx ends (with ctx's error) or the Conn closes (knx.ErrClosed): the wait for the turn while another Send waits for the flow control, and the wait for the flow control itself. A Send whose context deadline passes, in a wait or during the write, returns an error matching knx.ErrTimeout and context.DeadlineExceeded. After Close, Send returns knx.ErrClosed and sends nothing.
 
 ### type Event
 
@@ -166,6 +166,14 @@ func WithLoopback(on bool) Option
 ```
 
 WithLoopback enables multicast loopback, so that routers on the same host hear each other (default off). The Conn drops its own echoes.
+
+#### func WithMaxBusyCount
+
+```go
+func WithMaxBusyCount(n int) Option
+```
+
+WithMaxBusyCount bounds the busy counter of the flow control to n. Each ROUTING\_BUSY that arrives more than 10 ms after the previous one raises the counter by one, and it sets the random extension of the pause (up to the counter × 50 ms), how long the reduced rate lasts after the pause (the counter × 100 ms) and how reduced it is (a gap of the counter + 1 times the normal one). 0, the default, leaves the counter unbounded. A negative n is knx.ErrInvalidOption.
 
 #### func WithMaxBusyPause
 

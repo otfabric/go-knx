@@ -106,6 +106,14 @@ func (c *Conn) Tunnel() *tunnel.Conn { return c.t }
 // PropRead reads count elements (1..15) of a property from element start
 // (1-based; start 0 reads the number of elements) and returns their
 // octets.
+//
+// cEMI device management carries no correlation: the answer is the next
+// M_PropRead.con of the same object, instance, property and start. Before
+// it sends the request, PropRead discards the frames queued on the
+// tunnel, so that a confirmation that arrived after an earlier request
+// ended is not taken for the answer; while it waits, it discards every
+// frame that is not the answer. A confirmation that arrives after this
+// request was sent is still taken for it. PropWrite does the same.
 func (c *Conn) PropRead(ctx context.Context, objType uint16, instance, pid uint8, start uint16, count uint8) ([]byte, error) {
 	req := &cemi.Property{MsgCode: cemi.MPropReadReq, ObjectType: objType, Instance: instance, PropertyID: pid, Count: count, Start: start}
 	con, err := c.roundTrip(ctx, req, cemi.MPropReadCon)
@@ -134,7 +142,8 @@ func (c *Conn) PropElements(ctx context.Context, objType uint16, instance, pid u
 	return int(binary.BigEndian.Uint16(b)), nil
 }
 
-// PropWrite writes count elements of a property from element start.
+// PropWrite writes count elements of a property from element start. The
+// frames queued before the request are discarded, as in PropRead.
 func (c *Conn) PropWrite(ctx context.Context, objType uint16, instance, pid uint8, start uint16, count uint8, data []byte) error {
 	req := &cemi.Property{MsgCode: cemi.MPropWriteReq, ObjectType: objType, Instance: instance, PropertyID: pid, Count: count, Start: start, Data: data}
 	con, err := c.roundTrip(ctx, req, cemi.MPropWriteCon)
@@ -157,6 +166,7 @@ func (c *Conn) roundTrip(ctx context.Context, req *cemi.Property, want cemi.Mess
 		ctx, cancel = context.WithTimeout(ctx, DefaultTimeout)
 		defer cancel()
 	}
+	c.discardQueued()
 	if err := c.t.Send(ctx, req); err != nil {
 		return nil, err
 	}
@@ -174,5 +184,27 @@ func (c *Conn) roundTrip(ctx context.Context, req *cemi.Property, want cemi.Mess
 			continue
 		}
 		return con, nil
+	}
+}
+
+// queuedOnly is a context that has ended: Receive with it returns only a
+// frame that is already queued.
+var queuedOnly = func() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}()
+
+// maxDiscard bounds discardQueued: the largest inbound queue of a tunnel
+// (tunnel.WithQueueSize).
+const maxDiscard = 1 << 16
+
+// discardQueued discards the frames queued on the tunnel: confirmations
+// of earlier requests that ended before their answer came.
+func (c *Conn) discardQueued() {
+	for range maxDiscard {
+		if _, err := c.t.Receive(queuedOnly); err != nil {
+			return
+		}
 	}
 }

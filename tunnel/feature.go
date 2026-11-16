@@ -28,21 +28,25 @@ func (e *FeatureError) Is(target error) bool { return target == knx.ErrRejected 
 
 // FeatureGet reads an interface feature of the server
 // (TUNNELLING_FEATURE_GET, tunnelling v2) and returns its value. Over UDP
-// the request is acknowledged and repeated like the request of Send.
+// the request is acknowledged and repeated like the request of Send. A
+// FeatureGet whose context deadline passes, in any of its waits, returns
+// an error matching knx.ErrTimeout and context.DeadlineExceeded.
 func (c *Conn) FeatureGet(ctx context.Context, f knxnetip.FeatureID) ([]byte, error) {
 	r, err := c.feature(ctx, knxnetip.TunnellingFeatureGetType, f, nil)
 	if err != nil {
-		return nil, err
+		return nil, deadline(err)
 	}
 	return r.Value, nil
 }
 
 // FeatureSet writes an interface feature of the server
 // (TUNNELLING_FEATURE_SET, tunnelling v2). Over UDP the request is
-// acknowledged and repeated like the request of Send.
+// acknowledged and repeated like the request of Send. A FeatureSet whose
+// context deadline passes, in any of its waits, returns an error matching
+// knx.ErrTimeout and context.DeadlineExceeded.
 func (c *Conn) FeatureSet(ctx context.Context, f knxnetip.FeatureID, value []byte) error {
 	_, err := c.feature(ctx, knxnetip.TunnellingFeatureSetType, f, value)
-	return err
+	return deadline(err)
 }
 
 // feature sends a feature request and waits for its response. Over UDP

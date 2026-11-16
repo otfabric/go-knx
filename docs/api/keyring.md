@@ -40,6 +40,14 @@ type Backbone struct {
 
 Backbone is the secure routing (multicast) backbone.
 
+#### func (Backbone) Format
+
+```go
+func (b Backbone) Format(s fmt.State, verb rune)
+```
+
+Format writes String for the verbs package fmt passes to it, %#v and %d too. (encoding/json writes the key as "(redacted)" through Key.)
+
 #### func (Backbone) GoString
 
 ```go
@@ -81,6 +89,14 @@ type Device struct {
 
 Device is a secure device.
 
+#### func (Device) Format
+
+```go
+func (d Device) Format(s fmt.State, verb rune)
+```
+
+Format writes String for the verbs package fmt passes to it, %#v and %d too, so that %d does not print the passwords.
+
 #### func (Device) GoString
 
 ```go
@@ -96,6 +112,14 @@ func (d Device) LogValue() slog.Value
 ```
 
 LogValue returns the device with its key and passwords redacted, for log/slog.
+
+#### func (Device) MarshalJSON
+
+```go
+func (d Device) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON writes the fields of the device with its tool key and passwords as "(redacted)" (a password that is empty as ""), so that encoding/json does not write them. For the passwords, marshal the fields needed, for example through a type of its own with the same fields.
 
 #### func (Device) String
 
@@ -137,6 +161,14 @@ func (i *Interface) Credentials() (secure.Credentials, error)
 
 Credentials returns the secure tunnelling credentials of a tunnelling interface: its user and password, and the host's device authentication password when the keyring has it.
 
+#### func (Interface) Format
+
+```go
+func (i Interface) Format(s fmt.State, verb rune)
+```
+
+Format writes String for the verbs package fmt passes to it, %#v and %d too, so that %d does not print the passwords.
+
 #### func (Interface) GoString
 
 ```go
@@ -152,6 +184,14 @@ func (i Interface) LogValue() slog.Value
 ```
 
 LogValue returns the interface with its passwords redacted, for log/slog.
+
+#### func (Interface) MarshalJSON
+
+```go
+func (i Interface) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON writes the fields of the interface with its passwords as "(redacted)" (one that is empty as ""), so that encoding/json does not write them. For the passwords, marshal the fields needed, for example through a type of its own with the same fields.
 
 #### func (Interface) String
 
@@ -188,6 +228,14 @@ type Key [16]byte
 
 Key is an AES-128 key.
 
+#### func (Key) Format
+
+```go
+func (Key) Format(s fmt.State, verb rune)
+```
+
+Format writes "(redacted)" for the verbs package fmt passes to it, %d too: %v, %s, %q, %x and %X as with String, %#v as with GoString. (fmt calls no method of the value for %p, nor for %w outside fmt.Errorf.)
+
 #### func (Key) GoString
 
 ```go
@@ -203,6 +251,14 @@ func (Key) LogValue() slog.Value
 ```
 
 LogValue returns "(redacted)" for log/slog.
+
+#### func (Key) MarshalJSON
+
+```go
+func (Key) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON returns the JSON string "(redacted)", so that encoding/json does not write the key. Marshal \[16]byte(k) for the octets as before, or k\[:] for them in base64.
 
 #### func (Key) String
 
@@ -303,7 +359,7 @@ Interface returns the interface with the individual address, or nil.
 func (k Keyring) LogValue() slog.Value
 ```
 
-LogValue returns the project and the number of entries of the keyring, with no key or password, for log/slog. Its text forms (%v, %#v) redact the keys and passwords through the types of its fields.
+LogValue returns the project and the number of entries of the keyring, with no key or password, for log/slog. Its text forms (the verbs of fmt, %d too) and encoding/json redact the keys and passwords through the types of its fields.
 
 #### func (Keyring) Senders
 

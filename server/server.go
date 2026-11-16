@@ -160,6 +160,7 @@ func New(opts ...Option) (*Server, error) {
 	if o.routing {
 		s.flow = flowctl.New(o.routingRate)
 		s.flow.SetMaxPause(o.routingMaxPause)
+		s.flow.SetMaxCount(o.routingMaxCount)
 		s.routeQ = make(chan []byte, o.queueSize)
 	}
 	s.props = &propStore{s: s}

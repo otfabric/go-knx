@@ -70,15 +70,16 @@ What go-knx does not do, or does with restrictions. Feature status:
   context that lasts longer, or it returns the context's error. A router
   that hears no time keeper in that window starts its own timer at the
   time since the process started ([SECURITY.md](SECURITY.md)).
-- **Expired deadlines** do not match the same sentinels everywhere:
-  `client.GroupRead`, `client.Device`, `devmgmt` and `tunnel.Conn.Send`
-  return an error matching `knx.ErrTimeout` and
-  `context.DeadlineExceeded`; `tunnel.Conn.FeatureGet` and `FeatureSet`,
-  `routing.Conn.Send`, `tunnel.Dial` and `routing.Listen` return the
-  context's error.
+- **Expired deadlines**: `tunnel.Conn.Receive`, `routing.Conn.Receive`,
+  `discovery.Search` and `Describe` return the context's error alone
+  (`context.DeadlineExceeded`); the calls that [API.md](API.md#bounds)
+  lists match `knx.ErrTimeout` too.
 - **A late devmgmt confirmation**: cEMI device management carries no
-  correlation, so a confirmation that arrives after its request timed out
-  is taken by the next read of the same property.
+  correlation. `PropRead` and `PropWrite` discard the confirmations queued
+  before they send their request, so a confirmation that arrived after
+  its request timed out is not taken by the next request; one that
+  arrives after the next request of the same property was sent is still
+  taken for its answer.
 - **Callbacks and Close**: `Close` of a client or server waits for the
   goroutine that runs a callback, so a callback calls it from another
   goroutine. A concurrent second `server.Server.Close` returns at once,
@@ -87,11 +88,17 @@ What go-knx does not do, or does with restrictions. Feature status:
   tunnel (and with it of `devmgmt.Dial` and `client.DialTunnel`). A UDP
   tunnel opens its own unconnected socket; an application cannot supply
   it. `WithDialer` does not combine with `WithLocalAddr`.
-- **Key types print redacted**: `%v`, `%s`, `%x`, `%q` and `%#v` of the
-  key types, `secure.Credentials` and the keyring entries, and their
-  `log/slog` values, show `(redacted)`. `%d` of a key and
-  `encoding/json` still give its octets, and `%v` of a
-  `*datasecure.Table` or a `*secure.Session` prints their fields.
+- **Key types print redacted**: the key types show `(redacted)` with the
+  verbs of `fmt`, `%d` included, in `encoding/json` and in `log/slog`;
+  `secure.Credentials` and the keyring entries, and a `keyring.Keyring`
+  through them, show their keys and passwords redacted with the same
+  verbs, in `encoding/json` and in `log/slog`; a `*datasecure.Table` and
+  a `*secure.Session` print a summary, `%#v` and `%d` too. JSON written
+  this way does not read back into a key or a password. Not covered: `%p`
+  of a key and `%w` outside `fmt.Errorf` (fmt calls no method of the
+  value for them; `go vet` reports both); `%v` of a
+  `*secure.RoutingTimer` prints its fields; `encoding/xml` and
+  `encoding/gob` write the octets of a key and the passwords.
 - **A request whose caller left** before its TUNNELLING_ACK is not
   repeated: when the acknowledgement does not come within the request
   timeout, the next `Send` reports the connection as lost.
