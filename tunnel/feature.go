@@ -62,7 +62,11 @@ func (c *Conn) feature(ctx context.Context, t knxnetip.ServiceType, f knxnetip.F
 	c.mu.Lock()
 	state, ch, seq, dataEP, gen := c.state, c.channel, c.txSeq, c.dataEP, c.gen
 	c.mu.Unlock()
-	if state != knx.StateConnected {
+	switch state {
+	case knx.StateConnected:
+	case knx.StateClosed:
+		return nil, knx.ErrClosed
+	default:
 		return nil, fmt.Errorf("%w: tunnel: %s", knx.ErrConnectionLost, state)
 	}
 	drain(c.featCh)

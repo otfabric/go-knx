@@ -59,6 +59,7 @@ type options struct {
 	reqTimeout       time.Duration
 	queueSize        int
 	routingRate      int
+	routingMaxPause  time.Duration
 	logger           knx.Logger
 	metrics          knx.Metrics
 	progMode         bool
@@ -333,6 +334,22 @@ func WithRoutingRate(n int) Option {
 			return invalid("routing rate %d", n)
 		}
 		o.routingRate = n
+		return nil
+	}
+}
+
+// WithRoutingMaxBusyPause bounds the pause of the routing sender after a
+// ROUTING_BUSY, the frame's wait time and the random extension together,
+// to d, measured from the busy frame that starts or extends the pause. 0,
+// the default, leaves the pause to the frame: up to 65.535 s plus the
+// extension. The reduced rate after the pause is not changed. A negative
+// d is knx.ErrInvalidOption.
+func WithRoutingMaxBusyPause(d time.Duration) Option {
+	return func(o *options) error {
+		if d < 0 {
+			return invalid("routing max busy pause %v", d)
+		}
+		o.routingMaxPause = d
 		return nil
 	}
 }

@@ -108,6 +108,30 @@ type Key [16]byte
 
 Key is an AES-128 group key.
 
+#### func (Key) GoString
+
+```go
+func (Key) GoString() string
+```
+
+GoString returns "(redacted)" for %#v.
+
+#### func (Key) LogValue
+
+```go
+func (Key) LogValue() slog.Value
+```
+
+LogValue returns "(redacted)" for log/slog.
+
+#### func (Key) String
+
+```go
+func (Key) String() string
+```
+
+String returns "(redacted)", so that %v, %s, %x and %q do not print the key. Use k\[:] for the octets.
+
 ### type SCF
 
 ```go

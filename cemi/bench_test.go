@@ -16,6 +16,23 @@ func BenchmarkParseLData(b *testing.B) {
 	}
 }
 
+// sinkFrame keeps the frames of BenchmarkNewGroupFrame alive, so that
+// they are allocated as in a program that sends them.
+var sinkFrame *LData
+
+// BenchmarkNewGroupFrame measures a frame built from a TPDU of two octets
+// (an A_GroupValue_Write of a 6-bit value).
+func BenchmarkNewGroupFrame(b *testing.B) {
+	tpdu := []byte{0x00, 0x81}
+	b.ReportAllocs()
+	for b.Loop() {
+		sinkFrame = NewGroupFrame(LDataReq, 0x1105, 0x0A03, 0, tpdu)
+	}
+	if len(sinkFrame.TPDU) != 2 {
+		b.Fatal("TPDU")
+	}
+}
+
 func BenchmarkMarshalLData(b *testing.B) {
 	f, err := Parse(benchLData)
 	if err != nil {

@@ -210,6 +210,14 @@ func WithRouting(on bool) Option
 
 WithRouting enables KNXnet/IP routing: telegrams of tunnelling clients and devices are sent as ROUTING\_INDICATIONs to the multicast group, and indications from other routers are delivered to the clients and devices.
 
+#### func WithRoutingMaxBusyPause
+
+```go
+func WithRoutingMaxBusyPause(d time.Duration) Option
+```
+
+WithRoutingMaxBusyPause bounds the pause of the routing sender after a ROUTING\_BUSY, the frame's wait time and the random extension together, to d, measured from the busy frame that starts or extends the pause. 0, the default, leaves the pause to the frame: up to 65.535 s plus the extension. The reduced rate after the pause is not changed. A negative d is knx.ErrInvalidOption.
+
 #### func WithRoutingRate
 
 ```go
@@ -399,7 +407,7 @@ GroupWrite sends A\_GroupValue\_Write of v to g as the server.
 func (s *Server) Send(f *cemi.LData) error
 ```
 
-Send puts a telegram on the virtual network as the server: it reaches every tunnelling client, the devices and, with routing, the multicast group. A zero source is replaced by the server's address; the message code becomes L\_Data.ind.
+Send puts a telegram on the virtual network as the server: it reaches every tunnelling client, the devices and, with routing, the multicast group. A zero source is replaced by the server's address; the message code becomes L\_Data.ind. After Close it returns knx.ErrClosed and distributes nothing; so do GroupWrite and Transmit.
 
 #### func (Server) Serve
 
@@ -446,4 +454,4 @@ type Telegram struct {
 }
 ```
 
-Telegram is a telegram on the server's virtual network.
+Telegram is a telegram on the server's virtual network. Each Subscribe callback gets its own copy of the frame: what it changes reaches neither the network nor the other callbacks.

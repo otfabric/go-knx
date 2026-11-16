@@ -61,9 +61,10 @@ type LData struct {
 }
 
 // NewGroupFrame returns an L_Data frame of code to group address dst with
-// the default control fields and priority p.
+// the default control fields and priority p. The frame holds a copy of
+// tpdu: the caller may reuse the slice.
 func NewGroupFrame(code MessageCode, src knx.IndividualAddress, dst knx.GroupAddress, p knx.Priority, tpdu []byte) *LData {
-	f := &LData{MsgCode: code, Ctrl1: DefaultCtrl1, Ctrl2: DefaultCtrl2, Source: src, Destination: uint16(dst), TPDU: tpdu}
+	f := &LData{MsgCode: code, Ctrl1: DefaultCtrl1, Ctrl2: DefaultCtrl2, Source: src, Destination: uint16(dst), TPDU: clone(tpdu)}
 	f.SetPriority(p)
 	if len(tpdu)-1 > MaxStandardNPDU {
 		f.Ctrl1 &^= Ctrl1Standard
@@ -72,7 +73,8 @@ func NewGroupFrame(code MessageCode, src knx.IndividualAddress, dst knx.GroupAdd
 }
 
 // NewIndividualFrame returns an L_Data frame of code to individual address
-// dst with the default control fields and priority p.
+// dst with the default control fields and priority p. The frame holds a
+// copy of tpdu.
 func NewIndividualFrame(code MessageCode, src, dst knx.IndividualAddress, p knx.Priority, tpdu []byte) *LData {
 	f := NewGroupFrame(code, src, knx.GroupAddress(dst), p, tpdu)
 	f.Ctrl2 &^= Ctrl2GroupAddress

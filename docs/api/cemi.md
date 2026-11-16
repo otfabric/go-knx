@@ -184,7 +184,7 @@ LData is an L\_Data.req, L\_Data.ind or L\_Data.con frame. The control fields ar
 func NewGroupFrame(code MessageCode, src knx.IndividualAddress, dst knx.GroupAddress, p knx.Priority, tpdu []byte) *LData
 ```
 
-NewGroupFrame returns an L\_Data frame of code to group address dst with the default control fields and priority p.
+NewGroupFrame returns an L\_Data frame of code to group address dst with the default control fields and priority p. The frame holds a copy of tpdu: the caller may reuse the slice.
 
 #### func NewIndividualFrame
 
@@ -192,7 +192,7 @@ NewGroupFrame returns an L\_Data frame of code to group address dst with the def
 func NewIndividualFrame(code MessageCode, src, dst knx.IndividualAddress, p knx.Priority, tpdu []byte) *LData
 ```
 
-NewIndividualFrame returns an L\_Data frame of code to individual address dst with the default control fields and priority p.
+NewIndividualFrame returns an L\_Data frame of code to individual address dst with the default control fields and priority p. The frame holds a copy of tpdu.
 
 #### func ParseTP1
 

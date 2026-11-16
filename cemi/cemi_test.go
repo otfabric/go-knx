@@ -274,6 +274,35 @@ func TestParseCopies(t *testing.T) {
 	}
 }
 
+// NewGroupFrame and NewIndividualFrame copy the TPDU: changing the slice
+// after the call does not change the frame, nor the other way round.
+func TestNewFramesCopyTPDU(t *testing.T) {
+	for name, build := range map[string]func([]byte) *LData{
+		"NewGroupFrame": func(tpdu []byte) *LData {
+			return NewGroupFrame(LDataReq, 0x1105, 0x0A03, knx.PriorityLow, tpdu)
+		},
+		"NewIndividualFrame": func(tpdu []byte) *LData {
+			return NewIndividualFrame(LDataReq, 0x1105, 0x1106, knx.PrioritySystem, tpdu)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tpdu := []byte{0x00, 0x80, 0x0C, 0x1A}
+			f := build(tpdu)
+			tpdu[1], tpdu[3] = 0x40, 0xFF
+			if !bytes.Equal(f.TPDU, []byte{0x00, 0x80, 0x0C, 0x1A}) {
+				t.Fatalf("frame TPDU % X after the caller changed its slice, want 00 80 0C 1A", f.TPDU)
+			}
+			f.TPDU[2] = 0x55
+			if tpdu[2] != 0x0C {
+				t.Fatalf("caller's slice % X after the frame changed, want its third octet 0C", tpdu)
+			}
+			if g := build(nil); len(g.TPDU) != 0 {
+				t.Fatalf("TPDU of a nil slice: % X", g.TPDU)
+			}
+		})
+	}
+}
+
 func TestDefaults(t *testing.T) {
 	if DefaultCtrl1 != 0xbc || DefaultCtrl2 != 0xe0 {
 		t.Fatalf("defaults %02X %02X", DefaultCtrl1, DefaultCtrl2)

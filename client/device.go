@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/otfabric/go-knx"
@@ -47,15 +48,34 @@ func Connected() DeviceOption { return func(d *Device) { d.connected = true } }
 // request, then S-A_Data. Without this option the access is secured when
 // the client's Data Secure table (WithDataSecure) has the device's tool
 // key.
+//
+// The key goes into the client's Data Secure table, or into a table of
+// the Device's own when the client has none. When that table cannot be
+// made (datasecure.NewTable fails while the system clock is before
+// 2018-01-05), every request of the Device returns the error and sends
+// nothing. Client.DeviceWithToolKey returns that error at once.
 func WithToolKey(k datasecure.Key) DeviceOption {
-	return func(d *Device) {
-		t, _ := datasecure.NewTable(nil, nil, 0)
-		if d.c.secure != nil {
-			t = d.c.secure
+	return func(d *Device) { _ = d.setToolKey(k) }
+}
+
+// newToolTable makes the Data Secure table of a Device with a tool key
+// when the client has none.
+var newToolTable = func() (*datasecure.Table, error) { return datasecure.NewTable(nil, nil, 0) }
+
+// setToolKey secures the access with tool key k. The error of a table
+// that cannot be made is kept in d.err, which every request returns.
+func (d *Device) setToolKey(k datasecure.Key) error {
+	t := d.c.secure
+	if t == nil {
+		var err error
+		if t, err = newToolTable(); err != nil {
+			d.sec, d.err = nil, fmt.Errorf("client: tool key of %s: %w", d.addr, err)
+			return d.err
 		}
-		t.SetToolKey(d.addr, k)
-		d.sec = t
 	}
+	t.SetToolKey(d.addr, k)
+	d.sec, d.err = t, nil
+	return nil
 }
 
 // Device is the remote management of one device, its individual
@@ -67,6 +87,10 @@ type Device struct {
 	addr      knx.IndividualAddress
 	connected bool
 	sec       *datasecure.Table // with the device's tool key: secured
+	err       error             // the tool key table could not be made
+
+	closed    chan struct{} // closed by Close
+	closeOnce sync.Once
 
 	in     chan *cemi.LData
 	lock   chan struct{} // one request at a time
@@ -80,7 +104,28 @@ type Device struct {
 // Device returns the remote management of the device at addr. A second
 // Device for the same address replaces the first.
 func (c *Client) Device(addr knx.IndividualAddress, opts ...DeviceOption) *Device {
-	d := &Device{c: c, addr: addr, in: make(chan *cemi.LData, 32), lock: make(chan struct{}, 1)}
+	d := c.newDevice(addr, opts)
+	c.register(d)
+	return d
+}
+
+// DeviceWithToolKey returns the remote management of the device at addr,
+// secured with its tool key k as Device with WithToolKey does, and the
+// error of a Data Secure table for the key that cannot be made
+// (datasecure.NewTable, when the client has no table of its own). On an
+// error it returns no Device, and a Device of addr made before stays in
+// place.
+func (c *Client) DeviceWithToolKey(addr knx.IndividualAddress, k datasecure.Key, opts ...DeviceOption) (*Device, error) {
+	d := c.newDevice(addr, opts)
+	if err := d.setToolKey(k); err != nil {
+		return nil, err
+	}
+	c.register(d)
+	return d, nil
+}
+
+func (c *Client) newDevice(addr knx.IndividualAddress, opts []DeviceOption) *Device {
+	d := &Device{c: c, addr: addr, in: make(chan *cemi.LData, 32), lock: make(chan struct{}, 1), closed: make(chan struct{})}
 	if c.secure != nil {
 		if _, ok := c.secure.ToolKey(addr); ok {
 			d.sec = c.secure
@@ -89,13 +134,18 @@ func (c *Client) Device(addr knx.IndividualAddress, opts ...DeviceOption) *Devic
 	for _, o := range opts {
 		o(d)
 	}
+	return d
+}
+
+// register makes d the Device of its address: frames from the address
+// go to d.
+func (c *Client) register(d *Device) {
 	c.mu.Lock()
 	if c.devices == nil {
 		c.devices = map[knx.IndividualAddress]*Device{}
 	}
-	c.devices[addr] = d
+	c.devices[d.addr] = d
 	c.mu.Unlock()
-	return d
 }
 
 // Address returns the device's individual address.
@@ -105,14 +155,17 @@ func (d *Device) Address() knx.IndividualAddress { return d.addr }
 func (d *Device) Secured() bool { return d.sec != nil }
 
 // Close ends the transport connection (T_Disconnect) and releases the
-// device.
+// device. A request that waits when Close is called, and every request
+// after it, returns an error matching knx.ErrClosed; so do they after
+// the client's Close.
 func (d *Device) Close() error {
 	d.c.mu.Lock()
 	if d.c.devices[d.addr] == d {
 		delete(d.c.devices, d.addr)
 	}
 	d.c.mu.Unlock()
-	d.lock <- struct{}{}
+	d.closeOnce.Do(func() { close(d.closed) })
+	d.lock <- struct{}{} // after the request in progress, which ends now
 	defer func() { <-d.lock }()
 	if !d.open {
 		return nil
@@ -236,8 +289,29 @@ func (d *Device) DescriptorRead(ctx context.Context) (uint16, error) {
 	return v, err
 }
 
+// stopped returns the error of a Device that takes no more requests: it
+// or the client is closed, or the client's link failed; nil otherwise.
+func (d *Device) stopped() error {
+	select {
+	case <-d.closed:
+	case <-d.c.done:
+		if err := d.c.Err(); err != nil {
+			return err
+		}
+	default:
+		return nil
+	}
+	return fmt.Errorf("client: device %s: %w", d.addr, knx.ErrClosed)
+}
+
 // request sends a request and waits for the answer accept takes.
 func (d *Device) request(ctx context.Context, build func(apdu.TPCI) []byte, accept func(apdu.TPDU) bool) error {
+	if d.err != nil {
+		return d.err
+	}
+	if err := d.stopped(); err != nil {
+		return err
+	}
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
@@ -247,8 +321,16 @@ func (d *Device) request(ctx context.Context, build func(apdu.TPCI) []byte, acce
 	case d.lock <- struct{}{}:
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-d.closed:
+		return d.stopped()
+	case <-d.c.done:
+		return d.stopped()
 	}
 	defer func() { <-d.lock }()
+	// Close may have come while the request waited for its turn.
+	if err := d.stopped(); err != nil {
+		return err
+	}
 	d.drain(ctx)
 	if d.connected && d.open && time.Since(d.last) > idleReconnect {
 		d.open = false
@@ -327,6 +409,11 @@ func (d *Device) exchange(ctx context.Context, build func(apdu.TPCI) (*cemi.LDat
 				return fmt.Errorf("%w: client: no answer from %s: %w", knx.ErrTimeout, d.addr, ctx.Err())
 			}
 			return fmt.Errorf("client: waiting for %s: %w", d.addr, ctx.Err())
+		case <-d.closed:
+			// The connection stays open for Close to end it.
+			return d.stopped()
+		case <-d.c.done:
+			return d.stopped()
 		case <-timer.C:
 			if acked {
 				timer.Reset(ackTimeout)

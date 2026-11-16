@@ -40,6 +40,30 @@ type Backbone struct {
 
 Backbone is the secure routing (multicast) backbone.
 
+#### func (Backbone) GoString
+
+```go
+func (b Backbone) GoString() string
+```
+
+GoString returns the backbone with its key redacted, for %#v.
+
+#### func (Backbone) LogValue
+
+```go
+func (b Backbone) LogValue() slog.Value
+```
+
+LogValue returns the backbone with its key redacted, for log/slog.
+
+#### func (Backbone) String
+
+```go
+func (b Backbone) String() string
+```
+
+String returns the backbone with its key redacted.
+
 ### type Device
 
 ```go
@@ -56,6 +80,30 @@ type Device struct {
 ```
 
 Device is a secure device.
+
+#### func (Device) GoString
+
+```go
+func (d Device) GoString() string
+```
+
+GoString returns the device with its key and passwords redacted, for %#v.
+
+#### func (Device) LogValue
+
+```go
+func (d Device) LogValue() slog.Value
+```
+
+LogValue returns the device with its key and passwords redacted, for log/slog.
+
+#### func (Device) String
+
+```go
+func (d Device) String() string
+```
+
+String returns the device with its key and passwords redacted.
 
 ### type Interface
 
@@ -89,6 +137,30 @@ func (i *Interface) Credentials() (secure.Credentials, error)
 
 Credentials returns the secure tunnelling credentials of a tunnelling interface: its user and password, and the host's device authentication password when the keyring has it.
 
+#### func (Interface) GoString
+
+```go
+func (i Interface) GoString() string
+```
+
+GoString returns the interface with its passwords redacted, for %#v.
+
+#### func (Interface) LogValue
+
+```go
+func (i Interface) LogValue() slog.Value
+```
+
+LogValue returns the interface with its passwords redacted, for log/slog.
+
+#### func (Interface) String
+
+```go
+func (i Interface) String() string
+```
+
+String returns the interface with its passwords redacted.
+
 ### type InterfaceType
 
 ```go
@@ -115,6 +187,30 @@ type Key [16]byte
 ```
 
 Key is an AES-128 key.
+
+#### func (Key) GoString
+
+```go
+func (Key) GoString() string
+```
+
+GoString returns "(redacted)" for %#v.
+
+#### func (Key) LogValue
+
+```go
+func (Key) LogValue() slog.Value
+```
+
+LogValue returns "(redacted)" for log/slog.
+
+#### func (Key) String
+
+```go
+func (Key) String() string
+```
+
+String returns "(redacted)", so that %v, %s, %x and %q do not print the key. Use k\[:] for the octets.
 
 ### type Keyring
 
@@ -200,6 +296,14 @@ func (k *Keyring) Interface(a knx.IndividualAddress) *Interface
 ```
 
 Interface returns the interface with the individual address, or nil.
+
+#### func (Keyring) LogValue
+
+```go
+func (k Keyring) LogValue() slog.Value
+```
+
+LogValue returns the project and the number of entries of the keyring, with no key or password, for log/slog. Its text forms (%v, %#v) redact the keys and passwords through the types of its fields.
 
 #### func (Keyring) Senders
 

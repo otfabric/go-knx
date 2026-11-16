@@ -72,7 +72,9 @@ const (
 	FromServer
 )
 
-// Telegram is a telegram on the server's virtual network.
+// Telegram is a telegram on the server's virtual network. Each Subscribe
+// callback gets its own copy of the frame: what it changes reaches
+// neither the network nor the other callbacks.
 type Telegram struct {
 	Origin Origin
 	// Channel is the tunnelling channel of a FromTunnel telegram.
@@ -157,6 +159,7 @@ func New(opts ...Option) (*Server, error) {
 	s := &Server{o: o, usessions: map[uint16]*udpSession{}, conns: map[uint8]*tconn{}, tcpConns: map[*tcpConn]struct{}{}, taps: map[int]func(Telegram){}, closing: make(chan struct{}), rsynced: make(chan struct{}), startTime: time.Now()}
 	if o.routing {
 		s.flow = flowctl.New(o.routingRate)
+		s.flow.SetMaxPause(o.routingMaxPause)
 		s.routeQ = make(chan []byte, o.queueSize)
 	}
 	s.props = &propStore{s: s}
@@ -1150,8 +1153,12 @@ func (s *Server) janitor() {
 // Send puts a telegram on the virtual network as the server: it reaches
 // every tunnelling client, the devices and, with routing, the multicast
 // group. A zero source is replaced by the server's address; the message
-// code becomes L_Data.ind.
+// code becomes L_Data.ind. After Close it returns knx.ErrClosed and
+// distributes nothing; so do GroupWrite and Transmit.
 func (s *Server) Send(f *cemi.LData) error {
+	if err := s.closedErr(); err != nil {
+		return err
+	}
 	if _, err := f.AppendTo(nil); err != nil {
 		return err
 	}
@@ -1176,11 +1183,25 @@ func (s *Server) GroupWrite(g knx.GroupAddress, v apdu.GroupValue) error {
 // Transmit sets a device's group object to v and, if the object has the C
 // and T flags, sends the A_GroupValue_Write as that device.
 func (s *Server) Transmit(d *device.Device, o *device.GroupObject, v any) error {
+	if err := s.closedErr(); err != nil {
+		return err // the object keeps its value
+	}
 	f, err := d.Transmit(o, v)
 	if err != nil || f == nil {
 		return err
 	}
 	s.distribute(Telegram{Origin: FromDevice, Frame: f}, nil)
+	return nil
+}
+
+// closedErr returns an error matching knx.ErrClosed once Close has
+// begun.
+func (s *Server) closedErr() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return fmt.Errorf("server: send: %w", knx.ErrClosed)
+	}
 	return nil
 }
 
@@ -1204,7 +1225,9 @@ func (s *Server) distribute(t Telegram, origin *tconn) {
 	// The application's code runs with no lock held; a call that does
 	// not return normally is logged and the telegram goes on.
 	for _, tap := range taps {
-		guard.Report(s.o.logger, guard.Run("server.Subscribe", func() { tap(t) }))
+		tc := t
+		tc.Frame = f.Clone()
+		guard.Report(s.o.logger, guard.Run("server.Subscribe", func() { tap(tc) }))
 	}
 	ind := f
 	if f.MsgCode != cemi.LDataInd {

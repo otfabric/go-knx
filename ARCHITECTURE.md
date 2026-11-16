@@ -101,7 +101,10 @@ run on these goroutines with no lock held. They may call the methods of the
 client or server, except `Close`, which waits for the goroutine they run
 on. A callback that does not return normally is stopped where the library
 called it and logged at error level with its stack (`internal/guard`); the
-goroutine goes on.
+goroutine goes on. Every consumer gets its own copy of a telegram: each
+subscription, callback and read of a client a copy of the frame and the
+value (the last one the decoded telegram itself), each `Subscribe`
+callback of a server a copy of the frame it then distributes.
 
 ## Tunnelling client state machine
 
@@ -113,6 +116,7 @@ connected ──second ACK missing / heartbeat failed 3× / server DISCONNECT_RE
 lost ──WithReconnect──▶ reconnecting ──backoff 1 s … 30 s, jittered──▶ connected (new channel, counters reset)
 lost ──otherwise──▶ closed (Err() matches knx.ErrConnectionLost)
 any ──Close──▶ DISCONNECT_REQUEST (wait ≤ 1 s) ──▶ closed
+reconnecting ──Close──▶ wait ≤ 1 s for the CONNECT_RESPONSE in flight, DISCONNECT_REQUEST of its channel ──▶ closed
 ```
 
 Receiving: a TUNNELLING_REQUEST with the expected sequence number is
@@ -200,6 +204,10 @@ do not all come back at once.
   pause N stays for N × 100 ms and then drops by one every 5 ms; while
   N > 0 the gap between indications is N + 1 times the normal one (one
   TP1 telegram time, 20 ms, as the unit when the rate is unlimited).
+  A ceiling on the pause (`routing.WithMaxBusyPause`,
+  `server.WithRoutingMaxBusyPause`, none by default) bounds each pause
+  from the busy frame that starts or extends it; N and the reduced rate
+  are not changed by it.
   `routing.Conn.Send` waits for its turn; the server queues indications
   in a bounded queue (`WithQueueSize`) drained by one sender goroutine and
   drops what does not fit (`OnDropped` "routing_rate").

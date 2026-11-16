@@ -210,3 +210,52 @@ func TestCryptoRand(t *testing.T) {
 		}
 	}
 }
+
+// SetMaxPause bounds the pause after a ROUTING_BUSY, the random extension
+// included: the frame's wait time is cut to the ceiling, and a later busy
+// frame starts at most a ceiling from its arrival. 0 leaves it unbounded.
+func TestMaxPause(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		max  time.Duration
+		wait time.Duration
+		frac float64
+		want time.Duration
+	}{
+		{"no ceiling", 0, 65535 * time.Millisecond, 1, 65535*time.Millisecond + RandomStep},
+		{"below the ceiling", time.Second, 100 * time.Millisecond, 1, 100*time.Millisecond + RandomStep},
+		{"at the ceiling", time.Second, time.Second - RandomStep, 1, time.Second},
+		{"one over the ceiling", time.Second, time.Second - RandomStep + time.Millisecond, 1, time.Second},
+		{"wait time over the ceiling", time.Second, 65535 * time.Millisecond, 0, time.Second},
+		{"extension over the ceiling", time.Millisecond, 0, 1, time.Millisecond},
+		{"ceiling of 1 ns", time.Nanosecond, 65535 * time.Millisecond, 1, time.Nanosecond},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, k := newTest(0, tc.frac)
+			c.SetMaxPause(tc.max)
+			if end := c.Busy(tc.wait); !end.Equal(k.t.Add(tc.want)) {
+				t.Fatalf("pause ends after %v, want %v", end.Sub(k.t), tc.want)
+			}
+			if d := c.Delay(); d != tc.want {
+				t.Fatalf("delay %v, want %v", d, tc.want)
+			}
+		})
+	}
+	// A busy frame during a pause extends it to at most a ceiling after
+	// its own arrival.
+	c, k := newTest(0, 0)
+	c.SetMaxPause(time.Second)
+	c.Busy(65535 * time.Millisecond)
+	k.advance(600 * time.Millisecond)
+	if end := c.Busy(65535 * time.Millisecond); !end.Equal(k.t.Add(time.Second)) {
+		t.Fatalf("pause ends %v after the second busy frame, want 1s", end.Sub(k.t))
+	}
+	// A negative ceiling is no ceiling.
+	c, k = newTest(0, 0)
+	c.SetMaxPause(-time.Second)
+	if end := c.Busy(time.Minute); !end.Equal(k.t.Add(time.Minute)) {
+		t.Fatalf("pause of %v with a negative ceiling, want 1m", end.Sub(k.t))
+	}
+	var nilc *Controller
+	nilc.SetMaxPause(time.Second)
+}

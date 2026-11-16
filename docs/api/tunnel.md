@@ -73,6 +73,11 @@ type Conn struct {
 	// TUNNELLING_ACK arrived; the next holder of the turn settles it.
 	// Only the holder of the turn reads or writes it.
 
+	// stopping is closed when Close begins: the supervisor ends, and a
+	// reconnection it runs disconnects the channel it opened.
+
+	// closed when the supervisor ended; nil before it starts
+
 }
 ```
 
@@ -100,7 +105,7 @@ Channel returns the communication channel identifier.
 func (c *Conn) Close() error
 ```
 
-Close disconnects (DISCONNECT\_REQUEST, waiting briefly for the response), stops the goroutines and closes the socket. It is safe to call more than once.
+Close disconnects (DISCONNECT\_REQUEST, waiting briefly for the response), stops the goroutines and closes the socket. During a reconnection it waits up to a second for the answer to the CONNECT\_REQUEST in flight and disconnects the channel that answer opened. It is safe to call more than once.
 
 #### func (Conn) Done
 
@@ -168,7 +173,7 @@ Send sends a cEMI frame on the tunnel and waits for its acknowledgement. The req
 
 Send never repeats a frame on its own beyond that one TUNNELLING\_REQUEST repetition. An error matching knx.ErrConnectionLost (or ErrNotConfirmed) does not tell whether the frame reached the bus: the server may have received it before the tunnel was lost. With WithReconnect the tunnel comes back on a new channel, but the frame is not resent there; the caller decides whether repeating it is safe (a read is, a toggle may not be).
 
-Sends take turns, and a Send that waits for its turn returns when ctx ends (ctx's error) or the Conn closes. When ctx ends after the request was written and before its TUNNELLING\_ACK, Send returns ctx's error and the request stays outstanding: it is not repeated, the server may have taken it, and its sequence number is used for no other frame. The next Send or feature call first waits for that acknowledgement, for what is left of the request timeout, and then sends under the next sequence number; when the acknowledgement did not come, the connection is considered lost (knx.ErrConnectionLost).
+Sends take turns, and a Send that waits for its turn returns when ctx ends (ctx's error) or the Conn closes. A Send whose context deadline passes, in any of its waits, returns an error matching knx.ErrTimeout and context.DeadlineExceeded. When ctx ends after the request was written and before its TUNNELLING\_ACK, Send returns ctx's error and the request stays outstanding: it is not repeated, the server may have taken it, and its sequence number is used for no other frame. The next Send or feature call first waits for that acknowledgement, for what is left of the request timeout, and then sends under the next sequence number; when the acknowledgement did not come, the connection is considered lost (knx.ErrConnectionLost).
 
 #### func (Conn) Server
 
@@ -252,6 +257,14 @@ func WithDeviceManagement() Option
 ```
 
 WithDeviceManagement opens a device management connection instead of a tunnel: Send carries local device management cEMI frames (M\_PropRead.req, M\_PropWrite.req, M\_Reset.req) in DEVICE\_CONFIGURATION\_REQUESTs, and Receive returns the server's confirmations. Package devmgmt builds on it.
+
+#### func WithDialer
+
+```go
+func WithDialer(dial func(ctx context.Context, network, address string) (net.Conn, error)) Option
+```
+
+WithDialer sets the function that opens the TCP connection of a tunnel (WithTCP, or WithSecure without WithUDP), for an address allowlist, a proxy or an in-memory connection. It gets the network "tcp4", the server's address and a context that ends with the connect timeout or with Dial's context; the tunnel runs over the connection it returns and closes it. Its error fails Dial, wrapped. nil keeps the default, a net.Dialer. Dial refuses WithDialer for a UDP tunnel, which uses an unconnected socket of its own, and with WithLocalAddr (the dialer chooses the local address): knx.ErrInvalidOption.
 
 #### func WithHeartbeat
 

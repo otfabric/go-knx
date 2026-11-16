@@ -13,7 +13,9 @@
 // same busy frame. After the pause N stays for N × [SlowStep] (the slow
 // duration), then drops by one every [DecayStep] until it reaches 0.
 // While N > 0 after a pause the gap between indications is N + 1 times
-// the normal gap, so a sender resumes at a reduced rate.
+// the normal gap, so a sender resumes at a reduced rate. A ceiling
+// (SetMaxPause) bounds each pause, measured from the busy frame that
+// starts or extends it; it leaves N and the reduced rate as they are.
 package flowctl
 
 import (
@@ -44,6 +46,7 @@ const (
 type Controller struct {
 	mu       sync.Mutex
 	gap      time.Duration // minimum gap between indications, 0: none
+	maxPause time.Duration // ceiling of a pause, 0: none
 	now      func() time.Time
 	rand     func(limit time.Duration) time.Duration // uniform in [0, limit]
 	n        int                                     // N as of pauseEnd
@@ -68,6 +71,17 @@ func (c *Controller) SetClock(now func() time.Time, rnd func(limit time.Duration
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.now, c.rand = now, rnd
+}
+
+// SetMaxPause sets the ceiling of the pause after a ROUTING_BUSY, its
+// random extension included; 0 or less is no ceiling, as without it.
+func (c *Controller) SetMaxPause(d time.Duration) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.maxPause = max(d, 0)
 }
 
 func cryptoRand(limit time.Duration) time.Duration {
@@ -110,7 +124,11 @@ func (c *Controller) Busy(wait time.Duration) time.Time {
 		n++
 	}
 	c.lastBusy = now
-	end := now.Add(wait + c.rand(time.Duration(n)*RandomStep))
+	pause := wait + c.rand(time.Duration(n)*RandomStep)
+	if c.maxPause > 0 && pause > c.maxPause {
+		pause = c.maxPause
+	}
+	end := now.Add(pause)
 	if end.After(c.pauseEnd) {
 		c.pauseEnd = end
 	}

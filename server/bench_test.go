@@ -4,6 +4,7 @@ package server_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,6 +12,30 @@ import (
 	"github.com/otfabric/go-knx/server"
 	"github.com/otfabric/go-knx/tunnel"
 )
+
+// BenchmarkSendToTaps measures Server.Send of one telegram on a server
+// that is not started, with 0, 1 and 2 taps (Subscribe).
+func BenchmarkSendToTaps(b *testing.B) {
+	for _, taps := range []int{0, 1, 2} {
+		b.Run(fmt.Sprintf("taps=%d", taps), func(b *testing.B) {
+			s, err := server.New()
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer s.Close()
+			for range taps {
+				s.Subscribe(func(server.Telegram) {})
+			}
+			f := write(ga, 1)
+			b.ReportAllocs()
+			for b.Loop() {
+				if err := s.Send(f); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
 
 // BenchmarkConcurrentClients measures the telegrams per second the server
 // handles from 8 tunnelling clients writing at once, each telegram

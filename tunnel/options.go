@@ -3,7 +3,9 @@
 package tunnel
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/otfabric/go-knx"
@@ -47,6 +49,7 @@ type options struct {
 	logger            knx.Logger
 	metrics           knx.Metrics
 	local             string
+	dial              func(ctx context.Context, network, address string) (net.Conn, error)
 	nat               bool
 	tcp               bool
 	secure            *secure.Credentials
@@ -124,6 +127,19 @@ func WithMetrics(m knx.Metrics) Option {
 // server from.
 func WithLocalAddr(addr string) Option {
 	return func(o *options) error { o.local = addr; return nil }
+}
+
+// WithDialer sets the function that opens the TCP connection of a
+// tunnel (WithTCP, or WithSecure without WithUDP), for an address
+// allowlist, a proxy or an in-memory connection. It gets the network
+// "tcp4", the server's address and a context that ends with the connect
+// timeout or with Dial's context; the tunnel runs over the connection it
+// returns and closes it. Its error fails Dial, wrapped. nil keeps the
+// default, a net.Dialer. Dial refuses WithDialer for a UDP tunnel, which
+// uses an unconnected socket of its own, and with WithLocalAddr (the
+// dialer chooses the local address): knx.ErrInvalidOption.
+func WithDialer(dial func(ctx context.Context, network, address string) (net.Conn, error)) Option {
+	return func(o *options) error { o.dial = dial; return nil }
 }
 
 // WithNAT announces the route back endpoint 0.0.0.0:0 in the HPAIs, so

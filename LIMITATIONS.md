@@ -70,30 +70,28 @@ What go-knx does not do, or does with restrictions. Feature status:
   context that lasts longer, or it returns the context's error. A router
   that hears no time keeper in that window starts its own timer at the
   time since the process started ([SECURITY.md](SECURITY.md)).
-- **After Close** not every call returns `knx.ErrClosed` yet:
-  `routing.Conn.Send` returns the error of the closed socket;
-  `server.Server.Send`, `GroupWrite` and `Transmit` return nil and still
-  reach the taps and the virtual devices; a request of a `client.Device`
-  that was closed goes to the link; `tunnel.Conn.FeatureGet` and
-  `FeatureSet` return an error matching `knx.ErrConnectionLost`.
 - **Expired deadlines** do not match the same sentinels everywhere:
-  `client.Device` and `devmgmt` return an error matching `knx.ErrTimeout`
-  and `context.DeadlineExceeded`, `client.GroupRead` one matching
-  `knx.ErrTimeout` only, and `tunnel.Conn.Send`, `routing.Conn.Send` and
-  `tunnel.Dial` the context's error.
-- **Delivered telegrams are shared**: one `client.Telegram` (its `Frame`
-  and `Value.Data`) goes to every subscription, callback and pending read,
-  and a `server.Subscribe` tap gets the frame the server then distributes.
-  Treat them as read-only. `cemi.NewGroupFrame` keeps the TPDU slice it is
-  given.
+  `client.GroupRead`, `client.Device`, `devmgmt` and `tunnel.Conn.Send`
+  return an error matching `knx.ErrTimeout` and
+  `context.DeadlineExceeded`; `tunnel.Conn.FeatureGet` and `FeatureSet`,
+  `routing.Conn.Send`, `tunnel.Dial` and `routing.Listen` return the
+  context's error.
+- **A late devmgmt confirmation**: cEMI device management carries no
+  correlation, so a confirmation that arrives after its request timed out
+  is taken by the next read of the same property.
 - **Callbacks and Close**: `Close` of a client or server waits for the
   goroutine that runs a callback, so a callback calls it from another
   goroutine. A concurrent second `server.Server.Close` returns at once,
   before the first has finished.
-- **No dialer option**: `tunnel.Dial` (and with it `devmgmt.Dial` and
-  `client.DialTunnel`) opens its own TCP connection or UDP socket; an
-  application cannot supply the connection. UDP tunnels use an
-  unconnected socket.
+- **Dialers**: `tunnel.WithDialer` supplies the TCP connection of a
+  tunnel (and with it of `devmgmt.Dial` and `client.DialTunnel`). A UDP
+  tunnel opens its own unconnected socket; an application cannot supply
+  it. `WithDialer` does not combine with `WithLocalAddr`.
+- **Key types print redacted**: `%v`, `%s`, `%x`, `%q` and `%#v` of the
+  key types, `secure.Credentials` and the keyring entries, and their
+  `log/slog` values, show `(redacted)`. `%d` of a key and
+  `encoding/json` still give its octets, and `%v` of a
+  `*datasecure.Table` or a `*secure.Session` prints their fields.
 - **A request whose caller left** before its TUNNELLING_ACK is not
   repeated: when the acknowledgement does not come within the request
   timeout, the next `Send` reports the connection as lost.

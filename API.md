@@ -15,7 +15,7 @@ Every exported package, its main types, and how to construct, use and close them
 |---|---|---|---|
 | `client` | `DialTunnel(ctx, addr, topts, opts...)`, `ListenRouting(ctx, ropts, opts...)`, or `New(link, opts...)` over a `client.Link` | `GroupWrite`, `GroupRead`, `GroupReadAll`, `GroupRespond`, `Subscribe` (returns a `*Subscription` with channel `C()`); `Done`, `Err` report the end of the link | `Client.Close` |
 | `client` | `Client.Device(addr, opts...)` returns a `*client.Device` | access to one device through the client: `PropertyRead`, `PropertyWrite`, `PropertyElements`, `PropertyDescription` (returns a `mgmt.Description`), `DescriptorRead`; the `Connected()` option uses a transport-layer connection | `Device.Close` |
-| `tunnel` | `Dial(ctx, addr, opts...)` returns a `*Conn`, UDP or TCP | tunnelling, busmonitor and feature services | `Conn.Close` |
+| `tunnel` | `Dial(ctx, addr, opts...)` returns a `*Conn`, UDP or TCP (`WithDialer` supplies the TCP connection) | tunnelling, busmonitor and feature services | `Conn.Close` |
 | `routing` | `Listen(ctx, opts...)` returns a `*Conn` | routing indications on the multicast group | `Conn.Close` |
 | `device` | `New(name, addr)`; `NewGroupObject(name, id, flags, addresses...)` | a virtual device: `Add`, `OnChange`, and `Handle`, `Transmit` on `cemi.LData` frames | nothing to close: it holds no socket |
 
@@ -53,11 +53,18 @@ Calls that wait for a peer, or collect its answers, are bounded even when the ca
 | `tunnel.Dial` with `WithSecure` | the KNX IP Secure handshake ends with the connect timeout or the context, whichever is first | `tunnel.WithConnectTimeout`, the context |
 | `routing.Listen` with `WithSecure` | returns after the whole timer synchronisation window (about 3.3 s at the default latency); a context that ends inside it gives the context's error and no `Conn` | the latency of `routing.WithSecure` |
 | `tunnel.WithReconnect` | each attempt waits a random time between half the backoff and the backoff (1 s doubling to 30 s by default) | `tunnel.WithReconnect(min, max)` |
-| `client` with `WithDataSecure` | at most 16 answers to individually addressed requests wait for the link; further ones are dropped | none |
+| `client` with `WithDataSecure` | at most `DefaultMaxPendingAnswers` (16) answers to individually addressed requests wait for the link; further ones are dropped | `client.WithMaxPendingAnswers(n)`, 1 to 65536 |
+| `routing.Conn.Send`, the server's routing sender | the pause after a ROUTING_BUSY is the frame's wait time (up to 65.535 s) plus a random extension | `routing.WithMaxBusyPause(d)`, `server.WithRoutingMaxBusyPause(d)`: a ceiling, none by default |
 
 Every limit, with its test, is in [SECURITY.md](SECURITY.md#resource-limits).
 
-A cancelled context ends a call with an error matching `context.Canceled`. An expired deadline ends a `client.Device` or `devmgmt` call with an error matching `knx.ErrTimeout` and `context.DeadlineExceeded`, `client.GroupRead` with one matching `knx.ErrTimeout`, and `tunnel.Conn.Send`, `routing.Conn.Send`, `tunnel.Dial` and `routing.Listen` with one matching `context.DeadlineExceeded` ([LIMITATIONS.md](LIMITATIONS.md)).
+A cancelled context ends a call with an error matching `context.Canceled`. An expired deadline ends a `client.GroupRead`, `client.Device`, `devmgmt` or `tunnel.Conn.Send` call with an error matching `knx.ErrTimeout` and `context.DeadlineExceeded`, and `tunnel.Conn.FeatureGet`, `FeatureSet`, `routing.Conn.Send`, `tunnel.Dial` and `routing.Listen` with one matching `context.DeadlineExceeded` ([LIMITATIONS.md](LIMITATIONS.md)).
+
+After `Close` the calls of a type return an error matching `knx.ErrClosed`, and a call that waits when `Close` comes ends with it; this holds for the requests of a `client.Device` after its own `Close` and after the client's ([ERRORS.md](ERRORS.md)).
+
+## Ownership
+
+Each subscription, `OnTelegram` callback and read of a `client.Client` gets its own copy of a delivered `Telegram` (its `Frame` and `Value.Data`), and each `server.Server.Subscribe` callback its own copy of the frame: a consumer may change or keep it. `cemi.NewGroupFrame` and `NewIndividualFrame` copy the TPDU they are given.
 
 ## Callbacks
 
@@ -71,7 +78,9 @@ A cancelled context ends a call with an error matching `context.Canceled`. An ex
 | `secure` | `NewCredentials`, `NewKeyPair`, `NewSession`, `NewRoutingTimer` | KNX IP Secure: key derivation and the session handshake |
 | `datasecure` | `NewTable(keys, senders, seq)`, `Open`, `OpenSyncRequest`, `OpenSyncResponse` | KNX Data Secure for group communication; persist `Table.Senders`, `Table.ToolSequences` and `Table.Sequence` and restore them (`NewTable`, `Table.SetToolSequence`) to keep replay protection across restarts |
 
-These hold no sockets and have nothing to close.
+These hold no sockets and have nothing to close. The key types (`secure.Key`, `datasecure.Key`, `keyring.Key`), `secure.Credentials` and `keyring.Backbone`, `Interface` and `Device` print and log with their keys and passwords redacted (`String`, `GoString`, `LogValue`); `keyring.Keyring` logs a summary. Use `k[:]` for the octets of a key.
+
+A client without its own Data Secure table makes one for a tool key: `client.Client.DeviceWithToolKey(addr, key)` returns the error when that table cannot be made (`datasecure.NewTable` refuses a system clock before 2018-01-05); a `Device` made with `client.WithToolKey` returns that error from every request instead.
 
 ## Codecs
 

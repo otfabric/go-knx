@@ -19,6 +19,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -43,15 +44,17 @@ const DefaultReadTimeout = 3 * time.Second
 // unless WithMaxResponses sets another.
 const DefaultMaxResponses = 1000
 
-// Answers of a client with Data Secure to individually addressed
-// requests (S-A_Sync_Res, the answer to a tool request): at most
-// maxPendingAnswers wait for the link at a time, one goroutine sends
-// them in order, and each send gets answerTimeout. An answer that finds
-// the queue full is dropped.
-const (
-	maxPendingAnswers = 16
-	answerTimeout     = 5 * time.Second
-)
+// DefaultMaxPendingAnswers is the number of answers of a client with
+// Data Secure to individually addressed requests (S-A_Sync_Res, the
+// answer to a tool request) that wait for the link at a time, unless
+// WithMaxPendingAnswers sets another. One goroutine sends them in order,
+// each within 5 s; an answer that finds the queue full is dropped.
+const DefaultMaxPendingAnswers = 16
+
+// maxAnswersLimit is the largest queue WithMaxPendingAnswers sets.
+const maxAnswersLimit = 65536
+
+const answerTimeout = 5 * time.Second
 
 // Link carries cEMI frames: *tunnel.Conn and *routing.Conn implement it.
 type Link interface {
@@ -60,7 +63,9 @@ type Link interface {
 	Close() error
 }
 
-// Telegram is a group telegram seen on the link.
+// Telegram is a group telegram seen on the link. Each subscription,
+// OnTelegram callback and read gets its own copy of the frame and the
+// value: a consumer may change or keep them.
 type Telegram struct {
 	Time    time.Time
 	Source  knx.IndividualAddress
@@ -99,6 +104,7 @@ type Client struct {
 	err     error
 	devices map[knx.IndividualAddress]*Device
 
+	maxAnswers     int              // size of answers
 	answers        chan *cemi.LData // answers waiting for the link
 	answersDropped atomic.Uint64    // answers that found the queue full
 
@@ -124,6 +130,18 @@ func WithSource(a knx.IndividualAddress) Option { return func(c *Client) { c.sou
 // link's individual address.
 func WithDataSecure(t *datasecure.Table) Option { return func(c *Client) { c.secure = t } }
 
+// WithMaxPendingAnswers sets how many answers to individually addressed
+// secured requests wait for the link at a time (1 to 65536;
+// DefaultMaxPendingAnswers without it). An answer that finds the queue
+// full is dropped. A value outside the range keeps the default.
+func WithMaxPendingAnswers(n int) Option {
+	return func(c *Client) {
+		if n >= 1 && n <= maxAnswersLimit {
+			c.maxAnswers = n
+		}
+	}
+}
+
 // WithPriority sets the priority of the telegrams (default low).
 func WithPriority(p knx.Priority) Option { return func(c *Client) { c.prio = p } }
 
@@ -141,10 +159,11 @@ func New(link Link, opts ...Option) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{link: link, prio: knx.PriorityLow, logger: knx.NopLogger(), subs: map[*Subscription]struct{}{},
 		waiters: map[*waiter]struct{}{}, hooks: map[int]func(Telegram){}, done: make(chan struct{}), cancel: cancel,
-		answers: make(chan *cemi.LData, maxPendingAnswers)}
+		maxAnswers: DefaultMaxPendingAnswers}
 	for _, o := range opts {
 		o(c)
 	}
+	c.answers = make(chan *cemi.LData, c.maxAnswers)
 	c.wg.Add(1)
 	go c.readLoop(ctx)
 	if c.secure != nil {
@@ -335,7 +354,9 @@ type waiter struct {
 // GroupRead sends A_GroupValue_Read to g and returns the first
 // A_GroupValue_Response to g before ctx's deadline (DefaultReadTimeout
 // without one). It returns an error matching knx.ErrTimeout when no
-// device answered. With WithDPT the value is decoded too.
+// device answered, or its request did not reach the link, before the
+// deadline; the error matches context.DeadlineExceeded too. With WithDPT
+// the value is decoded too.
 func (c *Client) GroupRead(ctx context.Context, g knx.GroupAddress, opts ...WriteOption) (Response, error) {
 	rs, err := c.read(ctx, g, true, opts)
 	if err != nil {
@@ -373,6 +394,9 @@ func (c *Client) read(ctx context.Context, g knx.GroupAddress, first bool, opts 
 		c.mu.Unlock()
 	}()
 	if err := c.send(ctx, g, apdu.GroupValueRead()); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, knx.ErrTimeout) {
+			err = fmt.Errorf("%w: client: read of %s: %w", knx.ErrTimeout, g, err)
+		}
 		return nil, err
 	}
 	var out []Response
@@ -394,7 +418,7 @@ func (c *Client) read(ctx context.Context, g knx.GroupAddress, first bool, opts 
 		case <-ctx.Done():
 			if first {
 				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-					return nil, fmt.Errorf("%w: client: no response to the read of %s", knx.ErrTimeout, g)
+					return nil, fmt.Errorf("%w: client: no response to the read of %s: %w", knx.ErrTimeout, g, ctx.Err())
 				}
 				return nil, ctx.Err()
 			}
@@ -498,9 +522,6 @@ func (s *Subscription) close() {
 }
 
 func (s *Subscription) deliver(t Telegram) {
-	if s.filter != nil && !s.filter[t.Group] {
-		return
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -551,7 +572,7 @@ func (c *Client) individual(ctx context.Context, ld *cemi.LData) {
 	case c.answers <- res:
 	default:
 		c.answersDropped.Add(1)
-		c.logger.Debugf("client: answer to %s dropped: %d answers wait for the link", ld.Source, maxPendingAnswers)
+		c.logger.Debugf("client: answer to %s dropped: %d answers wait for the link", ld.Source, cap(c.answers))
 	}
 }
 
@@ -692,34 +713,58 @@ func (c *Client) readLoop(ctx context.Context) {
 }
 
 // deliver hands a group telegram to the subscriptions, hooks and pending
-// reads.
+// reads. Each gets its own copy of the frame and the value; the last one
+// gets t itself, which nothing else holds.
 func (c *Client) deliver(t Telegram) {
 	c.mu.Lock()
 	subs := make([]*Subscription, 0, len(c.subs))
 	for s := range c.subs {
-		subs = append(subs, s)
+		if s.filter == nil || s.filter[t.Group] {
+			subs = append(subs, s)
+		}
 	}
 	hooks := make([]func(Telegram), 0, len(c.hooks))
 	for _, h := range c.hooks {
 		hooks = append(hooks, h)
 	}
+	var waiters []*waiter
 	if t.Service == apdu.GroupValueResponseService {
 		for w := range c.waiters {
 			if w.g == t.Group {
-				select {
-				case w.ch <- t:
-				default:
-				}
+				waiters = append(waiters, w)
 			}
+		}
+	}
+	left := len(subs) + len(hooks) + len(waiters)
+	next := func() Telegram {
+		if left--; left == 0 {
+			return t
+		}
+		return t.clone()
+	}
+	for _, w := range waiters {
+		select {
+		case w.ch <- next():
+		default:
 		}
 	}
 	c.mu.Unlock()
 	for _, s := range subs {
-		s.deliver(t)
+		s.deliver(next())
 	}
 	// The application's code runs with no lock held; a call that does
 	// not return normally is logged and the reader goes on.
 	for _, h := range hooks {
-		guard.Report(c.logger, guard.Run("client.OnTelegram", func() { h(t) }))
+		tc := next()
+		guard.Report(c.logger, guard.Run("client.OnTelegram", func() { h(tc) }))
 	}
+}
+
+// clone returns t with its own copy of the frame and the value.
+func (t Telegram) clone() Telegram {
+	if t.Frame != nil {
+		t.Frame = t.Frame.Clone()
+	}
+	t.Value.Data = bytes.Clone(t.Value.Data)
+	return t
 }

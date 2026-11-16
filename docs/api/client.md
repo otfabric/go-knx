@@ -19,6 +19,12 @@ A group read is a request on the bus: no response is guaranteed (no device may h
 ## Constants
 
 ```go
+const DefaultMaxPendingAnswers = 16
+```
+
+DefaultMaxPendingAnswers is the number of answers of a client with Data Secure to individually addressed requests (S-A\_Sync\_Res, the answer to a tool request) that wait for the link at a time, unless WithMaxPendingAnswers sets another. One goroutine sends them in order, each within 5 s; an answer that finds the queue full is dropped.
+
+```go
 const DefaultMaxResponses = 1000
 ```
 
@@ -43,6 +49,7 @@ MaxPropertyData is the most property data PropertyWrite sends: the TPDU of an A\
 ```go
 type Client struct {
 
+	// size of answers
 	// answers waiting for the link
 	// answers that found the queue full
 
@@ -91,6 +98,14 @@ func (c *Client) Device(addr knx.IndividualAddress, opts ...DeviceOption) *Devic
 
 Device returns the remote management of the device at addr. A second Device for the same address replaces the first.
 
+#### func (Client) DeviceWithToolKey
+
+```go
+func (c *Client) DeviceWithToolKey(addr knx.IndividualAddress, k datasecure.Key, opts ...DeviceOption) (*Device, error)
+```
+
+DeviceWithToolKey returns the remote management of the device at addr, secured with its tool key k as Device with WithToolKey does, and the error of a Data Secure table for the key that cannot be made (datasecure.NewTable, when the client has no table of its own). On an error it returns no Device, and a Device of addr made before stays in place.
+
 #### func (Client) Done
 
 ```go
@@ -113,7 +128,7 @@ Err returns the error the link failed with, nil after Close.
 func (c *Client) GroupRead(ctx context.Context, g knx.GroupAddress, opts ...WriteOption) (Response, error)
 ```
 
-GroupRead sends A\_GroupValue\_Read to g and returns the first A\_GroupValue\_Response to g before ctx's deadline (DefaultReadTimeout without one). It returns an error matching knx.ErrTimeout when no device answered. With WithDPT the value is decoded too.
+GroupRead sends A\_GroupValue\_Read to g and returns the first A\_GroupValue\_Response to g before ctx's deadline (DefaultReadTimeout without one). It returns an error matching knx.ErrTimeout when no device answered, or its request did not reach the link, before the deadline; the error matches context.DeadlineExceeded too. With WithDPT the value is decoded too.
 
 #### func (Client) GroupReadAll
 
@@ -171,6 +186,9 @@ Subscribe returns a subscription to the telegrams to groups (all when empty), wi
 type Device struct {
 
 	// with the device's tool key: secured
+	// the tool key table could not be made
+
+	// closed by Close
 
 	// one request at a time
 	// the transport connection is open
@@ -196,7 +214,7 @@ Address returns the device's individual address.
 func (d *Device) Close() error
 ```
 
-Close ends the transport connection (T\_Disconnect) and releases the device.
+Close ends the transport connection (T\_Disconnect) and releases the device. A request that waits when Close is called, and every request after it, returns an error matching knx.ErrClosed; so do they after the client's Close.
 
 #### func (Device) DescriptorRead
 
@@ -270,6 +288,8 @@ func WithToolKey(k datasecure.Key) DeviceOption
 
 WithToolKey secures the access with the device's tool key (KNX Data Secure point to point with tool access): an S-A\_Sync before the first request, then S-A\_Data. Without this option the access is secured when the client's Data Secure table (WithDataSecure) has the device's tool key.
 
+The key goes into the client's Data Secure table, or into a table of the Device's own when the client has none. When that table cannot be made (datasecure.NewTable fails while the system clock is before 2018-01-05), every request of the Device returns the error and sends nothing. Client.DeviceWithToolKey returns that error at once.
+
 ### type Link
 
 ```go
@@ -305,6 +325,14 @@ func WithLogger(l knx.Logger) Option
 ```
 
 WithLogger sets the logger.
+
+#### func WithMaxPendingAnswers
+
+```go
+func WithMaxPendingAnswers(n int) Option
+```
+
+WithMaxPendingAnswers sets how many answers to individually addressed secured requests wait for the link at a time (1 to 65536; DefaultMaxPendingAnswers without it). An answer that finds the queue full is dropped. A value outside the range keeps the default.
 
 #### func WithPriority
 
@@ -385,7 +413,7 @@ type Telegram struct {
 }
 ```
 
-Telegram is a group telegram seen on the link.
+Telegram is a group telegram seen on the link. Each subscription, OnTelegram callback and read gets its own copy of the frame and the value: a consumer may change or keep them.
 
 #### func (Telegram) Decode
 

@@ -5,6 +5,44 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.12.0
+
+**Date:** 2026-11-16
+**Previous release:** v0.11.1
+
+## Summary
+
+Close, deadlines and ownership as the documents state them. After `Close` every call returns `knx.ErrClosed`, and a `client.Device` request that waits when the device or its client closes ends with it; a deadline in `client.GroupRead` and `tunnel.Conn.Send` gives an error matching `knx.ErrTimeout` and `context.DeadlineExceeded`; every consumer of a delivered telegram gets its own copy; keys and credentials print and log redacted. New: `tunnel.WithDialer`, `client.Client.DeviceWithToolKey`, `client.WithMaxPendingAnswers`, and a ceiling for the pause after a ROUTING_BUSY. `tunnel.Conn.Close` during a reconnection disconnects the channel the server opens for it.
+
+## Changes
+
+### Breaking
+
+- After `Close`, `routing.Conn.Send` returns an error matching `knx.ErrClosed` and sends nothing (it returned the error of the closed socket). `server.Server.Send`, `GroupWrite` and `Transmit` return an error matching `knx.ErrClosed` and reach neither the `Subscribe` callbacks nor the virtual devices; `Transmit` leaves the group object as it was (they returned nil and distributed the telegram). `tunnel.Conn.FeatureGet` and `FeatureSet` return an error matching `knx.ErrClosed` (it matched `knx.ErrConnectionLost`). Who notices: an application that calls these after `Close`, in particular one that relied on `Server.Send` distributing to the taps and devices of a closed server. Restore path: none by option; call them before `Close`, or ignore `knx.ErrClosed` where a call after `Close` is expected.
+- A `client.Device` request after `Device.Close` or `Client.Close` returns an error matching `knx.ErrClosed` and sends nothing (it went to the link and ended at its deadline). A request that waits for its answer or its turn when the device or the client closes returns at once with that error; `Device.Close` no longer waits for the request's deadline, and still ends the transport connection. Who notices: an application that closes a `Device` while a request runs and expected the request to complete. Restore path: let the request return before `Close`.
+- An expired deadline of `client.GroupRead` gives an error matching `knx.ErrTimeout` and `context.DeadlineExceeded` (it matched `knx.ErrTimeout` only), also while its request waits for the link. `tunnel.Conn.Send` at a deadline, in any of its waits, gives an error matching both (it returned the context's error). Who notices: code that compares the error with `==` instead of `errors.Is`, or that tells a deadline from a timeout of the library by `knx.ErrTimeout`. Restore path: `errors.Is(err, context.DeadlineExceeded)` tells the deadline; a cancelled context still gives `context.Canceled` only.
+- Each subscription, `OnTelegram` callback and read of a `client.Client` gets its own copy of a delivered `Telegram` (`Frame` and `Value.Data`); each `server.Server.Subscribe` callback gets its own copy of the frame, so what it changes no longer reaches the clients and devices. `cemi.NewGroupFrame` and `NewIndividualFrame` copy the TPDU. Who notices: code that changed a telegram in one consumer so that another sees it, a tap that edited the frame before the server distributed it, or a caller that changed the slice given to `NewGroupFrame` after the call. Restore path: none by option; share changes through the application's own state, and send a changed frame with `Server.Send`. Measured cost, this machine: `NewGroupFrame` one allocation more (8 octets); a telegram to one subscription none; to a subscription, a callback and a read 7 allocations, 168 octets; a server telegram 2 allocations, 72 octets per `Subscribe` callback; a `GroupWrite` through a tunnel 73 instead of 72 allocations.
+- The key types `secure.Key`, `datasecure.Key` and `keyring.Key`, `secure.Credentials` and `keyring.Backbone`, `Interface` and `Device` print `(redacted)` for their keys and passwords with `%v`, `%s`, `%x`, `%q` and `%#v`, and log so with `log/slog`. Who notices: code that printed a key with `%x` or `%v` to show or store it. Restore path: `hex.EncodeToString(k[:])` or `fmt.Sprintf("%x", k[:])`.
+- `tunnel.Conn.Close` during a reconnection waits up to 1 s (no longer than the rest of the connect timeout) for the CONNECT_RESPONSE in flight and sends a DISCONNECT_REQUEST for the channel it opened; the supervisor ends before `Close` decides whether to disconnect. Who notices: an application that closes a reconnecting tunnel whose server answers late: `Close` returns up to 1 s later. Restore path: call `Close` from another goroutine where it must not wait.
+
+### Added
+
+- `tunnel.WithDialer(func(ctx, network, address) (net.Conn, error))` supplies the TCP connection of a tunnel (`WithTCP`, or `WithSecure` without `WithUDP`), and with it of `devmgmt.Dial` and `client.DialTunnel`: the dialer gets "tcp4", the server's address and a context bounded by the connect timeout. Its error fails `Dial`, wrapped; a connection returned with an error is closed; no connection is `knx.ErrInvalidOption`, as are a UDP tunnel and `WithLocalAddr` with it. nil keeps the `net.Dialer`.
+- `client.Client.DeviceWithToolKey(addr, key, opts...)` returns the `Device` secured with the tool key and the error when its Data Secure table cannot be made (`datasecure.NewTable` refuses a system clock before 2018-01-05); on an error it returns no `Device` and leaves an earlier `Device` of the address in place. A `Device` made with `client.WithToolKey` in that case returns the error from every request and sends nothing.
+- `client.DefaultMaxPendingAnswers` (16) and `client.WithMaxPendingAnswers(n)`, 1 to 65536: the queue of the answers of a client with Data Secure to individually addressed requests. A value outside the range keeps the default.
+- `routing.WithMaxBusyPause(d)` and `server.WithRoutingMaxBusyPause(d)`: a ceiling for the pause after a ROUTING_BUSY, the wait time and the random extension together, measured from the busy frame that starts or extends the pause. 0, the default, keeps the pause the frame asks for; a negative value is `knx.ErrInvalidOption`. The busy counter and the reduced rate after the pause are not changed.
+- `String`, `GoString` and `LogValue` on `secure.Key`, `secure.Credentials`, `datasecure.Key`, `keyring.Key`, `keyring.Backbone`, `keyring.Interface` and `keyring.Device`; `LogValue` on `keyring.Keyring` (the project and the number of entries).
+
+### Documentation
+
+- LIMITATIONS.md: which calls match which sentinel at a deadline, the late devmgmt confirmation, `WithDialer` and the UDP socket, what the redaction covers (`%d` and `encoding/json` of a key still give its octets). ERRORS.md: the calls that return `knx.ErrClosed`, the deadlines that match `knx.ErrTimeout`. API.md: bounds of the answer queue and the busy pause, the deadline rule, ownership of delivered telegrams, `DeviceWithToolKey`, the redaction. ARCHITECTURE.md: `Close` during a reconnection, the busy pause ceiling, copies per consumer. SECURITY.md: the redaction, the two limits with their options and tests. TESTING.md: matrix rows L3 (D), L12 and L16 covered. docs/IMPLEMENTATION-STATUS.md: the busy pause ceiling and `Close` during a reconnection.
+
+### Tests
+
+- One test per type that every call after `Close` matches `knx.ErrClosed` and has no side effect, and that a `Device` request waiting at `Close` ends with it; deadline tests of `GroupRead` and of each wait of `tunnel.Conn.Send`; aliasing tests of the client's consumers, the server's taps and `NewGroupFrame`; `WithDialer` with a fault-injecting connection and every refusal; a tool key table that cannot be made; the answer queue at sizes from 1 to 65536 and out of range; the busy pause ceiling at, below and above its value; `Close` during a reconnection whose CONNECT_RESPONSE comes late; the redaction in `fmt` and `log/slog`. Benchmarks of `NewGroupFrame`, the client's delivery and the server's taps.
+
+---
+
 ## v0.11.1
 
 **Date:** 2026-11-15

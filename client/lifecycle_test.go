@@ -5,6 +5,8 @@ package client_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"runtime"
 	"strings"
 	"sync"
@@ -83,6 +85,31 @@ func (e *errorLog) all() []string {
 // answers, the client holds that many answers and no more goroutines.
 func TestAnswersBounded(t *testing.T) {
 	leak.Check(t)
+	answersBounded(t, client.MaxPendingAnswers)
+}
+
+// WithMaxPendingAnswers sets the size of the queue of answers; a value
+// outside 1..65536 keeps the default.
+func TestAnswersBoundedByOption(t *testing.T) {
+	leak.Check(t)
+	for _, tc := range []struct {
+		n, capacity int
+	}{
+		{1, 1}, {2, 2}, {4, 4}, {299, 299}, {300, 300}, {65536, 65536},
+		{0, client.DefaultMaxPendingAnswers}, {-1, client.DefaultMaxPendingAnswers},
+		{65537, client.DefaultMaxPendingAnswers}, {math.MinInt, client.DefaultMaxPendingAnswers},
+		{math.MaxInt, client.DefaultMaxPendingAnswers}, {math.MaxInt32, client.DefaultMaxPendingAnswers},
+	} {
+		t.Run(fmt.Sprint(tc.n), func(t *testing.T) {
+			answersBounded(t, tc.capacity, client.WithMaxPendingAnswers(tc.n))
+		})
+	}
+}
+
+// answersBounded sends 300 requests to a client whose link takes no
+// answer, with a queue of capacity answers.
+func answersBounded(t *testing.T, capacity int, opts ...client.Option) {
+	t.Helper()
 	tool, own := knx.MustParseIndividualAddress("15.15.240"), knx.MustParseIndividualAddress("15.15.255")
 	toolKey := datasecure.Key{7}
 	tab, err := datasecure.NewTable(nil, nil, 50)
@@ -104,7 +131,7 @@ func TestAnswersBounded(t *testing.T) {
 		<-release // the link takes nothing until the test lets it
 		sent <- struct{}{}
 	}
-	c := client.New(l, client.WithSource(own), client.WithDataSecure(tab))
+	c := client.New(l, append([]client.Option{client.WithSource(own), client.WithDataSecure(tab)}, opts...)...)
 	defer c.Close()
 	defer letGo() // before Close: a link that holds an answer holds its sender
 	sub := c.Subscribe(1, g1)
@@ -130,14 +157,14 @@ func TestAnswersBounded(t *testing.T) {
 	if after := runtime.NumGoroutine(); after > before {
 		t.Errorf("%d goroutines after %d requests the link did not take, %d before", after, requests, before)
 	}
-	if got, want := c.AnswersDropped(), uint64(requests-client.MaxPendingAnswers); got != want {
-		t.Errorf("%d answers dropped, want %d: %d requests, %d places in the queue", got, want, requests, client.MaxPendingAnswers)
+	if got, want := c.AnswersDropped(), uint64(max(requests-capacity, 0)); got != want {
+		t.Errorf("%d answers dropped, want %d: %d requests, %d places in the queue", got, want, requests, capacity)
 	}
 
 	// The link takes the answers again: the one it held and the queued
 	// ones are sent, in order, and nothing else.
 	letGo()
-	for range 1 + client.MaxPendingAnswers {
+	for range 1 + min(capacity, requests) {
 		recv(t, sent, "an answer to be sent")
 	}
 	// One more request is answered: the queue has room again.
@@ -147,7 +174,7 @@ func TestAnswersBounded(t *testing.T) {
 	n := len(l.sent)
 	frames := append([]*cemi.LData(nil), l.sent...)
 	l.mu.Unlock()
-	if want := 2 + client.MaxPendingAnswers; n != want {
+	if want := 2 + min(capacity, requests); n != want {
 		t.Errorf("%d frames sent, want %d", n, want)
 	}
 	for i, f := range frames {

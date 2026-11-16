@@ -104,7 +104,7 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error
 
 Send sends a cEMI frame (an L\_Data.ind) as a ROUTING\_INDICATION; a source of 0.0.0 is replaced by the Conn's individual address. It waits for the pause after the previous indication and for the flow control of a ROUTING\_BUSY, and refuses frames with hop count 0.
 
-Sends take turns. Every wait of Send ends when ctx ends (with ctx's error) or the Conn closes (knx.ErrClosed): the wait for the turn while another Send waits for the flow control, and the wait for the flow control itself.
+Sends take turns. Every wait of Send ends when ctx ends (with ctx's error) or the Conn closes (knx.ErrClosed): the wait for the turn while another Send waits for the flow control, and the wait for the flow control itself. After Close, Send returns knx.ErrClosed and sends nothing.
 
 ### type Event
 
@@ -166,6 +166,14 @@ func WithLoopback(on bool) Option
 ```
 
 WithLoopback enables multicast loopback, so that routers on the same host hear each other (default off). The Conn drops its own echoes.
+
+#### func WithMaxBusyPause
+
+```go
+func WithMaxBusyPause(d time.Duration) Option
+```
+
+WithMaxBusyPause bounds the pause after a ROUTING\_BUSY, the frame's wait time and the random extension together, to d, measured from the busy frame that starts or extends the pause. 0, the default, leaves the pause to the frame: up to 65.535 s plus the extension. The reduced rate after the pause is not changed. A negative d is knx.ErrInvalidOption.
 
 #### func WithMetrics
 

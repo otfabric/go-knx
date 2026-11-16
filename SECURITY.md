@@ -115,8 +115,9 @@ Behaviour that matters for security:
   whichever is first.
 - A client with Data Secure sends its answers to individually addressed
   requests (S-A_Sync_Res, the answer to a tool request) from one goroutine,
-  through a queue of 16: an answer that finds the queue full is dropped
-  and logged at debug level, and each send gets 5 s.
+  through a queue of 16 (`client.WithMaxPendingAnswers`): an answer that
+  finds the queue full is dropped and logged at debug level, and each send
+  gets 5 s.
 - A `Send` of `routing.Conn` or `tunnel.Conn` (and a tunnelling feature
   call) that waits for its turn behind another returns when its context
   ends or the connection closes.
@@ -138,7 +139,11 @@ Behaviour that matters for security:
 ## Credential handling
 
 Keys and passwords are never logged and never appear in error messages
-(errors name users and addresses only). The library takes derived keys
+(errors name users and addresses only). The key types (`secure.Key`,
+`datasecure.Key`, `keyring.Key`), `secure.Credentials` and the keyring's
+`Backbone`, `Interface` and `Device` print as `(redacted)` with `%v`,
+`%s`, `%x`, `%q` and `%#v`, and log so with `log/slog`; `%d` and
+`encoding/json` still give the octets of a key. The library takes derived keys
 (`secure.Key`) or passwords and derives them once (PBKDF2-HMAC-SHA256,
 65536 iterations); it keeps them in memory for the life of the connection.
 knxctl reads secrets from environment variables or the keyring by default
@@ -168,7 +173,8 @@ are enforced and the test of each:
 | Send queue of a server's connection, routing send queue | 128 frames | `server.WithQueueSize` | a frame that does not fit is dropped (`queue_full`, `routing_rate`) | server `TestQueueFull`, `TestRoutingOutbound` |
 | Telegrams of a subscription | the buffer given to `Subscribe` | the caller | dropped and counted (`Subscription.Dropped`) | client `TestSubscribe` |
 | Responses of `GroupReadAll` | 1000 | `client.WithMaxResponses` | it returns when it has them | client `TestGroupReadAllMaxResponses` |
-| Answers of a client with Data Secure waiting for the link | 16, sent by one goroutine, 5 s each | — | an answer that does not fit is dropped (debug log) | client `TestAnswersBounded`, `TestAnswersEndWithClose` |
+| Answers of a client with Data Secure waiting for the link | 16 (`client.DefaultMaxPendingAnswers`), sent by one goroutine, 5 s each | `client.WithMaxPendingAnswers`, 1 to 65536 | an answer that does not fit is dropped (debug log) | client `TestAnswersBounded`, `TestAnswersBoundedByOption`, `TestAnswersEndWithClose` |
+| Pause of the routing sender after a ROUTING_BUSY | the frame's wait time (up to 65.535 s) plus 0 … N × 50 ms | `routing.WithMaxBusyPause`, `server.WithRoutingMaxBusyPause` (a ceiling; none by default) | `internal/flowctl`, for `routing.Conn` and the server's routing sender | internal/flowctl `TestMaxPause`, routing `TestMaxBusyPause`, server `TestRoutingMaxBusyPause` |
 | Property data of `Device.PropertyWrite` | 250 octets | — | refused before sending | client `TestPropertyWriteTooLong` |
 | Servers of `discovery.Search` | 256 | `discovery.WithMaxResults` | it returns when it has them | discovery `TestSearchMaxResults` |
 | Pause after an accept or read error of a socket | 5 ms, doubling to 1 s while errors follow each other | — | the server's accept and read loops, `routing.Conn`, the tunnelling client and discovery | server `TestAcceptLoopPausesAfterErrors`, `TestReadLoopPausesAfterErrors`, routing `TestReadLoopPausesAfterErrors`, internal/udp `TestReadPausesAfterDatagramErrors` |

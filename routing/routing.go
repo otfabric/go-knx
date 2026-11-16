@@ -54,6 +54,7 @@ type options struct {
 	iface     string
 	group     string
 	rate      int
+	maxPause  time.Duration
 	queueSize int
 	loopback  bool
 	ttl       int
@@ -125,6 +126,21 @@ func WithRate(n int) Option {
 			return invalid("rate %d", n)
 		}
 		o.rate = n
+		return nil
+	}
+}
+
+// WithMaxBusyPause bounds the pause after a ROUTING_BUSY, the frame's
+// wait time and the random extension together, to d, measured from the
+// busy frame that starts or extends the pause. 0, the default, leaves the
+// pause to the frame: up to 65.535 s plus the extension. The reduced rate
+// after the pause is not changed. A negative d is knx.ErrInvalidOption.
+func WithMaxBusyPause(d time.Duration) Option {
+	return func(o *options) error {
+		if d < 0 {
+			return invalid("max busy pause %v", d)
+		}
+		o.maxPause = d
 		return nil
 	}
 }
@@ -240,6 +256,7 @@ func Listen(ctx context.Context, opts ...Option) (*Conn, error) {
 	}
 	c := &Conn{o: o, sock: sock, group: group, flow: flowctl.New(o.rate), echoes: map[[32]byte]time.Time{}, turn: make(chan struct{}, 1),
 		inbound: make(chan cemi.Frame, o.queueSize), events: make(chan Event, 16), closing: make(chan struct{})}
+	c.flow.SetMaxPause(o.maxPause)
 	if o.secure != nil {
 		c.timer = secure.NewRoutingTimer(o.secure.key, o.serial, o.secure.latency, c.sendNotify)
 	}
@@ -283,8 +300,12 @@ func (c *Conn) Group() netip.AddrPort { return c.group }
 // Sends take turns. Every wait of Send ends when ctx ends (with ctx's
 // error) or the Conn closes (knx.ErrClosed): the wait for the turn while
 // another Send waits for the flow control, and the wait for the flow
-// control itself.
+// control itself. After Close, Send returns knx.ErrClosed and sends
+// nothing.
 func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
+	if c.closed() {
+		return errClosed
+	}
 	if ld, ok := f.(*cemi.LData); ok {
 		if ld.HopCount() == 0 {
 			return fmt.Errorf("%w: routing: hop count 0 is not routed", knx.ErrInvalidValue)
@@ -306,6 +327,9 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 		return err
 	}
 	defer func() { <-c.turn }()
+	if c.closed() {
+		return errClosed // a free turn is taken after Close too
+	}
 	// A ROUTING_BUSY received while waiting extends the wait.
 	for d := c.flow.Delay(); d > 0; d = c.flow.Delay() {
 		if err := sleep(ctx, c.closing, d); err != nil {
@@ -326,7 +350,27 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 		}
 	}
 	c.flow.Sent()
-	return c.transmit(ctx, frame, knxnetip.RoutingIndicationType)
+	if err := c.transmit(ctx, frame, knxnetip.RoutingIndicationType); err != nil {
+		if c.closed() {
+			// Close came during the write.
+			return fmt.Errorf("%w: %w", knx.ErrClosed, err)
+		}
+		return err
+	}
+	return nil
+}
+
+// errClosed is the error of a Send after Close.
+var errClosed = fmt.Errorf("routing: send: %w", knx.ErrClosed)
+
+// closed reports whether Close has begun.
+func (c *Conn) closed() bool {
+	select {
+	case <-c.closing:
+		return true
+	default:
+		return false
+	}
 }
 
 // acquire takes the send turn. A turn that is free is taken at once;

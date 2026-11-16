@@ -118,6 +118,30 @@ func NewCredentials(userID uint8, userPassword, devicePassword string) (Credenti
 
 NewCredentials derives the credentials of a user from the passwords; an empty device password leaves DeviceCode nil.
 
+#### func (Credentials) GoString
+
+```go
+func (c Credentials) GoString() string
+```
+
+GoString returns the user ID with the keys redacted, for %#v.
+
+#### func (Credentials) LogValue
+
+```go
+func (c Credentials) LogValue() slog.Value
+```
+
+LogValue returns the user ID with the keys redacted, for log/slog.
+
+#### func (Credentials) String
+
+```go
+func (c Credentials) String() string
+```
+
+String returns the user ID with the keys redacted.
+
 ### type Key
 
 ```go
@@ -149,6 +173,30 @@ func UserPasswordKey(password string) (Key, error)
 ```
 
 UserPasswordKey derives the password key of a user from the password.
+
+#### func (Key) GoString
+
+```go
+func (Key) GoString() string
+```
+
+GoString returns "(redacted)" for %#v.
+
+#### func (Key) LogValue
+
+```go
+func (Key) LogValue() slog.Value
+```
+
+LogValue returns "(redacted)" for log/slog.
+
+#### func (Key) String
+
+```go
+func (Key) String() string
+```
+
+String returns "(redacted)", so that %v, %s, %x and %q do not print the key. Use k\[:] for the octets.
 
 ### type KeyPair
 

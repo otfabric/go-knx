@@ -78,10 +78,14 @@ type Conn struct {
 
 	inbound chan cemi.Frame
 	lost    chan lostEvent
-	closing chan struct{}
-	done    chan struct{}
-	closeMu sync.Once
-	wg      sync.WaitGroup
+	// stopping is closed when Close begins: the supervisor ends, and a
+	// reconnection it runs disconnects the channel it opened.
+	stopping  chan struct{}
+	superDone chan struct{} // closed when the supervisor ended; nil before it starts
+	closing   chan struct{}
+	done      chan struct{}
+	closeMu   sync.Once
+	wg        sync.WaitGroup
 }
 
 type lostEvent struct {
@@ -134,18 +138,20 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 	if o.tcp && o.reconnect {
 		return nil, invalid("WithTCP and WithReconnect: reconnect over TCP is not implemented")
 	}
+	if o.dial != nil && !o.tcp {
+		return nil, invalid("WithDialer needs a TCP tunnel")
+	}
+	if o.dial != nil && o.local != "" {
+		return nil, invalid("WithDialer and WithLocalAddr exclude each other")
+	}
 	// closing is the Conn's: it also ends the pause of the UDP reader
 	// after a read error.
 	closing := make(chan struct{})
 	var tr transport
 	if o.tcp {
-		d := net.Dialer{Timeout: o.connectTimeout}
-		if o.local != "" {
-			d.LocalAddr = net.TCPAddrFromAddrPort(local)
-		}
-		tc, err := d.DialContext(ctx, "tcp4", server.String())
+		tc, err := dialTCP(ctx, o, local, server)
 		if err != nil {
-			return nil, fmt.Errorf("tunnel: dial tcp %s: %w", server, err)
+			return nil, err
 		}
 		// Every write is bounded by the request timeout: a server that
 		// stops reading is a lost connection, not a stuck writer.
@@ -184,16 +190,17 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 	}
 	c := &Conn{
 		o: o, tr: tr, server: server, hpai: hpai,
-		turn:    make(chan struct{}, 1),
-		featCh:  make(chan *knxnetip.TunnellingFeature, 4),
-		ackCh:   make(chan *knxnetip.TunnellingAck, 1),
-		connCh:  make(chan *knxnetip.ConnectResponse, 1),
-		csCh:    make(chan *knxnetip.ConnectionStateResponse, 1),
-		discCh:  make(chan *knxnetip.DisconnectResponse, 1),
-		inbound: make(chan cemi.Frame, o.queueSize),
-		lost:    make(chan lostEvent, 1),
-		closing: closing,
-		done:    make(chan struct{}),
+		turn:     make(chan struct{}, 1),
+		featCh:   make(chan *knxnetip.TunnellingFeature, 4),
+		ackCh:    make(chan *knxnetip.TunnellingAck, 1),
+		connCh:   make(chan *knxnetip.ConnectResponse, 1),
+		csCh:     make(chan *knxnetip.ConnectionStateResponse, 1),
+		discCh:   make(chan *knxnetip.DisconnectResponse, 1),
+		inbound:  make(chan cemi.Frame, o.queueSize),
+		lost:     make(chan lostEvent, 1),
+		stopping: make(chan struct{}),
+		closing:  closing,
+		done:     make(chan struct{}),
 	}
 	c.setState(knx.StateConnecting, nil)
 	c.wg.Add(1)
@@ -203,12 +210,43 @@ func Dial(ctx context.Context, addr string, opts ...Option) (*Conn, error) {
 		return nil, err
 	}
 	c.wg.Add(2)
+	c.superDone = make(chan struct{})
 	go c.heartbeatLoop()
 	// Reconnects outlive Dial: they keep the values of ctx (tracing and
 	// the like) but not its cancellation or deadline, which bound the
 	// first connect only. Close cancels them.
 	go c.supervise(context.WithoutCancel(ctx))
 	return c, nil
+}
+
+// dialTCP opens the TCP connection of a tunnel: with the dialer of
+// WithDialer, or else a net.Dialer bound to local when WithLocalAddr set
+// it.
+func dialTCP(ctx context.Context, o options, local, server netip.AddrPort) (net.Conn, error) {
+	if o.dial == nil {
+		d := net.Dialer{Timeout: o.connectTimeout}
+		if o.local != "" {
+			d.LocalAddr = net.TCPAddrFromAddrPort(local)
+		}
+		tc, err := d.DialContext(ctx, "tcp4", server.String())
+		if err != nil {
+			return nil, fmt.Errorf("tunnel: dial tcp %s: %w", server, err)
+		}
+		return tc, nil
+	}
+	dctx, cancel := context.WithTimeout(ctx, o.connectTimeout)
+	defer cancel()
+	tc, err := o.dial(dctx, "tcp4", server.String())
+	if err != nil {
+		if tc != nil {
+			_ = tc.Close()
+		}
+		return nil, fmt.Errorf("tunnel: dial tcp %s: %w", server, err)
+	}
+	if tc == nil {
+		return nil, invalid("the dialer of WithDialer returned no connection to %s", server)
+	}
+	return tc, nil
 }
 
 // IndividualAddress returns the individual address the server assigned to
@@ -296,9 +334,15 @@ func (c *Conn) connect(ctx context.Context) error {
 		cri.HasAddress, cri.Address = true, c.o.address
 	}
 	req := &knxnetip.ConnectRequest{Control: c.hpai, Data: c.hpai, CRI: cri}
+	select {
+	case <-c.stopping:
+		return knx.ErrClosed
+	default:
+	}
 	if err := c.write(c.server, req); err != nil {
 		return err
 	}
+	end := time.Now().Add(c.o.connectTimeout)
 	t := time.NewTimer(c.o.connectTimeout)
 	defer t.Stop()
 	select {
@@ -326,9 +370,45 @@ func (c *Conn) connect(ctx context.Context) error {
 	case <-t.C:
 		return fmt.Errorf("%w: tunnel: no CONNECT_RESPONSE from %s within %v", knx.ErrTimeout, c.server, c.o.connectTimeout)
 	case <-ctx.Done():
+		select {
+		case <-c.stopping:
+			c.abandonConnect(end)
+			return knx.ErrClosed
+		default:
+		}
 		return ctx.Err()
-	case <-c.closing:
+	case <-c.stopping:
+		c.abandonConnect(end)
 		return knx.ErrClosed
+	}
+}
+
+// abandonConnectWait bounds the wait of Close for the answer to a
+// CONNECT_REQUEST it interrupted.
+const abandonConnectWait = time.Second
+
+// abandonConnect handles the CONNECT_REQUEST of a reconnection that Close
+// interrupted: it waits for the answer, for at most abandonConnectWait
+// and not past end, the end of the connect timeout, and disconnects the
+// channel the answer opened, so that the server does not keep it.
+func (c *Conn) abandonConnect(end time.Time) {
+	wait := min(time.Until(end), abandonConnectWait)
+	if wait <= 0 {
+		return
+	}
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	select {
+	case resp := <-c.connCh:
+		if resp.Status != knxnetip.StatusNoError {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), closeWriteTimeout)
+		defer cancel()
+		if err := c.writeContext(ctx, c.server, &knxnetip.DisconnectRequest{Channel: resp.Channel, Control: c.hpai}); err != nil {
+			c.o.logger.Debugf("tunnel: disconnect channel %d of the interrupted reconnection: %v", resp.Channel, err)
+		}
+	case <-t.C:
 	}
 }
 
@@ -358,7 +438,9 @@ func drain[T any](ch chan T) {
 // be).
 //
 // Sends take turns, and a Send that waits for its turn returns when ctx
-// ends (ctx's error) or the Conn closes. When ctx ends after the request
+// ends (ctx's error) or the Conn closes. A Send whose context deadline
+// passes, in any of its waits, returns an error matching knx.ErrTimeout
+// and context.DeadlineExceeded. When ctx ends after the request
 // was written and before its TUNNELLING_ACK, Send returns ctx's error and
 // the request stays outstanding: it is not repeated, the server may have
 // taken it, and its sequence number is used for no other frame. The next
@@ -367,6 +449,12 @@ func drain[T any](ch chan T) {
 // number; when the acknowledgement did not come, the connection is
 // considered lost (knx.ErrConnectionLost).
 func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
+	return deadline(c.send(ctx, f))
+}
+
+// send is Send; Send makes the error of an expired deadline match
+// knx.ErrTimeout too.
+func (c *Conn) send(ctx context.Context, f cemi.Frame) error {
 	b, err := cemi.Marshal(f)
 	if err != nil {
 		return err
@@ -446,6 +534,15 @@ func (c *Conn) Send(ctx context.Context, f cemi.Frame) error {
 	case <-c.closing:
 		return knx.ErrClosed
 	}
+}
+
+// deadline makes the error of a call whose context deadline passed match
+// knx.ErrTimeout too.
+func deadline(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, knx.ErrTimeout) {
+		return fmt.Errorf("%w: tunnel: %w", knx.ErrTimeout, err)
+	}
+	return err
 }
 
 // acquire takes the send turn. A turn that is free is taken at once;
@@ -939,10 +1036,11 @@ func (c *Conn) heartbeat(ch uint8) error {
 // runs under a child of parent that Close cancels.
 func (c *Conn) supervise(parent context.Context) {
 	defer c.wg.Done()
+	defer close(c.superDone)
 	for {
 		var ev lostEvent
 		select {
-		case <-c.closing:
+		case <-c.stopping:
 			return
 		case ev = <-c.lost:
 		}
@@ -969,14 +1067,14 @@ func (c *Conn) supervise(parent context.Context) {
 		pause := c.o.reconnectMin
 		for {
 			select {
-			case <-c.closing:
+			case <-c.stopping:
 				return
 			case <-time.After(backoff.Jitter(pause, c.o.jitter)):
 			}
 			ctx, cancel := context.WithCancel(parent)
 			go func() {
 				select {
-				case <-c.closing:
+				case <-c.stopping:
 					cancel()
 				case <-ctx.Done():
 				}
@@ -999,8 +1097,10 @@ func (c *Conn) supervise(parent context.Context) {
 }
 
 // Close disconnects (DISCONNECT_REQUEST, waiting briefly for the
-// response), stops the goroutines and closes the socket. It is safe to
-// call more than once.
+// response), stops the goroutines and closes the socket. During a
+// reconnection it waits up to a second for the answer to the
+// CONNECT_REQUEST in flight and disconnects the channel that answer
+// opened. It is safe to call more than once.
 func (c *Conn) Close() error {
 	c.shutdown(nil)
 	return nil
@@ -1012,6 +1112,13 @@ const closeWriteTimeout = time.Second
 
 func (c *Conn) shutdown(cause error) {
 	c.closeMu.Do(func() {
+		// The supervisor ends first: a reconnection it runs disconnects
+		// the channel the server opens for it, and one that completed
+		// is disconnected here.
+		close(c.stopping)
+		if c.superDone != nil {
+			<-c.superDone
+		}
 		c.mu.Lock()
 		state, ch, remoteClosed := c.state, c.channel, c.remoteClosed
 		if cause != nil {

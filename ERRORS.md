@@ -10,8 +10,8 @@ Every error matches one of the sentinels of the root package with
 | `knx.ErrUnsupported` | A service, protocol version, datapoint type or feature not implemented | decoders, `dpt.Lookup`, `apdu.ParseGroupValue` |
 | `knx.ErrInvalidOption` | An option or argument a function cannot be called with | constructors, `dpt.ParseID` |
 | `knx.ErrInvalidValue` | A value outside its type's range, data of the wrong size, a frame that would not encode to a valid one | `dpt.Type.Encode/Decode`, encoders |
-| `knx.ErrClosed` | The connection, client or server was closed | `tunnel.Conn` (`Send`, `Receive`), `routing.Conn.Receive` and a `Send` that waits, `client.Client`, `server.Server.Start`; the calls that do not return it after `Close` yet are in [LIMITATIONS.md](LIMITATIONS.md) |
-| `knx.ErrTimeout` | No answer in time: CONNECT_RESPONSE, DESCRIPTION_RESPONSE, group read | tunnel, discovery, client |
+| `knx.ErrClosed` | The connection, client, device or server was closed | after `Close`, and for a call that waits when `Close` comes: `tunnel.Conn` (`Send`, `Receive`, `FeatureGet`, `FeatureSet`), `routing.Conn` (`Send`, `Receive`), `client.Client`, the requests of a `client.Device` (after its own `Close` or the client's), `server.Server` (`Start`, `Send`, `GroupWrite`, `Transmit`) |
+| `knx.ErrTimeout` | No answer in time: CONNECT_RESPONSE, DESCRIPTION_RESPONSE, group read; a deadline that passed in `tunnel.Conn.Send`, `client.GroupRead`, a `client.Device` request or `devmgmt` (with `context.DeadlineExceeded`) | tunnel, discovery, client, devmgmt |
 | `knx.ErrConnectionLost` | The tunnel is gone: no ACK twice (for a tunnelling or a feature request), no ACK within the request timeout for a request whose caller had left, heartbeat failed, server disconnected; over TCP, a write the server does not take within the request timeout | tunnel |
 | `knx.ErrRejected` | The peer refused with a KNXnet/IP status code | tunnel (CONNECT_RESPONSE, TUNNELLING_ACK) |
 | `knx.ErrBusy` | A limit: E_NO_MORE_CONNECTIONS, E_NO_MORE_UNIQUE_CONNECTIONS, a full queue | tunnel |
