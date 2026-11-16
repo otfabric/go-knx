@@ -94,7 +94,7 @@ IndividualAddress returns the source address of telegrams sent with source 0.0.0
 func (c *Conn) Receive(ctx context.Context) (cemi.Frame, error)
 ```
 
-Receive returns the next frame of a ROUTING\_INDICATION from another router.
+Receive returns the next frame of a ROUTING\_INDICATION from another router. When ctx's deadline passes first the error matches knx.ErrTimeout and context.DeadlineExceeded; when ctx is cancelled, context.Canceled; after Close, knx.ErrClosed.
 
 #### func (Conn) Send
 

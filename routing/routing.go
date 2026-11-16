@@ -406,8 +406,8 @@ func (c *Conn) send(ctx context.Context, f cemi.Frame) error {
 }
 
 // deadline makes the error of a call whose context deadline passed match
-// knx.ErrTimeout too: Send and Listen. An error whose message names the
-// package already does not get the name again.
+// knx.ErrTimeout too: Send, Receive and Listen. An error whose message
+// names the package already does not get the name again.
 func deadline(err error) error {
 	if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, knx.ErrTimeout) {
 		return err
@@ -497,13 +497,15 @@ func sleep(ctx context.Context, closing chan struct{}, d time.Duration) error {
 }
 
 // Receive returns the next frame of a ROUTING_INDICATION from another
-// router.
+// router. When ctx's deadline passes first the error matches
+// knx.ErrTimeout and context.DeadlineExceeded; when ctx is cancelled,
+// context.Canceled; after Close, knx.ErrClosed.
 func (c *Conn) Receive(ctx context.Context) (cemi.Frame, error) {
 	select {
 	case f := <-c.inbound:
 		return f, nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, deadline(ctx.Err())
 	case <-c.closing:
 		return nil, knx.ErrClosed
 	}

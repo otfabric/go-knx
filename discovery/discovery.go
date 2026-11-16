@@ -63,6 +63,17 @@ func invalid(format string, a ...any) error {
 	return fmt.Errorf("%w: discovery: %s", knx.ErrInvalidOption, fmt.Sprintf(format, a...))
 }
 
+// ctxErr returns the error of ctx, which has ended: at its deadline an
+// error matching knx.ErrTimeout and context.DeadlineExceeded, otherwise
+// ctx.Err().
+func ctxErr(ctx context.Context) error {
+	err := ctx.Err()
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%w: discovery: %w", knx.ErrTimeout, err)
+	}
+	return err
+}
+
 // WithInterface sends multicast searches on the named network interface
 // and announces its address.
 func WithInterface(name string) Option { return func(o *options) error { o.iface = name; return nil } }
@@ -211,7 +222,9 @@ func open(ctx context.Context, o options, remote netip.AddrPort) (*socket, error
 
 // Search sends a search request and returns the servers that answered
 // within the timeout, ordered by endpoint. It returns an empty slice,
-// not an error, when none answered.
+// not an error, when none answered. When ctx's deadline passes before
+// the timeout the error matches knx.ErrTimeout and
+// context.DeadlineExceeded; when ctx is cancelled, context.Canceled.
 func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 	o := defaults()
 	for _, opt := range opts {
@@ -245,7 +258,7 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 		return nil, err
 	}
 	// ctx ends the search through AfterFunc below, so that its expiry
-	// always reports ctx.Err().
+	// always reports the context's error (ctxErr).
 	deadline := time.Now().Add(o.timeout)
 	stop := context.AfterFunc(ctx, func() { _ = s.conn.SetReadDeadline(time.Now()) })
 	defer stop()
@@ -275,7 +288,7 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
 				if ctx.Err() != nil {
-					return results, ctx.Err()
+					return results, ctxErr(ctx)
 				}
 				if time.Now().Before(deadline) && sent < o.repeat {
 					_ = send()
@@ -320,7 +333,9 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 
 // Describe sends a DESCRIPTION_REQUEST to the server at addr and returns
 // the DIBs of its response. The request is sent up to three times within
-// the timeout.
+// the timeout. When ctx's deadline passes first the error matches
+// knx.ErrTimeout and context.DeadlineExceeded; when ctx is cancelled,
+// context.Canceled.
 func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, error) {
 	o := defaults()
 	for _, opt := range opts {
@@ -354,7 +369,7 @@ func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, 
 			n, from, err := udp.Read(s.conn.ReadFromUDPAddrPort, buf, nil)
 			if err != nil {
 				if ctx.Err() != nil {
-					return nil, ctx.Err()
+					return nil, ctxErr(ctx)
 				}
 				var ne net.Error
 				if errors.As(err, &ne) && ne.Timeout() {

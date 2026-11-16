@@ -32,7 +32,7 @@ DefaultTimeout is the default collection time of a search (SEARCH\_TIMEOUT of th
 func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, error)
 ```
 
-Describe sends a DESCRIPTION\_REQUEST to the server at addr and returns the DIBs of its response. The request is sent up to three times within the timeout.
+Describe sends a DESCRIPTION\_REQUEST to the server at addr and returns the DIBs of its response. The request is sent up to three times within the timeout. When ctx's deadline passes first the error matches knx.ErrTimeout and context.DeadlineExceeded; when ctx is cancelled, context.Canceled.
 
 ## Types
 
@@ -138,7 +138,7 @@ Result is one server found by Search.
 func Search(ctx context.Context, opts ...Option) ([]Result, error)
 ```
 
-Search sends a search request and returns the servers that answered within the timeout, ordered by endpoint. It returns an empty slice, not an error, when none answered.
+Search sends a search request and returns the servers that answered within the timeout, ordered by endpoint. It returns an empty slice, not an error, when none answered. When ctx's deadline passes before the timeout the error matches knx.ErrTimeout and context.DeadlineExceeded; when ctx is cancelled, context.Canceled.
 
 #### func (Result) Device
 

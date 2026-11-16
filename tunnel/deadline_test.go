@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-knx"
+	"github.com/otfabric/go-knx/cemi"
 	"github.com/otfabric/go-knx/internal/fakeknx"
 	"github.com/otfabric/go-knx/internal/leak"
 	"github.com/otfabric/go-knx/knxnetip"
@@ -197,6 +198,88 @@ func TestDialDeadlineIsTimeout(t *testing.T) {
 		_, err := tunnel.Dial(ctx(t), p.String(), tunnel.WithConnectTimeout(30*time.Millisecond))
 		if !errors.Is(err, knx.ErrTimeout) || errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("Dial at the end of its connect timeout = %v, want an error matching knx.ErrTimeout only", err)
+		}
+	})
+}
+
+// ERR-R01: a Receive that ends at its context's deadline returns an error
+// matching knx.ErrTimeout and context.DeadlineExceeded, whether the
+// deadline had passed when it was called or passed while it waited for a
+// frame. A cancelled Receive matches context.Canceled only. A frame
+// already queued is returned whatever the state of the context.
+func TestReceiveDeadlineIsTimeout(t *testing.T) {
+	leak.Check(t)
+	passed := func(t *testing.T) context.Context {
+		cx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		t.Cleanup(cancel)
+		return cx
+	}
+	cancelled := func(*testing.T) context.Context {
+		cx, cancel := context.WithCancel(context.Background())
+		cancel()
+		return cx
+	}
+	receiveErr := func(c *tunnel.Conn, cx context.Context) <-chan error {
+		ch := make(chan error, 1)
+		go func() {
+			f, err := c.Receive(cx)
+			if f != nil {
+				err = errors.New("Receive returned a frame")
+			}
+			ch <- err
+		}()
+		return ch
+	}
+	for _, tc := range []struct {
+		name  string
+		err   func(t *testing.T, f *fixture) error
+		check func(t *testing.T, err error, what string)
+	}{
+		{"the deadline had passed", func(t *testing.T, f *fixture) error {
+			return result(t, receiveErr(f.c, passed(t)))
+		}, isTimeout},
+		{"the deadline passes while it waits", func(t *testing.T, f *fixture) error {
+			dctx := newExpiringCtx()
+			res := receiveErr(f.c, dctx)
+			recv(t, dctx.steps, "Receive to wait for a frame")
+			dctx.expire()
+			return result(t, res)
+		}, isTimeout},
+		{"cancelled before", func(t *testing.T, f *fixture) error {
+			return result(t, receiveErr(f.c, cancelled(t)))
+		}, isCanceled},
+		{"cancelled while it waits", func(t *testing.T, f *fixture) error {
+			cx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			steps := newStepCtx(cx)
+			res := receiveErr(f.c, steps)
+			recv(t, steps.steps, "Receive to wait for a frame")
+			cancel()
+			return result(t, res)
+		}, isCanceled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := dial(t)
+			tc.check(t, tc.err(t, f), "Receive, "+tc.name)
+		})
+	}
+
+	t.Run("a queued frame", func(t *testing.T) {
+		f := dial(t)
+		// The connection handles one datagram after the other: once the
+		// third is acknowledged, the first two frames are queued.
+		for seq := range uint8(3) {
+			f.inbound(seq, indication(seq+1))
+		}
+		for range 3 {
+			fakeknx.Expect[*knxnetip.TunnellingAck](f.p, wait)
+		}
+		for i, cx := range []context.Context{passed(t), cancelled(t)} {
+			fr, err := f.c.Receive(cx)
+			ld, ok := fr.(*cemi.LData)
+			if !ok || err != nil || ld.TPDU[len(ld.TPDU)-1] != byte(i+1) {
+				t.Fatalf("Receive with an ended context and frame %d queued = %v, %v, want that frame", i+1, fr, err)
+			}
 		}
 	})
 }

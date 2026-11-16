@@ -291,6 +291,14 @@ func (r *RoutingTimer) Authenticated() bool
 
 Authenticated reports whether the timer is synchronised.
 
+#### func (RoutingTimer) Format
+
+```go
+func (r *RoutingTimer) Format(f fmt.State, verb rune)
+```
+
+Format writes String for the verbs package fmt passes to it, %#v and %d too, so that the backbone key and the state in its unexported fields are not printed.
+
 #### func (RoutingTimer) HandleNotify
 
 ```go
@@ -314,6 +322,14 @@ func (r *RoutingTimer) Stop()
 ```
 
 Stop stops the notify timer and waits for a notify the timer is sending: once it returns, the timer does not call the send function again. It must not be called from the send function.
+
+#### func (RoutingTimer) String
+
+```go
+func (r *RoutingTimer) String() string
+```
+
+String returns the serial number and the latency tolerance of the timer with the backbone key redacted.
 
 #### func (RoutingTimer) Synchronize
 

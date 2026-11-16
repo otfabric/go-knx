@@ -146,8 +146,8 @@ log so with `log/slog`. `secure.Credentials` and the keyring's
 `Backbone`, `Interface` and `Device` print their keys and passwords as
 `(redacted)` with the verbs of `fmt`, `%d` included, write them so with
 `encoding/json` (also inside a `keyring.Keyring`), and log so;
-`*datasecure.Table` and `*secure.Session` print a summary without keys.
-What this does not cover (`%p` of a key, `*secure.RoutingTimer`, other
+`*datasecure.Table`, `*secure.Session` and `*secure.RoutingTimer` print
+a summary without keys. What this does not cover (`%p` of a key, other
 encoders) is in [LIMITATIONS.md](LIMITATIONS.md). The library takes derived keys
 (`secure.Key`) or passwords and derives them once (PBKDF2-HMAC-SHA256,
 65536 iterations); it keeps them in memory for the life of the connection.

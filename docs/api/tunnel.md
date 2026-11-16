@@ -161,7 +161,7 @@ LocalAddr returns the local endpoint of the socket.
 func (c *Conn) Receive(ctx context.Context) (cemi.Frame, error)
 ```
 
-Receive returns the next frame the server sent on the tunnel (L\_Data.ind, L\_Busmon.ind...), excluding the L\_Data.con of this client's own requests. It returns knx.ErrClosed, or the error the connection was lost with, once the Conn is closed and the queue empty.
+Receive returns the next frame the server sent on the tunnel (L\_Data.ind, L\_Busmon.ind...), excluding the L\_Data.con of this client's own requests. It returns knx.ErrClosed, or the error the connection was lost with, once the Conn is closed and the queue empty. A frame already queued is returned whatever the state of ctx. When ctx's deadline passes first the error matches knx.ErrTimeout and context.DeadlineExceeded; when ctx is cancelled, context.Canceled.
 
 #### func (Conn) Send
 

@@ -174,7 +174,9 @@ func (c *Conn) roundTrip(ctx context.Context, req *cemi.Property, want cemi.Mess
 		f, err := c.t.Receive(ctx)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
-				return nil, fmt.Errorf("%w: devmgmt: no %s for object 0x%04X property %d: %w", knx.ErrTimeout, want, req.ObjectType, req.PropertyID, err)
+				// err matches knx.ErrTimeout already; the context's error
+				// keeps the timeout named once in the message.
+				return nil, fmt.Errorf("%w: devmgmt: no %s for object 0x%04X property %d: %w", knx.ErrTimeout, want, req.ObjectType, req.PropertyID, ctx.Err())
 			}
 			return nil, err
 		}

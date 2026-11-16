@@ -550,8 +550,8 @@ func (c *Conn) send(ctx context.Context, f cemi.Frame) error {
 }
 
 // deadline makes the error of a call whose context deadline passed match
-// knx.ErrTimeout too: Send, the feature calls and Dial. An error whose
-// message names the package already does not get the name again.
+// knx.ErrTimeout too: Send, Receive, the feature calls and Dial. An error
+// whose message names the package already does not get the name again.
 func deadline(err error) error {
 	if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, knx.ErrTimeout) {
 		return err
@@ -742,6 +742,9 @@ func (c *Conn) sendError(gen uint64, err error) error {
 // (L_Data.ind, L_Busmon.ind...), excluding the L_Data.con of this
 // client's own requests. It returns knx.ErrClosed, or the error the
 // connection was lost with, once the Conn is closed and the queue empty.
+// A frame already queued is returned whatever the state of ctx. When
+// ctx's deadline passes first the error matches knx.ErrTimeout and
+// context.DeadlineExceeded; when ctx is cancelled, context.Canceled.
 func (c *Conn) Receive(ctx context.Context) (cemi.Frame, error) {
 	select {
 	case f := <-c.inbound:
@@ -752,7 +755,7 @@ func (c *Conn) Receive(ctx context.Context) (cemi.Frame, error) {
 	case f := <-c.inbound:
 		return f, nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, deadline(ctx.Err())
 	case <-c.done:
 		select {
 		case f := <-c.inbound:

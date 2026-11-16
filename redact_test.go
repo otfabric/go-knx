@@ -18,6 +18,7 @@ import (
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/datasecure"
 	"github.com/otfabric/go-knx/keyring"
+	"github.com/otfabric/go-knx/knxnetip"
 	"github.com/otfabric/go-knx/secure"
 )
 
@@ -38,7 +39,7 @@ func TestSecretsRedacted(t *testing.T) {
 		ManagementPassword: password, Authentication: auth, SequenceNumber: 77}
 	kr := keyring.Keyring{Project: "project-x", CreatedBy: "ETS", Created: "2026-01-01T00:00:00Z", Backbone: backbone,
 		Interfaces: []keyring.Interface{itf}, GroupKeys: map[knx.GroupAddress]keyring.Key{ga: keyring.Key(octets)}, Devices: []keyring.Device{dev}}
-	table, session := keyHolders(t, octets)
+	table, session, timer := keyHolders(t, octets)
 
 	for _, tc := range []struct {
 		name string
@@ -57,6 +58,7 @@ func TestSecretsRedacted(t *testing.T) {
 		{"*keyring.Keyring", &kr, []string{"project-x"}},
 		{"*datasecure.Table", table, []string{"Groups: 1", "ToolKeys: 1", "Senders: 1", "Sequence: 99"}},
 		{"*secure.Session", session, []string{"ID: 7"}},
+		{"*secure.RoutingTimer", timer, []string{"Serial: 00FA:01020305", "Latency: 1s"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			text := fmt.Sprintf("%v|%+v|%#v|%s|%x|%X|%q", tc.v, tc.v, tc.v, tc.v, tc.v, tc.v, tc.v)
@@ -107,9 +109,9 @@ func noSecret(t *testing.T, where, out string, key [16]byte, passwords ...string
 	}
 }
 
-// keyHolders returns a Data Secure table and a secure session that hold
-// key in their unexported fields.
-func keyHolders(t *testing.T, key [16]byte) (*datasecure.Table, *secure.Session) {
+// keyHolders returns a Data Secure table, a secure session and a secure
+// routing timer that hold key in their unexported fields.
+func keyHolders(t *testing.T, key [16]byte) (*datasecure.Table, *secure.Session, *secure.RoutingTimer) {
 	t.Helper()
 	ga := knx.MustParseGroupAddress("1/2/3")
 	table, err := datasecure.NewTable(map[knx.GroupAddress]datasecure.Key{ga: datasecure.Key(key)},
@@ -118,7 +120,8 @@ func keyHolders(t *testing.T, key [16]byte) (*datasecure.Table, *secure.Session)
 		t.Fatal(err)
 	}
 	table.SetToolKey(knx.MustParseIndividualAddress("1.1.10"), datasecure.Key(key))
-	return table, secure.NewSession(7, secure.Key(key), [6]byte{0x00, 0xFA, 1, 2, 3, 4})
+	timer := secure.NewRoutingTimer(secure.Key(key), [6]byte{0x00, 0xFA, 1, 2, 3, 5}, time.Second, func(*knxnetip.TimerNotify) {})
+	return table, secure.NewSession(7, secure.Key(key), [6]byte{0x00, 0xFA, 1, 2, 3, 4}), timer
 }
 
 // verbs are the directives TestSecretsRedactedEveryVerb prints with: the
@@ -132,14 +135,15 @@ var verbs = []string{"%v", "%+v", "%#v", "%s", "%q", "%#q", "%x", "% x", "%#x", 
 // The key types, and the values that hold them, print no key octet and
 // no password with the verbs of package fmt, %d and %o too, and
 // encoding/json writes "(redacted)" for every key and password; a Data
-// Secure table and a secure session print their redacted form.
+// Secure table, a secure session and a secure routing timer print their
+// redacted form.
 func TestSecretsRedactedEveryVerb(t *testing.T) {
 	octets := [16]byte{0x5A, 0xC3, 0x3C, 0xA5, 0x96, 0x69, 0x0F, 0xF0, 0x5A, 0xC3, 0x3C, 0xA5, 0x96, 0x69, 0x0F, 0xF0}
 	const password, auth = "pw-of-the-user", "pw-of-the-device"
 	ga := knx.MustParseGroupAddress("1/2/3")
 	ia := knx.MustParseIndividualAddress("1.1.10")
 	code := secure.Key(octets)
-	table, session := keyHolders(t, octets)
+	table, session, timer := keyHolders(t, octets)
 	type holder struct {
 		Name string
 		Key  datasecure.Key
@@ -174,6 +178,7 @@ func TestSecretsRedactedEveryVerb(t *testing.T) {
 		{"*keyring.Keyring", &kr, true},
 		{"*datasecure.Table", table, false},
 		{"*secure.Session", session, false},
+		{"*secure.RoutingTimer", timer, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			vs := verbs
@@ -214,11 +219,12 @@ func TestSecretsRedactedEveryVerb(t *testing.T) {
 			}
 		})
 	}
-	// A nil table or session prints as fmt prints a nil pointer.
+	// A nil table, session or timer prints as fmt prints a nil pointer.
 	var nt *datasecure.Table
 	var ns *secure.Session
-	if got := fmt.Sprintf("%v %v %d", nt, ns, nt); got != "<nil> <nil> <nil>" {
-		t.Errorf("nil table and session: %q", got)
+	var nr *secure.RoutingTimer
+	if got := fmt.Sprintf("%v %v %v %d %d", nt, ns, nr, nt, nr); got != "<nil> <nil> <nil> <nil> <nil>" {
+		t.Errorf("nil table, session and timer: %q", got)
 	}
 	// The octets stay available: the array marshals as before, the slice
 	// in base64.

@@ -68,3 +68,19 @@ func (s *Session) String() string {
 // Format writes String for the verbs package fmt passes to it, %#v and %d
 // too, so that the session key in its unexported fields is not printed.
 func (s *Session) Format(f fmt.State, verb rune) { redact.Format(f, verb, s.String()) }
+
+// String returns the serial number and the latency tolerance of the
+// timer with the backbone key redacted.
+func (r *RoutingTimer) String() string {
+	if r == nil {
+		return "<nil>"
+	}
+	s := r.serial
+	return fmt.Sprintf("secure.RoutingTimer{Serial: %02X%02X:%02X%02X%02X%02X, Latency: %v, Key: %s}",
+		s[0], s[1], s[2], s[3], s[4], s[5], r.latency, redacted)
+}
+
+// Format writes String for the verbs package fmt passes to it, %#v and %d
+// too, so that the backbone key and the state in its unexported fields
+// are not printed.
+func (r *RoutingTimer) Format(f fmt.State, verb rune) { redact.Format(f, verb, r.String()) }

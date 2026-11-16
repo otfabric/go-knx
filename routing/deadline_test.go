@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,42 @@ func isTimeout(t *testing.T, err error, what string) {
 		t.Fatalf("%s: message %q, want it to start with \"knx: timeout: routing: \" and name the package once", what, msg)
 	}
 }
+
+// isCanceled fails the test unless err matches context.Canceled and
+// nothing else of a deadline.
+func isCanceled(t *testing.T, err error, what string) {
+	t.Helper()
+	if !errors.Is(err, context.Canceled) || errors.Is(err, knx.ErrTimeout) || errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("%s = %v, want an error matching context.Canceled only", what, err)
+	}
+}
+
+// expiringCtx is a context whose deadline the test ends: expire ends it
+// with context.DeadlineExceeded.
+type expiringCtx struct {
+	context.Context
+	done chan struct{}
+	once sync.Once
+}
+
+func newExpiringCtx() *expiringCtx {
+	return &expiringCtx{Context: context.Background(), done: make(chan struct{})}
+}
+
+func (e *expiringCtx) Done() <-chan struct{} { return e.done }
+
+func (e *expiringCtx) Err() error {
+	select {
+	case <-e.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+func (e *expiringCtx) Deadline() (time.Time, bool) { return time.Now().Add(time.Hour), true }
+
+func (e *expiringCtx) expire() { e.once.Do(func() { close(e.done) }) }
 
 // ERR-R01: a Send whose context deadline passes returns an error matching
 // knx.ErrTimeout and context.DeadlineExceeded, whether it waited for the
@@ -113,5 +150,62 @@ func TestListenDeadlineIsTimeout(t *testing.T) {
 	}
 	if !errors.Is(err, context.Canceled) || errors.Is(err, knx.ErrTimeout) {
 		t.Fatalf("cancelled Listen = %v, want an error matching context.Canceled only", err)
+	}
+}
+
+// ERR-R01: a Receive that ends at its context's deadline returns an error
+// matching knx.ErrTimeout and context.DeadlineExceeded, whether the
+// deadline had passed when it was called or passed while it waited for a
+// frame. A cancelled Receive matches context.Canceled only.
+func TestReceiveDeadlineIsTimeout(t *testing.T) {
+	leak.Check(t)
+	receiveErr := func(c *routing.Conn, cx context.Context) <-chan error {
+		ch := make(chan error, 1)
+		go func() {
+			f, err := c.Receive(cx)
+			if f != nil {
+				err = errors.New("Receive returned a frame")
+			}
+			ch <- err
+		}()
+		return ch
+	}
+	for _, tc := range []struct {
+		name  string
+		err   func(t *testing.T, c *routing.Conn) error
+		check func(t *testing.T, err error, what string)
+	}{
+		{"the deadline had passed", func(t *testing.T, c *routing.Conn) error {
+			cx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			defer cancel()
+			return recv(t, receiveErr(c, cx), "Receive to return")
+		}, isTimeout},
+		{"the deadline passes while it waits", func(t *testing.T, c *routing.Conn) error {
+			dctx := newExpiringCtx()
+			waiting := newWaitCtx(dctx)
+			res := receiveErr(c, waiting)
+			recv(t, waiting.waiting, "Receive to wait for a frame")
+			dctx.expire()
+			return recv(t, res, "Receive to return")
+		}, isTimeout},
+		{"cancelled before", func(t *testing.T, c *routing.Conn) error {
+			cx, cancel := context.WithCancel(context.Background())
+			cancel()
+			return recv(t, receiveErr(c, cx), "Receive to return")
+		}, isCanceled},
+		{"cancelled while it waits", func(t *testing.T, c *routing.Conn) error {
+			cx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			waiting := newWaitCtx(cx)
+			res := receiveErr(c, waiting)
+			recv(t, waiting.waiting, "Receive to wait for a frame")
+			cancel()
+			return recv(t, res, "Receive to return")
+		}, isCanceled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _, _, _ := listen(t)
+			tc.check(t, tc.err(t, c), "Receive, "+tc.name)
+		})
 	}
 }

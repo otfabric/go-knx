@@ -70,10 +70,6 @@ What go-knx does not do, or does with restrictions. Feature status:
   context that lasts longer, or it returns the context's error. A router
   that hears no time keeper in that window starts its own timer at the
   time since the process started ([SECURITY.md](SECURITY.md)).
-- **Expired deadlines**: `tunnel.Conn.Receive`, `routing.Conn.Receive`,
-  `discovery.Search` and `Describe` return the context's error alone
-  (`context.DeadlineExceeded`); the calls that [API.md](API.md#bounds)
-  lists match `knx.ErrTimeout` too.
 - **A late devmgmt confirmation**: cEMI device management carries no
   correlation. `PropRead` and `PropWrite` discard the confirmations queued
   before they send their request, so a confirmation that arrived after
@@ -92,13 +88,13 @@ What go-knx does not do, or does with restrictions. Feature status:
   verbs of `fmt`, `%d` included, in `encoding/json` and in `log/slog`;
   `secure.Credentials` and the keyring entries, and a `keyring.Keyring`
   through them, show their keys and passwords redacted with the same
-  verbs, in `encoding/json` and in `log/slog`; a `*datasecure.Table` and
-  a `*secure.Session` print a summary, `%#v` and `%d` too. JSON written
-  this way does not read back into a key or a password. Not covered: `%p`
-  of a key and `%w` outside `fmt.Errorf` (fmt calls no method of the
-  value for them; `go vet` reports both); `%v` of a
-  `*secure.RoutingTimer` prints its fields; `encoding/xml` and
-  `encoding/gob` write the octets of a key and the passwords.
+  verbs, in `encoding/json` and in `log/slog`; a `*datasecure.Table`, a
+  `*secure.Session` and a `*secure.RoutingTimer` print a summary, `%#v`
+  and `%d` too. JSON written this way does not read back into a key or a
+  password. Not covered: `%p` of a key and `%w` outside `fmt.Errorf` (fmt
+  calls no method of the value for them; `go vet` reports both);
+  `encoding/xml` and `encoding/gob` write the octets of a key and the
+  passwords.
 - **A request whose caller left** before its TUNNELLING_ACK is not
   repeated: when the acknowledgement does not come within the request
   timeout, the next `Send` reports the connection as lost.

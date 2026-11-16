@@ -5,6 +5,39 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.14.0
+
+**Date:** 2026-11-16
+**Previous release:** v0.13.0
+
+## Summary
+
+Deadlines and redaction, the remaining calls. A deadline in `tunnel.Conn.Receive`, `routing.Conn.Receive`, `discovery.Search` and `discovery.Describe` gives an error matching `knx.ErrTimeout` and `context.DeadlineExceeded`, as in the other calls of `tunnel`, `routing`, `client` and `devmgmt`. A `*secure.RoutingTimer` prints a summary without its key.
+
+## Changes
+
+### Breaking
+
+- An expired deadline of `tunnel.Conn.Receive`, `routing.Conn.Receive`, `discovery.Search` and `discovery.Describe` gives an error matching `knx.ErrTimeout` and `context.DeadlineExceeded` (it was the context's error itself, `context.DeadlineExceeded`, which did not match `knx.ErrTimeout`). The message is `knx: timeout: tunnel: context deadline exceeded`, with `routing` and `discovery` likewise. A cancelled context still gives `context.Canceled` only, and `tunnel.Conn.Receive` still returns a frame already queued whatever the state of the context. The errors of `devmgmt.Conn.PropRead` and `PropWrite` at a deadline, which read the tunnel with `Receive`, are unchanged, their message too. Who notices: code that compares the error with `==` (`err == context.DeadlineExceeded`), that tells a deadline from a timeout of the library by `knx.ErrTimeout` (a `Describe` that got no answer within its own timeout matches `knx.ErrTimeout` alone), or that reads the message. Restore path: `errors.Is(err, context.DeadlineExceeded)` tells the deadline, tested before `knx.ErrTimeout`; `errors.Is(err, context.Canceled)` a cancellation.
+
+### Added
+
+- `String` and `Format` on `*secure.RoutingTimer`.
+
+### Changed
+
+- `*secure.RoutingTimer` prints a summary with the verbs of `fmt` that call a method of the value, `%#v` and `%d` too: `secure.RoutingTimer{Serial: 00FA:01020304, Latency: 1s, Key: (redacted)}`; nil prints `<nil>`. It printed its unexported fields: the backbone key, the start time, a function address and the lock. `log/slog`'s text handler writes the summary; `encoding/json` writes `{}`, and `%p` and `%T` print, as before. `Authenticated` and `TimeKeeper` report its state.
+
+### Documentation
+
+- API.md and ERRORS.md: `tunnel.Conn.Receive`, `routing.Conn.Receive`, `discovery.Search` and `Describe` among the calls that match `knx.ErrTimeout` and `context.DeadlineExceeded` at a deadline. API.md and SECURITY.md: the summary of `*secure.RoutingTimer`. LIMITATIONS.md: the entry on expired deadlines removed; the routing timer no longer among what the redaction does not cover. TESTING.md: the discovery deadline rows that wait real time. Doc comments of the four calls. docs/api regenerated.
+
+### Tests
+
+- The deadline of `tunnel.Conn.Receive`, `routing.Conn.Receive`, `discovery.Search` and `Describe`: passed before the call, passing while it waits, cancelled before and while it waits; for the tunnel, frames already queued returned with an ended context. `devmgmt.Conn.PropRead` and `PropWrite` whose deadline passes while they wait for the confirmation, with the message, and cancelled. Every verb of `fmt`, `encoding/json` and `log/slog` of a `*secure.RoutingTimer`, and a nil one.
+
+---
+
 ## v0.13.0
 
 **Date:** 2026-11-16
