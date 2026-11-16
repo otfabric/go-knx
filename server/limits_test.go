@@ -8,13 +8,13 @@ import (
 	"net"
 	"net/netip"
 	"reflect"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/otfabric/go-knx"
 	"github.com/otfabric/go-knx/internal/fakeknx"
+	"github.com/otfabric/go-knx/internal/leak"
 	"github.com/otfabric/go-knx/knxnetip"
 	"github.com/otfabric/go-knx/secure"
 	"github.com/otfabric/go-knx/server"
@@ -407,7 +407,7 @@ func TestChannelsExhausted(t *testing.T) {
 		}
 	}
 	before := s.Connections()
-	g := runtime.NumGoroutine()
+	running := leak.Running()
 	for i := range 3 {
 		if r := connect(300+i, knxnetip.CRI{Type: knxnetip.DeviceManagementConnection}); r.Status != knxnetip.StatusNoMoreConnections {
 			t.Fatalf("device management %d: %s", i, r.Status)
@@ -417,13 +417,11 @@ func TestChannelsExhausted(t *testing.T) {
 	if len(after) != 255 || !sameConnections(before, after) {
 		t.Fatalf("connections changed: %d -> %d", len(before), len(after))
 	}
-	// Goroutines of the refused requests may still be ending: wait for the
-	// count to settle before comparing.
-	for deadline := time.Now().Add(2 * time.Second); runtime.NumGoroutine() > g && time.Now().Before(deadline); {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if n := runtime.NumGoroutine(); n > g {
-		t.Errorf("goroutines %d -> %d", g, n)
+	// Goroutines of the refused requests may still be ending: Left waits for
+	// them, and names any goroutine started since that still runs (a count
+	// of all goroutines named none).
+	if left := running.Left(); left != "" {
+		t.Errorf("goroutines left by the refused requests:\n%s", left)
 	}
 }
 

@@ -27,14 +27,26 @@ const grace = 5 * time.Second
 // in tests that do not call t.Parallel.
 func Check(t testing.TB) {
 	t.Helper()
-	before := ids(stacks())
+	before := Running()
 	t.Cleanup(func() {
 		t.Helper()
-		if left := wait(before); left != "" {
+		if left := before.Left(); left != "" {
 			t.Errorf("goroutine leak:\n%s", left)
 		}
 	})
 }
+
+// Goroutines are the goroutines running at one moment, by ID.
+type Goroutines map[int]bool
+
+// Running records the goroutines running now, for a check within a test:
+// that what it did between Running and Left left no goroutine behind.
+func Running() Goroutines { return ids(stacks()) }
+
+// Left returns the stacks of the goroutines started since g that are still
+// running after the grace period, or "" once there are none. Like Check, it
+// counts the goroutines of tests running in parallel.
+func (g Goroutines) Left() string { return wait(g) }
 
 // VerifyNoLeaks runs a package's tests from TestMain and fails the run if a
 // goroutine they started is still running after them:
