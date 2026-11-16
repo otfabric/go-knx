@@ -51,6 +51,30 @@ func TestCheckIgnoresGoroutinesThatFinish(t *testing.T) {
 	}
 }
 
+// Left reports none of the goroutines that ran when Running recorded them,
+// nor one that finished since; a goroutine started since that still runs is
+// one Left waits for and names.
+func TestLeftCountsWhatStartedSince(t *testing.T) {
+	block := make(chan struct{})
+	defer close(block)
+	old := make(chan struct{})
+	go func() { close(old); <-block }()
+	<-old
+	running := Running()
+	done := make(chan struct{})
+	go close(done)
+	<-done
+	if left := running.Left(); left != "" {
+		t.Fatalf("goroutines running before, or finished since, were reported:\n%s", left)
+	}
+	started := make(chan struct{})
+	go func() { close(started); <-block }()
+	<-started
+	if left := extra(stacks(), running); !strings.Contains(left, "leak.TestLeftCountsWhatStartedSince") {
+		t.Fatalf("the goroutine started since is not named:\n%s", left)
+	}
+}
+
 func TestExtraKeepsWhatWasRunningBefore(t *testing.T) {
 	all := []string{"goroutine 1 [running]:\nmain", "goroutine 7 [chan receive]:\nold", "goroutine 8 [chan receive]:\nnew"}
 	if got := extra(all, map[int]bool{7: true}); got != all[2] {
