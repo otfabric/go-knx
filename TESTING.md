@@ -87,10 +87,10 @@ injected accept or read function.
 Still waiting real time: tests of the rate and of ROUTING_BUSY pauses with
 real sockets (lower bounds on elapsed time), the authentication and session
 timeouts of the server (`server/limits_test.go`), `mgmt.Responder`, which
-reads the wall clock, the chaos suite, the polling helper `eventually`
-of the older tests, and the rows of discovery `TestDeadlineIsTimeout`
-whose context ended before the call, which may read until the call's
-timeout (300 ms) before they report the context.
+reads the wall clock, the chaos suite, and the polling helper `eventually`
+of the older tests. Discovery `TestEndedContextReturnsPromptly` measures
+how long `Search` and `Describe` take once their context ended, against
+an upper bound (1 s) ten times shorter than their own timeout.
 
 ## Allocation budgets
 

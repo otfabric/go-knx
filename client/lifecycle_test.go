@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -144,7 +143,7 @@ func answersBounded(t *testing.T, capacity int, opts ...client.Option) {
 	// The first answer is with the link, which holds it.
 	l.in <- request.Clone()
 	recv(t, sending, "the first answer to reach the link")
-	before := runtime.NumGoroutine()
+	running := leak.Running()
 
 	for range requests {
 		l.in <- request.Clone()
@@ -154,8 +153,10 @@ func answersBounded(t *testing.T, capacity int, opts ...client.Option) {
 	l.in <- wr(t, g1, apdu.GroupValue{Data: []byte{1}, Small: true})
 	recv(t, sub.C(), "the telegram after the requests")
 
-	if after := runtime.NumGoroutine(); after > before {
-		t.Errorf("%d goroutines after %d requests the link did not take, %d before", after, requests, before)
+	// Left names any goroutine started since Running that still runs after
+	// the grace period (a count of all goroutines named none).
+	if left := running.Left(); left != "" {
+		t.Errorf("goroutines left by %d requests the link did not take:\n%s", requests, left)
 	}
 	if got, want := c.AnswersDropped(), uint64(max(requests-capacity, 0)); got != want {
 		t.Errorf("%d answers dropped, want %d: %d requests, %d places in the queue", got, want, requests, capacity)

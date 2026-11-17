@@ -5,6 +5,28 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.14.1
+
+**Date:** 2026-11-17
+**Previous release:** v0.14.0
+
+## Summary
+
+`discovery.Search` and `discovery.Describe` stop waiting when their context ends and return the error that v0.14.0 documents; they send nothing when it had already ended. No exported identifier is added, removed or changed.
+
+## Changes
+
+### Fixed
+
+- `discovery.Search` and `discovery.Describe` could set the read deadline of a wait after their context had ended, replacing the deadline that the context's end had set: the call then returned the context's error only when that wait ended, up to the whole timeout of `Search` and a third of the timeout of `Describe`. With a context that had already ended, they sent their request and often returned only then. Both calls now check the context after each read deadline they set and before they send: they stop waiting when the context ends and return the documented error, matching `knx.ErrTimeout` and `context.DeadlineExceeded` at a deadline and `context.Canceled` on a cancellation, and an ended context sends nothing. The doc comments of both calls say so; docs/api regenerated.
+
+### Tests
+
+- discovery `TestEndedContextReturnsPromptly`: `Search` and `Describe` with a timeout of 10 s return within 1 s of their context's end, whether the deadline had passed or the context was cancelled before the call (and then no request reaches the server) or it ends while they wait, ten runs of each. `TestDeadlineIsTimeout` gives every row that timeout. TESTING.md updated.
+- client `TestAnswersBounded` and `TestAnswersBoundedByOption` record the goroutines by ID (`internal/leak`) instead of counting all goroutines of the process, so a failure names each goroutine left behind.
+
+---
+
 ## v0.14.0
 
 **Date:** 2026-11-16

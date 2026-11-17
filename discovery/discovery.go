@@ -225,6 +225,8 @@ func open(ctx context.Context, o options, remote netip.AddrPort) (*socket, error
 // not an error, when none answered. When ctx's deadline passes before
 // the timeout the error matches knx.ErrTimeout and
 // context.DeadlineExceeded; when ctx is cancelled, context.Canceled.
+// Search stops waiting for answers when ctx ends, and sends nothing when
+// ctx has already ended.
 func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 	o := defaults()
 	for _, opt := range opts {
@@ -257,6 +259,10 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A context that has already ended sends nothing.
+	if ctx.Err() != nil {
+		return nil, ctxErr(ctx)
+	}
 	// ctx ends the search through AfterFunc below, so that its expiry
 	// always reports the context's error (ctxErr).
 	deadline := time.Now().Add(o.timeout)
@@ -283,6 +289,10 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 			until = nextSend
 		}
 		_ = s.conn.SetReadDeadline(until)
+		// That replaced the deadline AfterFunc set if ctx ended before.
+		if ctx.Err() != nil {
+			return results, ctxErr(ctx)
+		}
 		n, from, err := udp.Read(s.conn.ReadFromUDPAddrPort, buf, nil)
 		if err != nil {
 			var ne net.Error
@@ -335,7 +345,8 @@ func Search(ctx context.Context, opts ...Option) ([]Result, error) {
 // the DIBs of its response. The request is sent up to three times within
 // the timeout. When ctx's deadline passes first the error matches
 // knx.ErrTimeout and context.DeadlineExceeded; when ctx is cancelled,
-// context.Canceled.
+// context.Canceled. Describe stops waiting for the response when ctx
+// ends, and sends nothing when ctx has already ended.
 func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, error) {
 	o := defaults()
 	for _, opt := range opts {
@@ -356,6 +367,10 @@ func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, 
 	if err != nil {
 		return nil, err
 	}
+	// A context that has already ended sends nothing.
+	if ctx.Err() != nil {
+		return nil, ctxErr(ctx)
+	}
 	stop := context.AfterFunc(ctx, func() { _ = s.conn.SetReadDeadline(time.Now()) })
 	defer stop()
 	buf := make([]byte, knxnetip.MaxFrameLen+1)
@@ -365,6 +380,10 @@ func Describe(ctx context.Context, addr string, opts ...Option) (knxnetip.DIBs, 
 			return nil, fmt.Errorf("discovery: send description request to %s: %w", remote, err)
 		}
 		_ = s.conn.SetReadDeadline(time.Now().Add(step))
+		// That replaced the deadline AfterFunc set if ctx ended before.
+		if ctx.Err() != nil {
+			return nil, ctxErr(ctx)
+		}
 		for {
 			n, from, err := udp.Read(s.conn.ReadFromUDPAddrPort, buf, nil)
 			if err != nil {
