@@ -187,6 +187,15 @@ func TestSecretsRedactedEveryVerb(t *testing.T) {
 			}
 			for _, verb := range vs {
 				out := fmt.Sprintf(verb, tc.v)
+				if verb == "%p" {
+					// %p prints the address, never the value: an address can
+					// hold the octets' digits (0x5a… on macOS), so compare it
+					// with the address itself.
+					if want := fmt.Sprintf("0x%x", reflect.ValueOf(tc.v).Pointer()); out != want {
+						t.Errorf("%%p: %s, want the address %s", out, want)
+					}
+					continue
+				}
 				noSecret(t, verb, out, octets, password, auth)
 				if frag := octetsIn(verb, octets); strings.Contains(out, frag) {
 					t.Errorf("%s: %s holds the key octets as %s prints them (%q)", verb, out, verb, frag)
