@@ -214,7 +214,7 @@ func parseField(xf xField) (field, error) {
 			return field{}, fmt.Errorf("%s: Width %q", xf.XMLName.Local, w)
 		}
 		f.Width = n
-	} else if kind != "mdBit" && !(kind == "mdString" && attr(xf.Attrs, "VariableLength") != "") {
+	} else if variable := kind == "mdString" && attr(xf.Attrs, "VariableLength") != ""; kind != "mdBit" && !variable {
 		return field{}, fmt.Errorf("%s without Width", xf.XMLName.Local)
 	}
 	if c := attr(xf.Attrs, "Coefficient"); c != "" {

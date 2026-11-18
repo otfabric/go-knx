@@ -36,11 +36,11 @@ func run(args []string, stderr io.Writer) int {
 		return 2
 	}
 	if *in == "" || fs.NArg() != 0 {
-		fmt.Fprintln(stderr, "usage: gendpt -in knx_master.xml [-lock dpt/masterdata.lock] [-out dpt/masterdata_gen.go]")
+		_, _ = fmt.Fprintln(stderr, "usage: gendpt -in knx_master.xml [-lock dpt/masterdata.lock] [-out dpt/masterdata_gen.go]")
 		return 2
 	}
 	if err := generate(*in, *lockPath, *out); err != nil {
-		fmt.Fprintln(stderr, "gendpt:", err)
+		_, _ = fmt.Fprintln(stderr, "gendpt:", err)
 		return 1
 	}
 	return 0
