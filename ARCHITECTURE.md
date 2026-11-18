@@ -194,15 +194,18 @@ do not all come back at once.
   half away from zero; xknx rounds half to even, which differs only for
   exact ties (documented in `dpt/xknx_test.go`). The largest encodable
   value is 670 433.28: 0x7FFF means "invalid data".
-- **Composite DPTs of fixed-width fields** (6.020, 25, 206, 219, 225, 229,
-  230, 232.601, 235–238, 240, 244, 245, 249, 250, 255) decode to a struct
+- **Composite DPTs of fixed-width fields** (6.020, 25, 206, 207.600, 219,
+  225, 229, 230, 232.601, 235–238, 240, 241, 244–246, 249, 250, 252, 254,
+  255) decode to a struct
   per type through one layout codec (`dpt/codecs_layout.go`): a list of
   fields, most significant first, each a flag, an integer, a percentage
   in 255 steps, a scaled period, a DPT 3 step, an enumeration or a
   float32. Reserved bits must be zero to decode; a field value the type
   does not define is refused both ways, so every decoded value encodes
   back to its octets. The text form is `name=value` words and the names
-  of the set flags.
+  of the set flags. 207.600, 241.800, 246.600, 252.600 and 254.600 follow
+  the field order of the KNX master data, which xknx reverses (bits or
+  octets).
 - **Standard and extended frames**: an L_Data whose NPDU exceeds 15 octets
   must be an extended frame, on encode and on decode.
 - **Routing safety**: hop count 0 is never routed. Outgoing indications

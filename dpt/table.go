@@ -37,6 +37,7 @@ func init() {
 		{ID: ID{29, 0}, Name: "DPT_29", Description: "8-octet signed value", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)},
 		{ID: ID{30, 0}, Name: "DPT_30", Description: "24-bit set", Bits: 24, Kind: KindBits, codec: bitsCodec(3)},
 		{ID: ID{206, 0}, Name: "DPT_206", Description: "time delay (min) and 8-bit mode", Bits: 24, Kind: KindModeNext, codec: modeNextCodec},
+		{ID: ID{207, 0}, Name: "DPT_207", Description: "8-bit set and percentage", Bits: 16, Kind: KindLightingActuatorStatus, codec: layoutCodec(lightingStatusFields)},
 		{ID: ID{217, 0}, Name: "DPT_217", Description: "version (magic, version, revision)", Bits: 16, Kind: KindVersion, codec: versionCodec},
 		{ID: ID{219, 0}, Name: "DPT_219", Description: "alarm information", Bits: 48, Kind: KindAlarmInfo, codec: layoutCodec(alarmInfoFields)},
 		{ID: ID{222, 0}, Name: "DPT_222", Description: "3 × 2-octet float", Bits: 48, Kind: KindSetpoints, Min: Float16Min, Max: Float16Max, HasRange: true, codec: setpointsCodec(3)},
@@ -50,12 +51,16 @@ func init() {
 		{ID: ID{237, 0}, Name: "DPT_237", Description: "DALI control gear diagnostic", Bits: 16, Kind: KindDALIGearDiagnostic, codec: layoutCodec(daliGearFields)},
 		{ID: ID{238, 0}, Name: "DPT_238", Description: "DALI diagnostic", Bits: 8, Kind: KindDALIDiagnostic, codec: layoutCodec(daliFields)},
 		{ID: ID{240, 0}, Name: "DPT_240", Description: "height and slats positions with validity", Bits: 24, Kind: KindCombinedPosition, codec: layoutCodec(positionFields)},
+		{ID: ID{241, 0}, Name: "DPT_241", Description: "height and slats positions with status", Bits: 32, Kind: KindBlindsStatus, codec: layoutCodec(blindsStatusFields)},
 		{ID: ID{242, 0}, Name: "DPT_242", Description: "colour xyY", Bits: 48, Kind: KindXYY, codec: xyyCodec},
 		{ID: ID{244, 0}, Name: "DPT_244", Description: "DALI converter status", Bits: 16, Kind: KindConverterStatus, codec: layoutCodec(converterStatusFields)},
 		{ID: ID{245, 0}, Name: "DPT_245", Description: "DALI converter test result", Bits: 48, Kind: KindConverterTestResult, codec: layoutCodec(converterTestFields)},
+		{ID: ID{246, 0}, Name: "DPT_246", Description: "battery information", Bits: 16, Kind: KindBatteryInfo, codec: layoutCodec(batteryFields)},
 		{ID: ID{249, 0}, Name: "DPT_249", Description: "time period, colour temperature and brightness with validity", Bits: 48, Kind: KindColourTransition, codec: layoutCodec(transitionFields)},
 		{ID: ID{250, 0}, Name: "DPT_250", Description: "colour temperature and brightness steps with validity", Bits: 24, Kind: KindColourTemperatureControl, codec: layoutCodec(temperatureControlFields)},
 		{ID: ID{251, 0}, Name: "DPT_251", Description: "colour RGBW", Bits: 48, Kind: KindRGBW, codec: rgbwCodec},
+		{ID: ID{252, 0}, Name: "DPT_252", Description: "relative RGBW control", Bits: 40, Kind: KindRelativeRGBW, codec: layoutCodec(relativeRGBWFields)},
+		{ID: ID{254, 0}, Name: "DPT_254", Description: "relative RGB control", Bits: 24, Kind: KindRelativeRGB, codec: layoutCodec(relativeRGBFields)},
 		{ID: ID{255, 0}, Name: "DPT_255", Description: "2 × 4-octet float (longitude, latitude)", Bits: 64, Kind: KindGeoLocation, codec: layoutCodec(geoFields)},
 		{ID: ID{275, 0}, Name: "DPT_275", Description: "4 × 2-octet float", Bits: 64, Kind: KindSetpoints, Min: Float16Min, Max: Float16Max, HasRange: true, codec: setpointsCodec(4)},
 	} {
@@ -608,6 +613,14 @@ func init() {
 
 	// DPT 240: blinds.
 	register(&Type{ID: ID{240, 800}, Name: "DPT_CombinedPosition", Description: "height and slats positions with validity", Bits: 24, Kind: KindCombinedPosition, codec: layoutCodec(positionFields)})
+
+	// DPT 207.600, 241.800, 246.600, 252.600 and 254.600 follow the KNX
+	// master data; xknx orders their bits or octets the other way.
+	register(&Type{ID: ID{207, 600}, Name: "DPT_StatusLightingActuator", Description: "lighting actuator status (flags, actual value)", Bits: 16, Kind: KindLightingActuatorStatus, codec: layoutCodec(lightingStatusFields)})
+	register(&Type{ID: ID{241, 800}, Name: "DPT_StatusSAB", Description: "sunblind and shutter actuator status", Bits: 32, Kind: KindBlindsStatus, codec: layoutCodec(blindsStatusFields)})
+	register(&Type{ID: ID{246, 600}, Name: "DPT_Battery_Info", Description: "battery information (failures, charge level)", Bits: 16, Kind: KindBatteryInfo, codec: layoutCodec(batteryFields)})
+	register(&Type{ID: ID{252, 600}, Name: "DPT_Relative_Control_RGBW", Description: "relative RGBW control", Bits: 40, Kind: KindRelativeRGBW, codec: layoutCodec(relativeRGBWFields)})
+	register(&Type{ID: ID{254, 600}, Name: "DPT_Relative_Control_RGB", Description: "relative RGB control", Bits: 24, Kind: KindRelativeRGB, codec: layoutCodec(relativeRGBFields)})
 
 	// DPT 255.
 	register(&Type{ID: ID{255, 1}, Name: "DPT_GeographicalLocation", Description: "geographical location (longitude, latitude in degrees)", Bits: 64, Kind: KindGeoLocation, codec: layoutCodec(geoFields)})

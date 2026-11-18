@@ -12,14 +12,14 @@ that version as the release notes. Add the section, headed exactly
 
 ## Summary
 
-88 more datapoint subtypes, from the KNX master data: the DPT 20 enumerations of HVAC, lighting, DALI, sunblinds, metering, RF and EV charging, the 2-bit enumerations of DPT 23, and the composite types of the 200 range (mode with delay, alarm information, metering value, M-Bus address, HSV colour, tariff energy, prioritised mode control, DALI diagnostics, converter status and test result, blind positions, colour temperature transition and control, geographical location). 327 subtypes are registered.
+93 more datapoint subtypes, from the KNX master data: the DPT 20 enumerations of HVAC, lighting, DALI, sunblinds, metering, RF and EV charging, the 2-bit enumerations of DPT 23, and the composite types of the 200 range (mode with delay, alarm information, metering value, M-Bus address, HSV colour, tariff energy, prioritised mode control, DALI diagnostics, converter status and test result, blind positions and sunblind actuator status, lighting actuator status, battery information, colour temperature transition and control, relative RGB and RGBW control, geographical location). 332 subtypes are registered.
 
 ## Changes
 
 ### Added
 
-- Datapoint types 6.020, 9.031, 13.1200, 13.1201, 14.1200, 14.1201, 20.001, 20.004–20.008, 20.011–20.014, 20.017, 20.020–20.022, 20.100, 20.101, 20.104, 20.106, 20.108–20.116, 20.120–20.122, 20.600–20.612, 20.801–20.804, 20.1000–20.1003, 20.1219–20.1221, 21.107, 22.102, 23.001–23.003, 23.102, 25.1000, 30.1010, 206.100, 206.102, 206.104, 206.105, 219.001, 225.001, 225.002, 229.001, 230.1000, 232.601, 235.001, 236.001, 237.600, 238.600, 240.800, 244.600, 245.600, 249.600, 250.600 and 255.001, and the main types 23, 25, 30, 206, 219, 225, 229, 230, 235–238, 240, 244, 245, 249, 250 and 255.
-- The values `StatusMode`, `DoubleNibble`, `ModeNext`, `AlarmInfo`, `ScalingSpeed`, `MeteringValue`, `MBusAddress`, `HSV`, `TariffEnergy`, `PriorityControl`, `DALIGearDiagnostic`, `DALIDiagnostic`, `CombinedPosition`, `ConverterStatus`, `ConverterTestResult`, `ColourTransition`, `ColourTemperatureControl` and `GeoLocation`, each with its `Kind`. As text they are `name=value` words and the names of the set flags (`height=50.2 slats=0.0 height-valid`), which `Format` writes and `Parse` reads.
+- Datapoint types 6.020, 9.031, 13.1200, 13.1201, 14.1200, 14.1201, 20.001, 20.004–20.008, 20.011–20.014, 20.017, 20.020–20.022, 20.100, 20.101, 20.104, 20.106, 20.108–20.116, 20.120–20.122, 20.600–20.612, 20.801–20.804, 20.1000–20.1003, 20.1219–20.1221, 21.107, 22.102, 23.001–23.003, 23.102, 25.1000, 30.1010, 206.100, 206.102, 206.104, 206.105, 219.001, 225.001, 225.002, 229.001, 230.1000, 232.601, 235.001, 236.001, 237.600, 238.600, 240.800, 244.600, 245.600, 249.600, 250.600, 255.001, 207.600, 241.800, 246.600, 252.600 and 254.600, and the main types 23, 25, 30, 206, 207, 219, 225, 229, 230, 235–238, 240, 241, 244–246, 249, 250, 252, 254 and 255.
+- The values `StatusMode`, `DoubleNibble`, `ModeNext`, `AlarmInfo`, `ScalingSpeed`, `MeteringValue`, `MBusAddress`, `HSV`, `TariffEnergy`, `PriorityControl`, `DALIGearDiagnostic`, `DALIDiagnostic`, `CombinedPosition`, `ConverterStatus`, `ConverterTestResult`, `ColourTransition`, `ColourTemperatureControl`, `GeoLocation`, `LightingActuatorStatus`, `BlindsStatus`, `BatteryInfo`, `RelativeRGBW` and `RelativeRGB`, each with its `Kind`. As text they are `name=value` words and the names of the set flags (`height=50.2 slats=0.0 height-valid`), which `Format` writes and `Parse` reads.
 
 ### Changed
 
@@ -27,7 +27,7 @@ that version as the release notes. Add the section, headed exactly
 
 ### Documentation
 
-- docs/standards/SPECIFICATIONS.md names the KNX master data as the source of the added types. docs/IMPLEMENTATION-STATUS.md lists the subtypes not registered: 207.600, 241.800, 246.600, 252.600 and 254.600, whose field order differs between the KNX master data and xknx 4.1.1.
+- docs/standards/SPECIFICATIONS.md names the KNX master data as the source of the added types. For 207.600, 241.800, 246.600, 252.600 and 254.600 xknx 4.1.1 orders the bits or octets the other way; go-knx follows the master data, as Apache PLC4X does.
 
 ### Tests
 

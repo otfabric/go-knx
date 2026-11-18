@@ -53,6 +53,11 @@
 //	KindColourTransition ColourTransition DPT 249
 //	KindColourTemperatureControl ColourTemperatureControl DPT 250
 //	KindGeoLocation GeoLocation        DPT 255
+//	KindLightingActuatorStatus LightingActuatorStatus DPT 207.600
+//	KindBlindsStatus BlindsStatus      DPT 241
+//	KindBatteryInfo BatteryInfo        DPT 246
+//	KindRelativeRGBW RelativeRGBW      DPT 252
+//	KindRelativeRGB RelativeRGB        DPT 254
 //
 // Encode accepts these types and, where unambiguous, convertible ones (any
 // Go integer or float for a number, a name for an enumeration).
@@ -165,11 +170,17 @@ const (
 	KindColourTransition
 	KindColourTemperatureControl
 	KindGeoLocation
+	KindLightingActuatorStatus
+	KindBlindsStatus
+	KindBatteryInfo
+	KindRelativeRGBW
+	KindRelativeRGB
 )
 
 var kindNames = [...]string{"bool", "control", "step", "char", "unsigned", "signed", "float", "time", "date", "string", "scene", "scene-control", "datetime", "enum", "bits", "rgb", "rgbw", "xyY", "access", "onoff-info", "version", "setpoints",
 	"status-mode", "double-nibble", "mode-next", "alarm-info", "scaling-speed", "metering-value", "mbus-address", "hsv", "tariff-energy", "priority-control",
-	"dali-gear-diagnostic", "dali-diagnostic", "combined-position", "converter-status", "converter-test-result", "colour-transition", "colour-temperature-control", "geo-location"}
+	"dali-gear-diagnostic", "dali-diagnostic", "combined-position", "converter-status", "converter-test-result", "colour-transition", "colour-temperature-control", "geo-location",
+	"lighting-actuator-status", "blinds-status", "battery-info", "relative-rgbw", "relative-rgb"}
 
 // String names the kind.
 func (k Kind) String() string {

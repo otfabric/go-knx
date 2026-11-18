@@ -35,7 +35,7 @@ Conformance claims: [CONFORMANCE.md](CONFORMANCE.md).
 | SECURE_WRAPPER, SESSION_*, TIMER_NOTIFY frames | `knxnetip`, `secure` | 3/8/9 KNXnet/IP Secure; AN159 | Encoded, sealed and opened (public sources) |
 | cEMI L_Data, L_Busmon, L_Raw, M_Prop*, M_FuncProp*, M_Reset | `cemi` | 3/6/3 EMI/IMI, cEMI clauses | |
 | TPCI, APCI, group value services | `apdu` | 3/3/4 Transport layer; 3/3/7 Application layer | |
-| Datapoint types 1–23, 25–27, 29, 30, 206, 217, 219, 222, 225, 229, 230, 232, 234–238, 240, 242, 244, 245, 249–251, 255, 275 | `dpt` | 3/7/2 Datapoint Types; the KNX master data (`DatapointTypes`) | Only subtypes with published semantics are registered; the bits of the DPT 21/22/30 sets are kept as a number, not named; the composite types of the 200 range are structs of named fields |
+| Datapoint types 1–23, 25–27, 29, 30, 206, 207, 217, 219, 222, 225, 229, 230, 232, 234–238, 240–242, 244–246, 249–252, 254, 255, 275 | `dpt` | 3/7/2 Datapoint Types; the KNX master data (`DatapointTypes`) | Only subtypes with published semantics are registered; the bits of the DPT 21/22/30 sets are kept as a number, not named; the composite types of the 200 range are structs of named fields |
 
 ## Sources actually used
 
@@ -57,9 +57,9 @@ The code was written from:
    `DatapointTypes` of <https://update.knx.org/data/XML/project-20/knx_master.xml>,
    master data version 543) for the field layouts, enumeration values, units and
    ranges of the datapoint types added in 0.15.0. The layouts were
-   cross-checked against xknx 4.1.1 where it implements the type; where the
-   two disagree (207.600, 241.800, 246.600, 252.600, 254.600) the type is
-   not registered.
+   cross-checked against xknx 4.1.1 where it implements the type. For
+   207.600, 241.800, 246.600, 252.600 and 254.600 xknx orders the bits or
+   octets the other way; go-knx follows the master data.
 
 ## Implemented without the specification text
 

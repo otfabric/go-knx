@@ -52,6 +52,11 @@ Decoded values have these Go types, by [Kind](#type-kind):
 	KindColourTransition ColourTransition DPT 249
 	KindColourTemperatureControl ColourTemperatureControl DPT 250
 	KindGeoLocation GeoLocation        DPT 255
+	KindLightingActuatorStatus LightingActuatorStatus DPT 207.600
+	KindBlindsStatus BlindsStatus      DPT 241
+	KindBatteryInfo BatteryInfo        DPT 246
+	KindRelativeRGBW RelativeRGBW      DPT 252
+	KindRelativeRGB RelativeRGB        DPT 254
 
 Encode accepts these types and, where unambiguous, convertible ones (any Go integer or float for a number, a name for an enumeration).
 
@@ -155,6 +160,55 @@ func (a AlarmInfo) String() string
 ```
 
 String returns "log=1 priority=0 area=20 error-class=3 ack-sup in-alarm" with the flags that are set.
+
+### type BatteryInfo
+
+```go
+type BatteryInfo struct {
+	BatteryFailure, DurationFailure, FullyCharged bool
+	ChargeLevel                                   uint8
+}
+```
+
+BatteryInfo is a DPT 246.600 value: battery failures and the charge level in % (0..255, unscaled).
+
+#### func (BatteryInfo) String
+
+```go
+func (b BatteryInfo) String() string
+```
+
+String returns "fully-charged charge=100" with the flags that are set.
+
+### type BlindsStatus
+
+```go
+type BlindsStatus struct {
+	Height, Slats float64
+	// UpperEnd and LowerEnd: an end position is reached; LowerPredefined:
+	// the lower predefined position is reached.
+	UpperEnd, LowerEnd, LowerPredefined bool
+	// TargetReached is set when the drive reached its target position,
+	// clear while it moves.
+	TargetReached bool
+	// HeightRestricted and SlatsRestricted: the target position cannot be
+	// reached.
+	HeightRestricted, SlatsRestricted bool
+	// WeatherAlarm: a wind, rain or frost alarm input is in alarm.
+	WeatherAlarm, Forced, Locked, LocalOverride, Failure bool
+	HeightValid, SlatsValid                              bool
+}
+```
+
+BlindsStatus is a DPT 241.800 value: the status of a sunblind or shutter actuator, with the height and slats positions (0..100 % in 255 steps) and their validity.
+
+#### func (BlindsStatus) String
+
+```go
+func (b BlindsStatus) String() string
+```
+
+String returns "height=100.0 slats=50.2 lower-end target-reached height-valid slats-valid" with the flags that are set.
 
 ### type ColourTemperatureControl
 
@@ -530,6 +584,11 @@ const (
 	KindColourTransition
 	KindColourTemperatureControl
 	KindGeoLocation
+	KindLightingActuatorStatus
+	KindBlindsStatus
+	KindBatteryInfo
+	KindRelativeRGBW
+	KindRelativeRGB
 )
 ```
 
@@ -542,6 +601,26 @@ func (k Kind) String() string
 ```
 
 String names the kind.
+
+### type LightingActuatorStatus
+
+```go
+type LightingActuatorStatus struct {
+	// ActualValueValid is set when ActualValue is valid.
+	ActualValueValid, Locked, Forced, NightMode, Staircase, Dimming, LocalOverride, Failure bool
+	ActualValue                                                                             float64
+}
+```
+
+LightingActuatorStatus is a DPT 207.600 value: the status flags of a lighting actuator and its actual value, 0..100 % in 255 steps.
+
+#### func (LightingActuatorStatus) String
+
+```go
+func (s LightingActuatorStatus) String() string
+```
+
+String returns "actual-valid dimming actual=50.2" with the flags that are set.
 
 ### type MBusAddress
 
@@ -687,6 +766,43 @@ func (c RGBW) String() string
 ```
 
 String returns "#RRGGBBWW".
+
+### type RelativeRGB
+
+```go
+type RelativeRGB struct {
+	R, G, B Step
+}
+```
+
+RelativeRGB is a DPT 254.600 value: a relative step (DPT 3) of each of red, green and blue. On the wire blue comes first, then green and red.
+
+#### func (RelativeRGB) String
+
+```go
+func (c RelativeRGB) String() string
+```
+
+String returns "b=+1 g=stop r=-7".
+
+### type RelativeRGBW
+
+```go
+type RelativeRGBW struct {
+	R, G, B, W                     Step
+	ValidR, ValidG, ValidB, ValidW bool
+}
+```
+
+RelativeRGBW is a DPT 252.600 value: a relative step (DPT 3) of each of red, green, blue and white, each with a validity flag. On the wire the validity octet comes first, then white, blue, green and red.
+
+#### func (RelativeRGBW) String
+
+```go
+func (c RelativeRGBW) String() string
+```
+
+String returns "valid-w valid-r w=+3 b=stop g=stop r=-1" with the validity flags that are set.
 
 ### type RoomSetpoints
 

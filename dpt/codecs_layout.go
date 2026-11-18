@@ -12,7 +12,7 @@ import (
 
 // Codecs of the composite types whose value is a struct of fixed-width
 // fields: DPT 6.020, 25, 206, 219, 225, 229, 230, 232.601, 235, 236, 237,
-// 238, 240, 244, 245, 249, 250 and 255. A layout lists the fields of a
+// 238, 240, 241, 244, 245, 246, 249, 250, 252, 254, 255 and 207.600. A layout lists the fields of a
 // value type V from the most significant bit of the first octet on; its
 // codec packs them big endian into Type.Size octets and reads them back.
 //

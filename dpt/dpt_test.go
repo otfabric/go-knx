@@ -65,7 +65,9 @@ var goType = map[Kind]reflect.Type{
 	KindDALIDiagnostic: reflect.TypeFor[DALIDiagnostic](), KindCombinedPosition: reflect.TypeFor[CombinedPosition](),
 	KindConverterStatus: reflect.TypeFor[ConverterStatus](), KindConverterTestResult: reflect.TypeFor[ConverterTestResult](),
 	KindColourTransition: reflect.TypeFor[ColourTransition](), KindColourTemperatureControl: reflect.TypeFor[ColourTemperatureControl](),
-	KindGeoLocation: reflect.TypeFor[GeoLocation](),
+	KindGeoLocation: reflect.TypeFor[GeoLocation](), KindLightingActuatorStatus: reflect.TypeFor[LightingActuatorStatus](),
+	KindBlindsStatus: reflect.TypeFor[BlindsStatus](), KindBatteryInfo: reflect.TypeFor[BatteryInfo](),
+	KindRelativeRGBW: reflect.TypeFor[RelativeRGBW](), KindRelativeRGB: reflect.TypeFor[RelativeRGB](),
 }
 
 // samples returns values of t that must survive an encode/decode round
