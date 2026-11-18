@@ -136,7 +136,7 @@ func samples(t *Type) []any {
 		}
 	case KindEnum:
 		if t.Enum == nil {
-			return []any{Enum{}, Enum{Value: 255}}
+			return []any{Enum{}, Enum{Value: uint8(1<<t.Bits - 1)}}
 		}
 		var v []any
 		for k, n := range t.Enum {

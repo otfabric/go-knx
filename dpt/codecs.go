@@ -871,7 +871,7 @@ func flagBits(fs ...bool) byte {
 	return b
 }
 
-// ---- DPT 20: enumerations ----
+// ---- DPT 20, 23: enumerations ----
 
 var enumCodec = codec{
 	encode: func(t *Type, v any) ([]byte, error) {
@@ -895,6 +895,9 @@ var enumCodec = codec{
 				return nil, errValue("%v is not a value of %s", v, t.ID)
 			}
 			n = uint8(i)
+		}
+		if int(n)>>t.Bits != 0 {
+			return nil, errValue("%d is not a value of %s (%d bits)", n, t.ID, t.Bits)
 		}
 		if t.Enum != nil {
 			if _, ok := t.Enum[n]; !ok {

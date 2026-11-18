@@ -30,6 +30,7 @@ func init() {
 		{ID: ID{20, 0}, Name: "DPT_20", Description: "1-octet enumeration", Bits: 8, Kind: KindEnum, codec: enumCodec},
 		{ID: ID{21, 0}, Name: "DPT_21", Description: "8-bit set", Bits: 8, Kind: KindBits, codec: bitsCodec(1)},
 		{ID: ID{22, 0}, Name: "DPT_22", Description: "16-bit set", Bits: 16, Kind: KindBits, codec: bitsCodec(2)},
+		{ID: ID{23, 0}, Name: "DPT_23", Description: "2-bit enumeration", Bits: 2, Kind: KindEnum, codec: enumCodec},
 		{ID: ID{26, 0}, Name: "DPT_26", Description: "scene information (bit set)", Bits: 8, Kind: KindBits, codec: bitsCodec(1)},
 		{ID: ID{27, 0}, Name: "DPT_27", Description: "combined on/off information (16-bit mask, 16-bit state)", Bits: 32, Kind: KindOnOffInfo, codec: onOffInfoCodec},
 		{ID: ID{29, 0}, Name: "DPT_29", Description: "8-octet signed value", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)},
@@ -357,17 +358,139 @@ func init() {
 		name, desc string
 		values     map[uint8]string
 	}{
+		{1, "DPT_SCLOMode", "SCLO mode", map[uint8]string{0: "autonomous", 1: "slave", 2: "master"}},
 		{2, "DPT_BuildingMode", "building mode", map[uint8]string{0: "building in use", 1: "building not used", 2: "building protection"}},
 		{3, "DPT_OccMode", "occupancy mode", map[uint8]string{0: "occupied", 1: "standby", 2: "not occupied"}},
+		{4, "DPT_Priority", "priority", map[uint8]string{0: "high", 1: "medium", 2: "low", 3: "void"}},
+		{5, "DPT_LightApplicationMode", "light application mode", map[uint8]string{0: "normal", 1: "presence simulation", 2: "night round"}},
+		{6, "DPT_ApplicationArea", "application area", map[uint8]string{
+			0: "no fault", 1: "system and functions of common interest", 10: "HVAC general FBs", 11: "HVAC hot water heating",
+			12: "HVAC direct electrical heating", 13: "HVAC terminal units", 14: "HVAC VAC", 20: "lighting", 30: "security",
+			40: "load management", 50: "shutters and blinds"}},
+		{7, "DPT_AlarmClassType", "alarm class type", map[uint8]string{1: "simple alarm", 2: "basic alarm", 3: "extended alarm"}},
+		{8, "DPT_PSUMode", "PSU mode", map[uint8]string{0: "disabled", 1: "enabled", 2: "auto"}},
+		{11, "DPT_ErrorClass_System", "system error class", map[uint8]string{
+			0: "no fault", 1: "general device fault", 2: "communication fault", 3: "configuration fault", 4: "hardware fault",
+			5: "software fault", 6: "insufficient non-volatile memory", 7: "insufficient volatile memory",
+			8: "memory allocation command with size 0", 9: "CRC error", 10: "watchdog reset detected", 11: "invalid opcode detected",
+			12: "general protection fault", 13: "maximum table length exceeded", 14: "undefined load command",
+			15: "group address table not sorted", 16: "invalid connection number", 17: "invalid group object number",
+			18: "group object type too long"}},
+		{12, "DPT_ErrorClass_HVAC", "HVAC error class", map[uint8]string{0: "no fault", 1: "sensor fault", 2: "process/controller fault", 3: "actuator fault", 4: "other fault"}},
+		{13, "DPT_Time_Delay", "time delay", map[uint8]string{
+			0: "not active", 1: "1 s", 2: "2 s", 3: "3 s", 4: "5 s", 5: "10 s", 6: "15 s", 7: "20 s", 8: "30 s", 9: "45 s",
+			10: "1 min", 11: "1.25 min", 12: "1.5 min", 13: "2 min", 14: "2.5 min", 15: "3 min", 16: "5 min", 17: "15 min",
+			18: "20 min", 19: "30 min", 20: "1 h", 21: "2 h", 22: "3 h", 23: "5 h", 24: "12 h", 25: "24 h"}},
+		{14, "DPT_Beaufort_Wind_Force_Scale", "wind force (Beaufort scale)", map[uint8]string{
+			0: "calm", 1: "light air", 2: "light breeze", 3: "gentle breeze", 4: "moderate breeze", 5: "fresh breeze",
+			6: "strong breeze", 7: "near gale", 8: "fresh gale", 9: "strong gale", 10: "storm", 11: "violent storm", 12: "hurricane"}},
+		{17, "DPT_SensorSelect", "sensor mode", map[uint8]string{
+			0: "inactive", 1: "digital input", 2: "digital input inverted", 3: "analog input", 4: "temperature sensor input"}},
+		{20, "DPT_ActuatorConnectType", "actuator connect type", map[uint8]string{1: "sensor connection", 2: "controller connection"}},
+		// Cloud cover in oktas; the published list names neither 6 nor 7.
+		{21, "DPT_Cloud_Cover", "cloud cover", map[uint8]string{
+			0: "cloudless", 1: "sunny", 2: "sunshiny", 3: "lightly cloudy", 4: "scattered clouds", 5: "cloudy",
+			6: "6 oktas", 7: "7 oktas", 8: "overcast", 9: "sky obstructed"}},
+		{22, "DPT_PowerReturnMode", "power return mode", map[uint8]string{0: "do not send", 1: "send always", 2: "send if changed during power down"}},
+		{100, "DPT_FuelType", "fuel type", map[uint8]string{0: "auto", 1: "oil", 2: "gas", 3: "solid state fuel"}},
+		{101, "DPT_BurnerType", "burner type", map[uint8]string{1: "1 stage", 2: "2 stage", 3: "modulating"}},
 		{102, "DPT_HVACMode", "HVAC operating mode", map[uint8]string{0: "auto", 1: "comfort", 2: "standby", 3: "economy", 4: "building protection"}},
 		{103, "DPT_DHWMode", "domestic hot water mode", map[uint8]string{0: "auto", 1: "legio protect", 2: "normal", 3: "reduced", 4: "off/frost protect"}},
+		{104, "DPT_LoadPriority", "load priority", map[uint8]string{0: "none", 1: "shift load priority", 2: "absolute load priority"}},
 		{105, "DPT_HVACContrMode", "HVAC controller mode", map[uint8]string{
 			0: "auto", 1: "heat", 2: "morning warmup", 3: "cool", 4: "night purge", 5: "precool", 6: "off", 7: "test",
 			8: "emergency heat", 9: "fan only", 10: "free cool", 11: "ice", 12: "maximum heating mode", 13: "economic heat/cool mode",
 			14: "dehumidification", 15: "calibration mode", 16: "emergency cool mode", 17: "emergency steam mode", 20: "NoDem"}},
+		{106, "DPT_HVACEmergMode", "HVAC emergency mode", map[uint8]string{
+			0: "normal", 1: "emergency pressure", 2: "emergency depressure", 3: "emergency purge", 4: "emergency shutdown", 5: "emergency fire"}},
 		{107, "DPT_ChangeoverMode", "changeover mode", map[uint8]string{0: "auto", 1: "cooling only", 2: "heating only"}},
+		{108, "DPT_ValveMode", "valve mode", map[uint8]string{1: "heat stage A", 2: "heat stage B", 3: "cool stage A", 4: "cool stage B", 5: "heat/cool"}},
+		// The published list gives 3 and 4 the same meaning, extract air.
+		{109, "DPT_DamperMode", "damper mode", map[uint8]string{1: "fresh air", 2: "supply air", 3: "extract air", 4: "extract air (4)"}},
+		{110, "DPT_HeaterMode", "heater mode", map[uint8]string{1: "heat stage A on/off", 2: "heat stage A proportional", 3: "heat stage B proportional"}},
+		{111, "DPT_FanMode", "fan mode", map[uint8]string{0: "not running", 1: "permanently running", 2: "running in intervals"}},
+		{112, "DPT_MasterSlaveMode", "master/slave mode", map[uint8]string{0: "autonomous", 1: "master", 2: "slave"}},
+		{113, "DPT_StatusRoomSetp", "room setpoint status", map[uint8]string{0: "normal setpoint", 1: "alternative setpoint", 2: "building protection setpoint"}},
+		{114, "DPT_Metering_DeviceType", "metering device type", map[uint8]string{
+			0: "other device", 1: "oil meter", 2: "electricity meter", 3: "gas device", 4: "heat meter", 5: "steam meter",
+			6: "warm water meter", 7: "water meter", 8: "heat cost allocator", 10: "cooling load meter (outlet)",
+			11: "cooling load meter (inlet)", 12: "heat (inlet)", 13: "heat and cool", 32: "breaker (electricity)",
+			33: "valve (gas or water)", 40: "waste water meter", 41: "garbage", 255: "void device type"}},
+		{115, "DPT_HumDehumMode", "humidification/dehumidification mode", map[uint8]string{0: "inactive", 1: "humidification", 2: "dehumidification"}},
+		{116, "DPT_EnableHCStage", "enable heating/cooling stage", map[uint8]string{0: "disabled", 1: "enable stage A", 2: "enable stage B", 3: "enable both stages"}},
+		{120, "DPT_ADAType", "air damper actuator type", map[uint8]string{1: "air damper", 2: "VAV"}},
+		{121, "DPT_BackupMode", "backup mode", map[uint8]string{0: "backup value", 1: "keep last state"}},
+		{122, "DPT_StartSynchronization", "start synchronization type", map[uint8]string{0: "position unchanged", 1: "single close", 2: "single open"}},
+		{600, "DPT_Behaviour_Lock_Unlock", "behaviour on lock/unlock", map[uint8]string{
+			0: "off", 1: "on", 2: "no change", 3: "value of additional parameter", 4: "memory function value", 5: "updated value",
+			6: "value before locking"}},
+		{601, "DPT_Behaviour_Bus_Power_Up_Down", "behaviour on bus power up/down", map[uint8]string{
+			0: "off", 1: "on", 2: "no change", 3: "value of additional parameter", 4: "last value before bus power down"}},
+		{602, "DPT_DALI_Fade_Time", "DALI fade time", map[uint8]string{
+			0: "0 s", 1: "0.7 s", 2: "1.0 s", 3: "1.4 s", 4: "2.0 s", 5: "2.8 s", 6: "4.0 s", 7: "5.7 s", 8: "8.0 s",
+			9: "11.3 s", 10: "16.0 s", 11: "22.6 s", 12: "32.0 s", 13: "45.3 s", 14: "64.0 s", 15: "90.5 s"}},
+		{603, "DPT_BlinkingMode", "blinking mode", map[uint8]string{0: "blinking disabled", 1: "without acknowledge", 2: "blinking with acknowledge"}},
+		{604, "DPT_LightControlMode", "light control mode", map[uint8]string{0: "automatic light control", 1: "manual light control"}},
+		{605, "DPT_SwitchPBModel", "push button switch model", map[uint8]string{1: "one push button", 2: "two push buttons"}},
+		{606, "DPT_PBAction", "push button action", map[uint8]string{0: "inactive", 1: "switch off", 2: "switch on", 3: "inverse of on/off info"}},
+		{607, "DPT_DimmPBModel", "push button dimming model", map[uint8]string{
+			1: "one push button", 2: "one push button on/dim up", 3: "one push button off/dim down", 4: "two push buttons"}},
+		{608, "DPT_SwitchOnMode", "switch on mode", map[uint8]string{0: "last actual value", 1: "value of additional parameter", 2: "last received absolute set value"}},
+		{609, "DPT_LoadTypeSet", "load type", map[uint8]string{
+			0: "automatic", 1: "leading edge (inductive load)", 2: "trailing edge (capacitive load)",
+			3: "switch mode only (non-dimmable load)", 4: "automatic once", 5: "CFL leading edge", 6: "CFL trailing edge",
+			7: "LED leading edge", 8: "LED trailing edge"}},
+		// The published list gives 3 and 255 the same meaning.
+		{610, "DPT_LoadTypeDetected", "detected load type", map[uint8]string{
+			0: "undefined", 1: "leading edge (inductive load)", 2: "trailing edge (capacitive load)",
+			3: "detection not possible or error", 4: "calibration pending", 5: "CFL leading edge", 6: "CFL trailing edge",
+			7: "LED leading edge", 8: "LED trailing edge", 255: "detection not possible or error (255)"}},
+		{611, "DPT_Converter_Test_Control", "converter test control", map[uint8]string{
+			1: "start function test", 2: "start duration test", 3: "start partial duration test", 4: "stop test",
+			5: "reset function test done flag", 6: "reset duration test done flag"}},
+		{612, "DPT_Converter_Control", "converter control", map[uint8]string{
+			0: "restore factory default settings", 1: "go to rest mode", 2: "go to inhibit mode", 3: "re-light/reset inhibit", 4: "reset lamp time"}},
+		{801, "DPT_SABExcept_Behaviour", "sunblind actuator behaviour on exception", map[uint8]string{
+			0: "up", 1: "down", 2: "no change", 3: "value of additional parameter", 4: "stop"}},
+		{802, "DPT_SABBehaviour_Lock_Unlock", "sunblind actuator behaviour on lock/unlock", map[uint8]string{
+			0: "up", 1: "down", 2: "no change", 3: "value of additional parameter", 4: "stop", 5: "updated value", 6: "value before locking"}},
+		{803, "DPT_SSSBMode", "sunblind push button mode", map[uint8]string{
+			1: "one push button", 2: "one push button up/step up", 3: "one push button down/step down", 4: "two push buttons"}},
+		{804, "DPT_BlindsControlMode", "blinds control mode", map[uint8]string{0: "automatic control", 1: "manual control"}},
+		{1000, "DPT_CommMode", "communication mode", map[uint8]string{
+			0: "data link layer", 1: "data link layer busmonitor", 2: "data link layer raw frames", 6: "cEMI transport layer", 255: "no layer"}},
+		{1001, "DPT_AddInfoTypes", "additional information type", map[uint8]string{
+			1: "PL medium domain address", 2: "RF control octet and serial number or DoA", 3: "busmonitor error flags",
+			4: "relative timestamp", 5: "time delay", 6: "extended relative timestamp", 7: "BiBat information"}},
+		{1002, "DPT_RF_ModeSelect", "RF mode selection", map[uint8]string{0: "asynchronous", 1: "asynchronous + BiBat master", 2: "asynchronous + BiBat slave"}},
+		{1003, "DPT_RF_FilterSelect", "RF filter selection", map[uint8]string{
+			0: "no filtering", 1: "domain address", 2: "serial number table", 3: "domain address and serial number"}},
+		{1219, "DPT_EVSEMode_1", "EV charging control pilot state", map[uint8]string{
+			0: "standby", 1: "vehicle detected", 2: "ready charging", 3: "charging with ventilation", 4: "finished",
+			6: "unavailable", 7: "error", 8: "suspended EVSE", 9: "suspended EV"}},
+		{1220, "DPT_EVSEMode_2", "EV charging OCPP state", map[uint8]string{
+			0: "charging", 1: "EV connected", 2: "suspended EV", 3: "suspended EVSE", 4: "idle", 5: "available",
+			6: "occupied", 8: "unavailable", 9: "faulted"}},
+		{1221, "DPT_EVSEMode_3", "EV charging error code", map[uint8]string{
+			0: "connector lock failure", 1: "EV communication error", 2: "ground failure", 3: "high temperature",
+			4: "internal error", 5: "local list conflict", 6: "no error"}},
 	} {
 		register(&Type{ID: ID{20, e.sub}, Name: e.name, Description: e.desc, Bits: 8, Kind: KindEnum, Enum: e.values, codec: enumCodec})
+	}
+
+	// DPT 23: 2-bit enumerations.
+	for _, e := range []struct {
+		sub        uint16
+		name, desc string
+		values     map[uint8]string
+	}{
+		{1, "DPT_OnOffAction", "on/off action", map[uint8]string{0: "off", 1: "on", 2: "off/on", 3: "on/off"}},
+		{2, "DPT_Alarm_Reaction", "alarm reaction", map[uint8]string{0: "no alarm used", 1: "alarm position up", 2: "alarm position down"}},
+		{3, "DPT_UpDown_Action", "up/down action", map[uint8]string{0: "up", 1: "down", 2: "up/down", 3: "down/up"}},
+		{102, "DPT_HVAC_PB_Action", "HVAC push button action", map[uint8]string{
+			0: "comfort/economy", 1: "comfort/nothing", 2: "economy/nothing", 3: "building protection/auto"}},
+	} {
+		register(&Type{ID: ID{23, e.sub}, Name: e.name, Description: e.desc, Bits: 2, Kind: KindEnum, Enum: e.values, codec: enumCodec})
 	}
 
 	// DPT 21, 22: status bit sets (the bits are kept as a number).
