@@ -28,7 +28,6 @@ that version as the release notes. Add the section, headed exactly
 
 - An enumeration narrower than 8 bits (the main type 23) refuses to encode a value that does not fit its width.
 - 207.600, 241.800, 246.600, 252.600 and 254.600 follow the field order of the KNX master data of schema 23, which xknx 4.1.1 also uses (#45 followed schema 20, which lists their fields in the reverse order; no release had that order): 207.600 is the actual value, then the flags from failure (bit 7) to actual value valid (bit 0); 241.800 height, slats, then slats valid (bit 15), height valid, 3 reserved bits, failure (bit 10) to upper end (bit 0); 246.600 fully charged (bit 10), duration failure, battery failure, then the charge level; 252.600 the steps of red, green, blue and white, then the validity of red (bit 3) to white (bit 0); 254.600 the steps of red, green and blue. Their text lists the fields in this order.
-
 - The release workflow no longer builds and tests otfabric/knxctl against the candidate before tagging: a downstream module does not block a release, and dependants are bumped after it is cut.
 
 ### Fixed
