@@ -62,7 +62,7 @@ Encode accepts these types and, where unambiguous, convertible ones (any Go inte
 
 Decode accepts every value the format can carry; Encode also enforces the range of the subtype (9.001 decodes -300 °C, but refuses to encode it). Dates are checked field by field, not against the calendar.
 
-Only subtypes whose semantics are published (KNX Standard volume 3/7/2, Datapoint Types) are registered; an unknown subtype of a known main type can still be used through [Lookup](#func-lookup) of the main type ("9"), which has the format of the family and no application semantics.
+Only subtypes whose semantics are published (KNX Standard volume 3/7/2, Datapoint Types, and the KNX master data that ETS uses) are registered; the registry is checked against the master data version recorded in dpt/masterdata.lock. An unknown subtype of a known main type can still be used through [Lookup](#func-lookup) of the main type ("9"), which has the format of the family and no application semantics.
 
 ## Constants
 
@@ -208,7 +208,7 @@ BlindsStatus is a DPT 241.800 value: the status of a sunblind or shutter actuato
 func (b BlindsStatus) String() string
 ```
 
-String returns "height=100.0 slats=50.2 lower-end target-reached height-valid slats-valid" with the flags that are set.
+String returns "height=100.0 slats=50.2 slats-valid height-valid target-reached lower-end" with the flags that are set.
 
 ### type ColourTemperatureControl
 
@@ -620,7 +620,7 @@ LightingActuatorStatus is a DPT 207.600 value: the status flags of a lighting ac
 func (s LightingActuatorStatus) String() string
 ```
 
-String returns "actual-valid dimming actual=50.2" with the flags that are set.
+String returns "actual=50.2 dimming actual-valid" with the flags that are set.
 
 ### type MBusAddress
 
@@ -775,7 +775,7 @@ type RelativeRGB struct {
 }
 ```
 
-RelativeRGB is a DPT 254.600 value: a relative step (DPT 3) of each of red, green and blue. On the wire blue comes first, then green and red.
+RelativeRGB is a DPT 254.600 value: a relative step (DPT 3) of each of red, green and blue, in this order on the wire.
 
 #### func (RelativeRGB) String
 
@@ -783,7 +783,7 @@ RelativeRGB is a DPT 254.600 value: a relative step (DPT 3) of each of red, gree
 func (c RelativeRGB) String() string
 ```
 
-String returns "b=+1 g=stop r=-7".
+String returns "r=-7 g=stop b=+1".
 
 ### type RelativeRGBW
 
@@ -794,7 +794,7 @@ type RelativeRGBW struct {
 }
 ```
 
-RelativeRGBW is a DPT 252.600 value: a relative step (DPT 3) of each of red, green, blue and white, each with a validity flag. On the wire the validity octet comes first, then white, blue, green and red.
+RelativeRGBW is a DPT 252.600 value: a relative step (DPT 3) of each of red, green, blue and white, each with a validity flag. On the wire red comes first, then green, blue, white and the validity octet.
 
 #### func (RelativeRGBW) String
 
@@ -802,7 +802,7 @@ RelativeRGBW is a DPT 252.600 value: a relative step (DPT 3) of each of red, gre
 func (c RelativeRGBW) String() string
 ```
 
-String returns "valid-w valid-r w=+3 b=stop g=stop r=-1" with the validity flags that are set.
+String returns "r=-1 g=stop b=stop w=+3 valid-r valid-w" with the validity flags that are set.
 
 ### type RoomSetpoints
 

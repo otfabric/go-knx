@@ -30,6 +30,8 @@ refused automated fetching) and should be re-checked in a browser.
 | Frames captured from or built against independent implementations | Yes | Our own test data |
 | Example frames or test vectors copied from the specification or application notes | **Avoided** | No statement found allowing or forbidding it (unresolved); tests use our own frames |
 | ETS project XSD (`KNX-Project-Scheme-*.xsd`) | **No** | Ships inside ETS / the Manufacturer Tool; no licence found |
+| The KNX master data (`knx_master.xml`, update.knx.org) | **No** (the file); pinned by URL and SHA-256 in `dpt/masterdata.lock` | Published for ETS without a licence statement; `make generate` downloads it into `.cache/` (git-ignored) |
+| Datapoint facts generated from the master data (`dpt/masterdata_gen.go`: identifiers, names, field widths, units, ranges, enumeration texts) | Yes | Facts of the protocol, as the DPT encodings above; the file says which version it came from |
 | ETS keyring format description | Referenced, not copied | KNX support article "Keyring File Format" |
 | Third-party sample files (for example xknx test keyrings) | Only with attribution and a compatible licence | Not used yet |
 

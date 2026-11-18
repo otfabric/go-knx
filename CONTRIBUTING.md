@@ -46,7 +46,12 @@ KNX_INTEROP_ADAPTERS=otfabric KNX_INTEROP_OTFABRIC_IMAGE=ghcr.io/otfabric/knx-in
   as passes.
 - Do not copy KNX specification text, tables or test vectors, and no code
   from other KNX stacks ([docs/standards/LICENSING.md](docs/standards/LICENSING.md)).
-- Datapoint subtypes are added only with published semantics.
+- Datapoint subtypes are added only with published semantics. The KNX
+  master data is generated, never committed: `make generate` regenerates
+  `dpt/masterdata_gen.go` from the file pinned in `dpt/masterdata.lock`,
+  `make masterdata-update` moves the pin to the newest published file and
+  `make masterdata-check` shows what changed upstream. Do not edit
+  `dpt/masterdata_gen.go` by hand.
 - Keep ARCHITECTURE.md, docs/IMPLEMENTATION-STATUS.md and the docs in step
   with the code.
 - Add a `## vX.Y.Z` section to RELEASE.md for user-visible changes.
