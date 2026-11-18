@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-multicast coverage coverage-check cover bench fuzz check clean coverpkg-check cross e2e interop interop-images interop-matrix docs-check captures-verify captures-fetch captures-extended captures-generate generate masterdata-fetch masterdata-update masterdata-check
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-multicast coverage coverage-check cover bench fuzz check clean coverpkg-check cross e2e interop interop-images interop-matrix docs-check captures-verify captures-fetch captures-extended captures-generate generate generate-check masterdata-fetch masterdata-update masterdata-check
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -159,13 +159,19 @@ captures-extended: captures-verify captures-fetch ## Compare every TP1 frame wit
 captures-generate: ## Rewrite the derived fields of manifest.json and SHA256SUMS (needs tshark; CSV counts from the cache)
 	@KNX_CAPTURE_GENERATE=1 go test -count=1 -run '^TestGenerate$$' ./internal/capture/
 
-check: fmt-check lint lint-ci vet vuln captures-verify test coverage-check coverage-pkg-check examples cross docs-check ## Everything CI checks except the interop job
+check: fmt-check lint lint-ci vet vuln captures-verify generate-check test coverage-check coverage-pkg-check examples cross docs-check ## Everything CI checks except the interop job
 
 # The datapoint table generated from the KNX master data (dpt/masterdata_gen.go).
 # dpt/masterdata.lock pins the XML (URL, schema, version, SHA-256); it is
-# downloaded into .cache/ and never committed. Needs network; CI does not run these.
+# downloaded into .cache/ and never committed. Needs network: CI runs
+# generate-check with the pinned file cached by the lock's hash.
 generate: ## Regenerate dpt/masterdata_gen.go from the pinned KNX master data
 	@scripts/masterdata.sh generate
+
+generate-check: generate ## Fail if regenerating changes the committed dpt/masterdata_gen.go (CI drift check)
+	@git diff --exit-code --stat -- dpt/masterdata_gen.go || { echo "dpt/masterdata_gen.go is out of date: run make generate and commit the result."; exit 1; }
+	@untracked="$$(git ls-files --others --exclude-standard -- '*_gen.go')"; \
+	if [ -n "$$untracked" ]; then echo "Generated files are not committed:"; echo "$$untracked"; exit 1; fi
 
 masterdata-fetch: ## Download the pinned KNX master data into .cache/ and verify it
 	@scripts/masterdata.sh fetch

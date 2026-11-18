@@ -92,3 +92,11 @@ jobs:
         with:
           go-version: "1.26.x"
       - run: make build examples cross coverpkg-check captures-verify
+      # The KNX master data pinned in dpt/masterdata.lock, kept by the lock's
+      # hash: update.knx.org republishes in place, so a pin can disappear.
+      - uses: actions/cache@v5
+        with:
+          path: .cache/masterdata/knx_master.xml
+          key: knx-masterdata-${{ hashFiles('dpt/masterdata.lock') }}
+      - name: Generated code matches the pinned master data (TEST-011)
+        run: make generate-check
