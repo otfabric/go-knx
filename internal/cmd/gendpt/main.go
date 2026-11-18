@@ -67,6 +67,12 @@ func generate(in, lockPath, out string) error {
 	if err := lk.verify(data, md); err != nil {
 		return fmt.Errorf("%s does not match %s: %w", in, lockPath, err)
 	}
+	return write(out, lk, md)
+}
+
+// write formats the Go file and writes it to out; nothing is written when
+// the source does not format.
+func write(out string, lk lock, md *masterData) error {
 	src, err := emit(lk, md)
 	if err != nil {
 		return err

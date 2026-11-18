@@ -6,8 +6,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -126,6 +128,8 @@ func TestParseMasterDataErrors(t *testing.T) {
 		{"coefficient", `Coefficient="0.3921566"`, `Coefficient="-1"`, "Coefficient"},
 		{"range", `MinInclusive="0" MaxInclusive="15"`, `MinInclusive="9" MaxInclusive="1"`, "range"},
 		{"infinite", `MaxValue="2e3"`, `MaxValue="1e999"`, "range"},
+		{"not a number", `MaxValue="2e3"`, `MaxValue="NaN"`, "range"},
+		{"infinity", `MinValue="-1.5"`, `MinValue="-Inf"`, "range"},
 		{"enum value", `Value="1"`, `Value="-1"`, "EnumValue"},
 		{"ref id", `<RefType RefId="DPST-900-1_F-1" />`, `<RefType />`, "without RefId"},
 		{"ref", `RefId="DPST-900-1_F-1"`, `RefId="nowhere"`, "no such field"},
@@ -256,5 +260,40 @@ func TestGenerate(t *testing.T) {
 		if code := run(args, &stderr); code != 2 {
 			t.Errorf("%v: exit %d, want 2", args, code)
 		}
+	}
+}
+
+// A model that does not give valid Go (here a kind that is not an
+// identifier) is refused by gofmt, and nothing is written.
+func TestWriteRefusesInvalidSource(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "gen.go")
+	md := &masterData{Schema: 23, Version: 1, Subtypes: []subtype{{Main: 1, Sub: 1, Bits: 1, Fields: []field{{Kind: "md Bit", Width: 1}}}}}
+	if err := write(out, lock{URL: "https://x", SHA256: strings.Repeat("0", 64)}, md); err == nil {
+		t.Fatal("invalid source formatted")
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Error("written despite the error")
+	}
+}
+
+// main exits with run's status: the binary is the test binary run again
+// with GENDPT_MAIN set.
+func TestMain(m *testing.M) {
+	if os.Getenv("GENDPT_MAIN") == "1" {
+		os.Args = []string{"gendpt"}
+		main()
+	}
+	os.Exit(m.Run())
+}
+
+func TestMainExitStatus(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd.Env = append(os.Environ(), "GENDPT_MAIN=1")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 2 || !strings.Contains(stderr.String(), "usage: gendpt") {
+		t.Fatalf("main without arguments: %v, stderr %q; want exit 2 and the usage", err, stderr.String())
 	}
 }

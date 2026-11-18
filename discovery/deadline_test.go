@@ -255,3 +255,52 @@ func TestEndedContextReturnsPromptly(t *testing.T) {
 		})
 	}
 }
+
+// laterCtx is a context that ends (cancelled) when its Err is called for
+// the (after+1)-th time: it puts the end of the context at a chosen point
+// of a call, deterministically.
+type laterCtx struct {
+	context.Context
+	done  chan struct{}
+	once  sync.Once
+	mu    sync.Mutex
+	calls int
+	after int
+}
+
+func newLaterCtx(after int) *laterCtx {
+	return &laterCtx{Context: context.Background(), done: make(chan struct{}), after: after}
+}
+
+func (l *laterCtx) Done() <-chan struct{} { return l.done }
+
+func (l *laterCtx) Err() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.calls++
+	if l.calls > l.after {
+		l.once.Do(func() { close(l.done) })
+		return context.Canceled
+	}
+	return nil
+}
+
+// A context that ends after the call's first check of it, just before the
+// call sets its read deadline, is seen as soon as the deadline is set:
+// that deadline replaced the one the context's end set, so the call checks
+// the context again rather than waiting for its own timeout.
+func TestContextEndsBeforeReadDeadline(t *testing.T) {
+	leak.Check(t)
+	for name, call := range endingCalls {
+		t.Run(name, func(t *testing.T) {
+			p := fakeknx.Listen(t)
+			p.Handle(func(*fakeknx.Peer, fakeknx.Datagram) bool { return true })
+			start := time.Now()
+			err := call(newLaterCtx(1), p.String())
+			if took := time.Since(start); took > prompt {
+				t.Fatalf("returned after %v, want within %v (its own timeout is %v)", took, prompt, wait)
+			}
+			isCanceled(t, err, name)
+		})
+	}
+}

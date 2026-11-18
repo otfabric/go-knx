@@ -349,3 +349,56 @@ func TestLayoutKinds(t *testing.T) {
 }
 
 func fmtString(v any) string { return v.(interface{ String() string }).String() }
+
+// A layout whose fields do not fill whole octets, or more than 8, is a
+// programming error: layoutCodec panics when the table is built.
+func TestLayoutCodecBadWidths(t *testing.T) {
+	type v struct{ on bool }
+	flag := flagField("on", func(x *v) *bool { return &x.on })
+	for _, fields := range [][]field[v]{
+		{flag, reserved[v](6)},  // 7 bits
+		{flag, reserved[v](71)}, // 72 bits
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("layoutCodec(%d fields) did not panic", len(fields))
+				}
+			}()
+			layoutCodec(fields)
+		}()
+	}
+}
+
+// Format of a value that is not the layout's type falls back to the
+// default text; the codec's format says it did not handle it.
+func TestLayoutFormatOtherType(t *testing.T) {
+	typ := MustLookup("207.600")
+	if s, ok := typ.codec.format(typ, 42); ok || s != "" {
+		t.Errorf("format(42) = %q, %v; want not handled", s, ok)
+	}
+	if got := typ.Format(42); got != "42" {
+		t.Errorf("Format(42) = %q, want 42", got)
+	}
+}
+
+// Words are split at spaces outside double quotes; a backslash in quotes
+// escapes the next rune, so an escaped quote does not end the value.
+func TestSplitWords(t *testing.T) {
+	for in, want := range map[string][]string{
+		`a b`:                  {"a", "b"},
+		"  a\t b ":             {"a", "b"},
+		`mode="a b" c`:         {`mode="a b"`, "c"},
+		`m="say \"hi\" now" x`: {`m="say \"hi\" now"`, "x"},
+		`m="back\\slash" y`:    {`m="back\\slash"`, "y"},
+		``:                     nil,
+	} {
+		got, err := splitWords(in)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("splitWords(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	if _, err := splitWords(`m="open \" still`); !errors.Is(err, knx.ErrInvalidValue) {
+		t.Errorf("an escaped quote closed the value: %v", err)
+	}
+}

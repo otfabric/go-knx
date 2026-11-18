@@ -338,15 +338,14 @@ func layoutCodec[V any](fields []field[V]) codec {
 						if u, err := strconv.Unquote(val); err == nil {
 							val = u
 						}
-						if err := f.parse(t, &x, val); err != nil {
-							return nil, err
-						}
 					case f.flag:
-						if err := f.parse(t, &x, "true"); err != nil {
-							return nil, err
-						}
+						// A flag's bare name sets it.
+						val = "true"
 					default:
 						return nil, errValue("%q: want %s=value", w, f.name)
+					}
+					if err := f.parse(t, &x, val); err != nil {
+						return nil, err
 					}
 					continue next
 				}
