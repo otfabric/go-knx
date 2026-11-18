@@ -31,16 +31,32 @@ func init() {
 		{ID: ID{21, 0}, Name: "DPT_21", Description: "8-bit set", Bits: 8, Kind: KindBits, codec: bitsCodec(1)},
 		{ID: ID{22, 0}, Name: "DPT_22", Description: "16-bit set", Bits: 16, Kind: KindBits, codec: bitsCodec(2)},
 		{ID: ID{23, 0}, Name: "DPT_23", Description: "2-bit enumeration", Bits: 2, Kind: KindEnum, codec: enumCodec},
+		{ID: ID{25, 0}, Name: "DPT_25", Description: "two 4-bit values", Bits: 8, Kind: KindDoubleNibble, codec: layoutCodec(nibbleFields(15))},
 		{ID: ID{26, 0}, Name: "DPT_26", Description: "scene information (bit set)", Bits: 8, Kind: KindBits, codec: bitsCodec(1)},
 		{ID: ID{27, 0}, Name: "DPT_27", Description: "combined on/off information (16-bit mask, 16-bit state)", Bits: 32, Kind: KindOnOffInfo, codec: onOffInfoCodec},
 		{ID: ID{29, 0}, Name: "DPT_29", Description: "8-octet signed value", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)},
 		{ID: ID{30, 0}, Name: "DPT_30", Description: "24-bit set", Bits: 24, Kind: KindBits, codec: bitsCodec(3)},
+		{ID: ID{206, 0}, Name: "DPT_206", Description: "time delay (min) and 8-bit mode", Bits: 24, Kind: KindModeNext, codec: modeNextCodec},
 		{ID: ID{217, 0}, Name: "DPT_217", Description: "version (magic, version, revision)", Bits: 16, Kind: KindVersion, codec: versionCodec},
+		{ID: ID{219, 0}, Name: "DPT_219", Description: "alarm information", Bits: 48, Kind: KindAlarmInfo, codec: layoutCodec(alarmInfoFields)},
 		{ID: ID{222, 0}, Name: "DPT_222", Description: "3 × 2-octet float", Bits: 48, Kind: KindSetpoints, Min: Float16Min, Max: Float16Max, HasRange: true, codec: setpointsCodec(3)},
+		{ID: ID{225, 0}, Name: "DPT_225", Description: "time period (ms) and percentage", Bits: 24, Kind: KindScalingSpeed, codec: layoutCodec(scalingFields(1))},
+		{ID: ID{229, 0}, Name: "DPT_229", Description: "metering value (counter, value information, status)", Bits: 48, Kind: KindMeteringValue, codec: layoutCodec(meteringFields)},
+		{ID: ID{230, 0}, Name: "DPT_230", Description: "M-Bus address", Bits: 64, Kind: KindMBusAddress, codec: layoutCodec(mbusFields)},
 		{ID: ID{232, 0}, Name: "DPT_232", Description: "3 × 8-bit colour", Bits: 24, Kind: KindRGB, codec: rgbCodec},
 		{ID: ID{234, 0}, Name: "DPT_234", Description: "two ASCII letters", Bits: 16, Kind: KindString, codec: alpha2Codec},
+		{ID: ID{235, 0}, Name: "DPT_235", Description: "active energy and tariff with validity", Bits: 48, Kind: KindTariffEnergy, codec: layoutCodec(tariffFields)},
+		{ID: ID{236, 0}, Name: "DPT_236", Description: "prioritised mode control", Bits: 8, Kind: KindPriorityControl, codec: layoutCodec(priorityFields)},
+		{ID: ID{237, 0}, Name: "DPT_237", Description: "DALI control gear diagnostic", Bits: 16, Kind: KindDALIGearDiagnostic, codec: layoutCodec(daliGearFields)},
+		{ID: ID{238, 0}, Name: "DPT_238", Description: "DALI diagnostic", Bits: 8, Kind: KindDALIDiagnostic, codec: layoutCodec(daliFields)},
+		{ID: ID{240, 0}, Name: "DPT_240", Description: "height and slats positions with validity", Bits: 24, Kind: KindCombinedPosition, codec: layoutCodec(positionFields)},
 		{ID: ID{242, 0}, Name: "DPT_242", Description: "colour xyY", Bits: 48, Kind: KindXYY, codec: xyyCodec},
+		{ID: ID{244, 0}, Name: "DPT_244", Description: "DALI converter status", Bits: 16, Kind: KindConverterStatus, codec: layoutCodec(converterStatusFields)},
+		{ID: ID{245, 0}, Name: "DPT_245", Description: "DALI converter test result", Bits: 48, Kind: KindConverterTestResult, codec: layoutCodec(converterTestFields)},
+		{ID: ID{249, 0}, Name: "DPT_249", Description: "time period, colour temperature and brightness with validity", Bits: 48, Kind: KindColourTransition, codec: layoutCodec(transitionFields)},
+		{ID: ID{250, 0}, Name: "DPT_250", Description: "colour temperature and brightness steps with validity", Bits: 24, Kind: KindColourTemperatureControl, codec: layoutCodec(temperatureControlFields)},
 		{ID: ID{251, 0}, Name: "DPT_251", Description: "colour RGBW", Bits: 48, Kind: KindRGBW, codec: rgbwCodec},
+		{ID: ID{255, 0}, Name: "DPT_255", Description: "2 × 4-octet float (longitude, latitude)", Bits: 64, Kind: KindGeoLocation, codec: layoutCodec(geoFields)},
 		{ID: ID{275, 0}, Name: "DPT_275", Description: "4 × 2-octet float", Bits: 64, Kind: KindSetpoints, Min: Float16Min, Max: Float16Max, HasRange: true, codec: setpointsCodec(4)},
 	} {
 		mains[m.ID.Main] = m
@@ -126,6 +142,7 @@ func init() {
 	// DPT 6.
 	register(&Type{ID: ID{6, 1}, Name: "DPT_Percent_V8", Description: "percentage -128..127 %", Unit: "%", Bits: 8, Kind: KindSigned, codec: intCodec(1, true, 1)})
 	register(&Type{ID: ID{6, 10}, Name: "DPT_Value_1_Count", Description: "counter pulses", Unit: "pulses", Bits: 8, Kind: KindSigned, codec: intCodec(1, true, 1)})
+	register(&Type{ID: ID{6, 20}, Name: "DPT_Status_Mode3", Description: "status bits A..E and the active one of modes 0..2", Bits: 8, Kind: KindStatusMode, codec: layoutCodec(statusModeFields)})
 
 	// DPT 7.
 	for _, u := range []struct {
@@ -534,6 +551,9 @@ func init() {
 	// DPT 26.
 	register(&Type{ID: ID{26, 1}, Name: "DPT_SceneInfo", Description: "scene information (bit 6: inactive)", Bits: 8, Kind: KindBits, codec: bitsCodec(1)})
 
+	// DPT 25.
+	register(&Type{ID: ID{25, 1000}, Name: "DPT_DoubleNibble", Description: "busy and NAK repetitions (0..3 each)", Bits: 8, Kind: KindDoubleNibble, codec: layoutCodec(nibbleFields(3))})
+
 	// DPT 27.
 	register(&Type{ID: ID{27, 1}, Name: "DPT_CombinedInfoOnOff", Description: "on/off state of 16 outputs with validity mask", Bits: 32, Kind: KindOnOffInfo, codec: onOffInfoCodec})
 
@@ -545,6 +565,22 @@ func init() {
 	// DPT 30.
 	register(&Type{ID: ID{30, 1010}, Name: "DPT_Channel_Activation_24", Description: "activation of 24 channels (24-bit set)", Bits: 24, Kind: KindBits, codec: bitsCodec(3)})
 
+	// DPT 206: a mode that applies after a delay. 206.100 and 206.102 have
+	// the modes of 20.102 and 20.103 with 0 undefined instead of auto;
+	// 206.104 and 206.105 those of 20.003 and 20.002.
+	for _, e := range []struct {
+		sub        uint16
+		name, desc string
+		values     map[uint8]string
+	}{
+		{100, "DPT_HVACModeNext", "time delay and HVAC mode", map[uint8]string{0: "undefined", 1: "comfort", 2: "standby", 3: "economy", 4: "building protection"}},
+		{102, "DPT_DHWModeNext", "time delay and DHW mode", map[uint8]string{0: "undefined", 1: "legio protect", 2: "normal", 3: "reduced", 4: "off/frost protect"}},
+		{104, "DPT_OccModeNext", "time delay and occupancy mode", map[uint8]string{0: "occupied", 1: "standby", 2: "not occupied"}},
+		{105, "DPT_BuildingModeNext", "time delay and building mode", map[uint8]string{0: "building in use", 1: "building not used", 2: "building protection"}},
+	} {
+		register(&Type{ID: ID{206, e.sub}, Name: e.name, Description: e.desc, Bits: 24, Kind: KindModeNext, Enum: e.values, codec: modeNextCodec})
+	}
+
 	// DPT 217.
 	register(&Type{ID: ID{217, 1}, Name: "DPT_Version", Description: "version (magic 0..31, version 0..31, revision 0..63)", Bits: 16, Kind: KindVersion, codec: versionCodec})
 
@@ -555,12 +591,36 @@ func init() {
 	register(&Type{ID: ID{275, 100}, Name: "DPT_TempRoomSetpSetF16[4]", Description: "room temperature setpoints comfort, standby, economy, building protection", Unit: "°C", Bits: 64, Kind: KindSetpoints, Min: -273, Max: max9, HasRange: true, codec: setpointsCodec(4)})
 	register(&Type{ID: ID{275, 101}, Name: "DPT_TempRoomSetpSetShiftF16[4]", Description: "room temperature setpoint shifts comfort, standby, economy, building protection", Unit: "K", Bits: 64, Kind: KindSetpoints, Min: -670760, Max: max9, HasRange: true, codec: setpointsCodec(4)})
 
+	// DPT 219, 225, 229, 230, 235, 236.
+	register(&Type{ID: ID{219, 1}, Name: "DPT_AlarmInfo", Description: "alarm information (log number, priority, application area, error class, flags)", Bits: 48, Kind: KindAlarmInfo, codec: layoutCodec(alarmInfoFields)})
+	register(&Type{ID: ID{225, 1}, Name: "DPT_Scaling_Speed", Description: "scaling speed (time period in steps of 100 ms, percentage)", Bits: 24, Kind: KindScalingSpeed, codec: layoutCodec(scalingFields(100))})
+	register(&Type{ID: ID{225, 2}, Name: "DPT_Scaling_Step_Time", Description: "scaling step time (time period in ms, percentage)", Bits: 24, Kind: KindScalingSpeed, codec: layoutCodec(scalingFields(1))})
+	register(&Type{ID: ID{229, 1}, Name: "DPT_MeteringValue", Description: "metering value (counter, value information, status)", Bits: 48, Kind: KindMeteringValue, codec: layoutCodec(meteringFields)})
+	register(&Type{ID: ID{230, 1000}, Name: "DPT_MBus_Address", Description: "M-Bus address (manufacturer, identification number, version, medium)", Bits: 64, Kind: KindMBusAddress, codec: layoutCodec(mbusFields)})
+	register(&Type{ID: ID{235, 1}, Name: "DPT_Tariff_ActiveEnergy", Description: "active energy (Wh) with tariff", Bits: 48, Kind: KindTariffEnergy, codec: layoutCodec(tariffFields)})
+	register(&Type{ID: ID{236, 1}, Name: "DPT_Prioritised_Mode_Control", Description: "prioritised mode control (deactivation, priority 0..7, mode 0..15)", Bits: 8, Kind: KindPriorityControl, codec: layoutCodec(priorityFields)})
+
+	// DALI: 237, 238, 244, 245.
+	register(&Type{ID: ID{237, 600}, Name: "DPT_DALI_Control_Gear_Diagnostic", Description: "DALI control gear diagnostic (failures, address)", Bits: 16, Kind: KindDALIGearDiagnostic, codec: layoutCodec(daliGearFields)})
+	register(&Type{ID: ID{238, 600}, Name: "DPT_DALI_Diagnostics", Description: "DALI diagnostic (failures, device address)", Bits: 8, Kind: KindDALIDiagnostic, codec: layoutCodec(daliFields)})
+	register(&Type{ID: ID{244, 600}, Name: "DPT_Converter_Status", Description: "DALI emergency converter status", Bits: 16, Kind: KindConverterStatus, codec: layoutCodec(converterStatusFields)})
+	register(&Type{ID: ID{245, 600}, Name: "DPT_Converter_Test_Result", Description: "DALI emergency converter test result", Bits: 48, Kind: KindConverterTestResult, codec: layoutCodec(converterTestFields)})
+
+	// DPT 240: blinds.
+	register(&Type{ID: ID{240, 800}, Name: "DPT_CombinedPosition", Description: "height and slats positions with validity", Bits: 24, Kind: KindCombinedPosition, codec: layoutCodec(positionFields)})
+
+	// DPT 255.
+	register(&Type{ID: ID{255, 1}, Name: "DPT_GeographicalLocation", Description: "geographical location (longitude, latitude in degrees)", Bits: 64, Kind: KindGeoLocation, codec: layoutCodec(geoFields)})
+
 	// DPT 234.
 	register(&Type{ID: ID{234, 1}, Name: "DPT_LanguageCodeAlpha2_ASCII", Description: "language code (ISO 639-1, two letters)", Bits: 16, Kind: KindString, codec: alpha2Codec})
 	register(&Type{ID: ID{234, 2}, Name: "DPT_RegionCodeAlpha2_ASCII", Description: "region code (ISO 3166-1 alpha-2, two letters)", Bits: 16, Kind: KindString, codec: alpha2Codec})
 
 	// Colours.
 	register(&Type{ID: ID{232, 600}, Name: "DPT_Colour_RGB", Description: "RGB colour", Bits: 24, Kind: KindRGB, codec: rgbCodec})
+	register(&Type{ID: ID{232, 601}, Name: "DPT_Colour_HSV", Description: "HSV colour", Bits: 24, Kind: KindHSV, codec: layoutCodec(hsvFields)})
 	register(&Type{ID: ID{242, 600}, Name: "DPT_Colour_xyY", Description: "colour xyY", Bits: 48, Kind: KindXYY, codec: xyyCodec})
 	register(&Type{ID: ID{251, 600}, Name: "DPT_Colour_RGBW", Description: "RGBW colour", Bits: 48, Kind: KindRGBW, codec: rgbwCodec})
+	register(&Type{ID: ID{249, 600}, Name: "DPT_Brightness_Colour_Temperature_Transition", Description: "transition to a colour temperature and brightness", Bits: 48, Kind: KindColourTransition, codec: layoutCodec(transitionFields)})
+	register(&Type{ID: ID{250, 600}, Name: "DPT_Brightness_Colour_Temperature_Control", Description: "relative colour temperature and brightness control", Bits: 24, Kind: KindColourTemperatureControl, codec: layoutCodec(temperatureControlFields)})
 }

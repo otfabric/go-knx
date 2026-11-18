@@ -35,6 +35,24 @@
 //	KindOnOffInfo OnOffInfo            DPT 27
 //	KindVersion   Version              DPT 217
 //	KindSetpoints RoomSetpoints        DPT 222, 275
+//	KindStatusMode StatusMode          DPT 6.020
+//	KindDoubleNibble DoubleNibble      DPT 25
+//	KindModeNext  ModeNext             DPT 206
+//	KindAlarmInfo AlarmInfo            DPT 219
+//	KindScalingSpeed ScalingSpeed      DPT 225
+//	KindMeteringValue MeteringValue    DPT 229
+//	KindMBusAddress MBusAddress        DPT 230
+//	KindHSV       HSV                  DPT 232.601
+//	KindTariffEnergy TariffEnergy      DPT 235
+//	KindPriorityControl PriorityControl DPT 236
+//	KindDALIGearDiagnostic DALIGearDiagnostic DPT 237
+//	KindDALIDiagnostic DALIDiagnostic  DPT 238
+//	KindCombinedPosition CombinedPosition DPT 240
+//	KindConverterStatus ConverterStatus DPT 244
+//	KindConverterTestResult ConverterTestResult DPT 245
+//	KindColourTransition ColourTransition DPT 249
+//	KindColourTemperatureControl ColourTemperatureControl DPT 250
+//	KindGeoLocation GeoLocation        DPT 255
 //
 // Encode accepts these types and, where unambiguous, convertible ones (any
 // Go integer or float for a number, a name for an enumeration).
@@ -129,9 +147,29 @@ const (
 	KindOnOffInfo
 	KindVersion
 	KindSetpoints
+	KindStatusMode
+	KindDoubleNibble
+	KindModeNext
+	KindAlarmInfo
+	KindScalingSpeed
+	KindMeteringValue
+	KindMBusAddress
+	KindHSV
+	KindTariffEnergy
+	KindPriorityControl
+	KindDALIGearDiagnostic
+	KindDALIDiagnostic
+	KindCombinedPosition
+	KindConverterStatus
+	KindConverterTestResult
+	KindColourTransition
+	KindColourTemperatureControl
+	KindGeoLocation
 )
 
-var kindNames = [...]string{"bool", "control", "step", "char", "unsigned", "signed", "float", "time", "date", "string", "scene", "scene-control", "datetime", "enum", "bits", "rgb", "rgbw", "xyY", "access", "onoff-info", "version", "setpoints"}
+var kindNames = [...]string{"bool", "control", "step", "char", "unsigned", "signed", "float", "time", "date", "string", "scene", "scene-control", "datetime", "enum", "bits", "rgb", "rgbw", "xyY", "access", "onoff-info", "version", "setpoints",
+	"status-mode", "double-nibble", "mode-next", "alarm-info", "scaling-speed", "metering-value", "mbus-address", "hsv", "tariff-energy", "priority-control",
+	"dali-gear-diagnostic", "dali-diagnostic", "combined-position", "converter-status", "converter-test-result", "colour-transition", "colour-temperature-control", "geo-location"}
 
 // String names the kind.
 func (k Kind) String() string {
@@ -159,7 +197,8 @@ type Type struct {
 	// Labels are the names of the two values of a DPT 1 subtype (false,
 	// true), or of the enumeration values of a DPT 20 subtype.
 	Labels []string
-	// Enum maps the values of an enumeration to their names.
+	// Enum maps the values of an enumeration (DPT 20, 23, and the mode of
+	// DPT 206) to their names.
 	Enum map[uint8]string
 
 	codec codec

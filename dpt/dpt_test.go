@@ -57,7 +57,15 @@ var goType = map[Kind]reflect.Type{
 	KindDateTime: reflect.TypeFor[DateTime](), KindEnum: reflect.TypeFor[Enum](), KindBits: reflect.TypeFor[uint64](),
 	KindRGB: reflect.TypeFor[RGB](), KindRGBW: reflect.TypeFor[RGBW](), KindXYY: reflect.TypeFor[XYY](),
 	KindAccess: reflect.TypeFor[AccessData](), KindOnOffInfo: reflect.TypeFor[OnOffInfo](), KindVersion: reflect.TypeFor[Version](),
-	KindSetpoints: reflect.TypeFor[RoomSetpoints](),
+	KindSetpoints:  reflect.TypeFor[RoomSetpoints](),
+	KindStatusMode: reflect.TypeFor[StatusMode](), KindDoubleNibble: reflect.TypeFor[DoubleNibble](), KindModeNext: reflect.TypeFor[ModeNext](),
+	KindAlarmInfo: reflect.TypeFor[AlarmInfo](), KindScalingSpeed: reflect.TypeFor[ScalingSpeed](), KindMeteringValue: reflect.TypeFor[MeteringValue](),
+	KindMBusAddress: reflect.TypeFor[MBusAddress](), KindHSV: reflect.TypeFor[HSV](), KindTariffEnergy: reflect.TypeFor[TariffEnergy](),
+	KindPriorityControl: reflect.TypeFor[PriorityControl](), KindDALIGearDiagnostic: reflect.TypeFor[DALIGearDiagnostic](),
+	KindDALIDiagnostic: reflect.TypeFor[DALIDiagnostic](), KindCombinedPosition: reflect.TypeFor[CombinedPosition](),
+	KindConverterStatus: reflect.TypeFor[ConverterStatus](), KindConverterTestResult: reflect.TypeFor[ConverterTestResult](),
+	KindColourTransition: reflect.TypeFor[ColourTransition](), KindColourTemperatureControl: reflect.TypeFor[ColourTemperatureControl](),
+	KindGeoLocation: reflect.TypeFor[GeoLocation](),
 }
 
 // samples returns values of t that must survive an encode/decode round
@@ -163,6 +171,8 @@ func samples(t *Type) []any {
 			v = append(v, RoomSetpoints{Comfort: 22, Standby: 20, Economy: 18, Protection: 7})
 		}
 		return v
+	default:
+		return layoutSamples(t)
 	}
 	return nil
 }
@@ -971,6 +981,9 @@ func TestDPT20(t *testing.T) {
 	}
 	// Every name of every enumeration parses back to its value.
 	for _, e := range All() {
+		if e.Kind != KindEnum {
+			continue
+		}
 		for k, n := range e.Enum {
 			if v, err := e.Parse(n); err != nil || v.(Enum).Value != k {
 				t.Errorf("%s Parse(%q) = %v, %v", e, n, v, err)
