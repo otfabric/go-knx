@@ -157,26 +157,26 @@ func TestLayoutVectors(t *testing.T) {
 		{"250.600", ColourTemperatureControl{Brightness: Step{Increase: true, StepCode: 7}, BrightnessValid: true}, "000f01"},
 		// 1.5° and -2.5°.
 		{"255.001", GeoLocation{Longitude: 1.5, Latitude: -2.5}, "3fc00000c0200000"},
-		// The master data layouts, most significant field first. 207.600:
-		// the flags (actual value valid in bit 7 .. failure in bit 0),
-		// then the actual value.
-		{"207.600", LightingActuatorStatus{ActualValueValid: true, Dimming: true, ActualValue: 100}, "84ff"},
-		{"207.600", LightingActuatorStatus{Locked: true, Failure: true}, "4100"},
-		// 241.800: height, slats, then upper end in bit 15 .. failure in
-		// bit 5, height valid in bit 1, slats valid in bit 0.
-		{"241.800", BlindsStatus{Height: 100, LowerEnd: true, TargetReached: true, HeightValid: true}, "ff005002"},
-		{"241.800", BlindsStatus{Slats: 100, UpperEnd: true, WeatherAlarm: true, Failure: true, SlatsValid: true}, "00ff8221"},
-		// 246.600: battery failure in bit 2, duration failure in bit 1,
-		// fully charged in bit 0, then the charge level.
-		{"246.600", BatteryInfo{FullyCharged: true, ChargeLevel: 100}, "0164"},
-		{"246.600", BatteryInfo{BatteryFailure: true, DurationFailure: true, ChargeLevel: 255}, "06ff"},
-		// 252.600: the validity of white (bit 3) .. red (bit 0), then the
-		// steps of white, blue, green and red.
-		{"252.600", RelativeRGBW{R: Step{Increase: true, StepCode: 3}, W: Step{StepCode: 1}, ValidR: true, ValidW: true}, "090100000b"},
-		{"252.600", RelativeRGBW{G: Step{Increase: true, StepCode: 7}, ValidG: true}, "0200000f00"},
-		// 254.600: the steps of blue, green and red.
-		{"254.600", RelativeRGB{R: Step{Increase: true, StepCode: 1}, G: Step{StepCode: 7}}, "000709"},
-		{"254.600", RelativeRGB{B: Step{Increase: true, StepCode: 2}}, "0a0000"},
+		// The master data layouts of schema 23, most significant field
+		// first (xknx 4.1.1 agrees). 207.600: the actual value, then the
+		// flags (failure in bit 7 .. actual value valid in bit 0).
+		{"207.600", LightingActuatorStatus{ActualValueValid: true, Dimming: true, ActualValue: 100}, "ff21"},
+		{"207.600", LightingActuatorStatus{Locked: true, Failure: true}, "0082"},
+		// 241.800: height, slats, then slats valid in bit 15, height valid
+		// in bit 14, 3 reserved bits, failure in bit 10 .. upper end in bit 0.
+		{"241.800", BlindsStatus{Height: 100, LowerEnd: true, TargetReached: true, HeightValid: true}, "ff00400a"},
+		{"241.800", BlindsStatus{Slats: 100, UpperEnd: true, WeatherAlarm: true, Failure: true, SlatsValid: true}, "00ff8441"},
+		// 246.600: fully charged in bit 2, duration failure in bit 1,
+		// battery failure in bit 0, then the charge level.
+		{"246.600", BatteryInfo{FullyCharged: true, ChargeLevel: 100}, "0464"},
+		{"246.600", BatteryInfo{BatteryFailure: true, DurationFailure: true, ChargeLevel: 255}, "03ff"},
+		// 252.600: the steps of red, green, blue and white, then the
+		// validity of red (bit 3) .. white (bit 0).
+		{"252.600", RelativeRGBW{R: Step{Increase: true, StepCode: 3}, W: Step{StepCode: 1}, ValidR: true, ValidW: true}, "0b00000109"},
+		{"252.600", RelativeRGBW{G: Step{Increase: true, StepCode: 7}, ValidG: true}, "000f000004"},
+		// 254.600: the steps of red, green and blue.
+		{"254.600", RelativeRGB{R: Step{Increase: true, StepCode: 1}, G: Step{StepCode: 7}}, "090700"},
+		{"254.600", RelativeRGB{B: Step{Increase: true, StepCode: 2}}, "00000a"},
 	} {
 		if b := enc(t, c.id, c.v); !bytes.Equal(b, hx(c.hex)) {
 			t.Errorf("%s Encode(%+v) = % X, want %s", c.id, c.v, b, c.hex)
@@ -203,7 +203,7 @@ func TestLayoutDecodeErrors(t *testing.T) {
 		{"249.600", "000000000008"},
 		{"250.600", "100000"}, {"250.600", "001000"}, {"250.600", "000004"},
 		{"255.001", "7fc0000000000000"}, {"255.001", "000000007f800000"}, // NaN, +Inf
-		{"241.800", "00000004"}, {"246.600", "0800"},
+		{"241.800", "00000800"}, {"241.800", "00003000"}, {"246.600", "0800"},
 		{"252.600", "1000000000"}, {"252.600", "0010000000"}, {"252.600", "0000000010"},
 		{"254.600", "100000"}, {"254.600", "000010"},
 		{"6.020", ""}, {"245.600", "0000"}, // length
@@ -282,11 +282,11 @@ func TestLayoutText(t *testing.T) {
 		{"249.600", "period=1000 temperature=2700 brightness=0.0 temperature-valid", ColourTransition{Period: 1000, Temperature: 2700, TemperatureValid: true}},
 		{"250.600", "temperature=+3 brightness=stop temperature-valid", ColourTemperatureControl{Temperature: Step{Increase: true, StepCode: 3}, TemperatureValid: true}},
 		{"255.001", "longitude=1.5 latitude=-2.5", GeoLocation{Longitude: 1.5, Latitude: -2.5}},
-		{"207.600", "actual-valid dimming actual=100.0", LightingActuatorStatus{ActualValueValid: true, Dimming: true, ActualValue: 100}},
-		{"241.800", "height=100.0 slats=0.0 lower-end target-reached height-valid", BlindsStatus{Height: 100, LowerEnd: true, TargetReached: true, HeightValid: true}},
+		{"207.600", "actual=100.0 dimming actual-valid", LightingActuatorStatus{ActualValueValid: true, Dimming: true, ActualValue: 100}},
+		{"241.800", "height=100.0 slats=0.0 height-valid target-reached lower-end", BlindsStatus{Height: 100, LowerEnd: true, TargetReached: true, HeightValid: true}},
 		{"246.600", "fully-charged charge=100", BatteryInfo{FullyCharged: true, ChargeLevel: 100}},
-		{"252.600", "valid-w valid-r w=-1 b=stop g=stop r=+3", RelativeRGBW{R: Step{Increase: true, StepCode: 3}, W: Step{StepCode: 1}, ValidR: true, ValidW: true}},
-		{"254.600", "b=stop g=-7 r=+1", RelativeRGB{R: Step{Increase: true, StepCode: 1}, G: Step{StepCode: 7}}},
+		{"252.600", "r=+3 g=stop b=stop w=-1 valid-r valid-w", RelativeRGBW{R: Step{Increase: true, StepCode: 3}, W: Step{StepCode: 1}, ValidR: true, ValidW: true}},
+		{"254.600", "r=+1 g=-7 b=stop", RelativeRGB{R: Step{Increase: true, StepCode: 1}, G: Step{StepCode: 7}}},
 	} {
 		ty := MustLookup(c.id)
 		if s := ty.Format(c.v); s != c.text {

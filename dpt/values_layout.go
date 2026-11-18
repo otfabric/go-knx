@@ -426,8 +426,9 @@ var geoFields = []field[GeoLocation]{
 	float32Field("latitude", func(g *GeoLocation) *float64 { return &g.Latitude }),
 }
 
-// The layouts below follow the KNX master data, most significant field
-// first; xknx orders their bits or octets the other way.
+// The layouts below follow the KNX master data of schema 23 (version
+// 326), most significant field first, as xknx 4.1.1 does. The master data
+// of schema 20 lists their fields in the reverse order.
 
 // LightingActuatorStatus is a DPT 207.600 value: the status flags of a
 // lighting actuator and its actual value, 0..100 % in 255 steps.
@@ -437,20 +438,20 @@ type LightingActuatorStatus struct {
 	ActualValue                                                                             float64
 }
 
-// String returns "actual-valid dimming actual=50.2" with the flags that
+// String returns "actual=50.2 dimming actual-valid" with the flags that
 // are set.
 func (s LightingActuatorStatus) String() string { return formatFields(lightingStatusFields, &s) }
 
 var lightingStatusFields = []field[LightingActuatorStatus]{
-	flagField("actual-valid", func(s *LightingActuatorStatus) *bool { return &s.ActualValueValid }),
-	flagField("locked", func(s *LightingActuatorStatus) *bool { return &s.Locked }),
-	flagField("forced", func(s *LightingActuatorStatus) *bool { return &s.Forced }),
-	flagField("night-mode", func(s *LightingActuatorStatus) *bool { return &s.NightMode }),
-	flagField("staircase", func(s *LightingActuatorStatus) *bool { return &s.Staircase }),
-	flagField("dimming", func(s *LightingActuatorStatus) *bool { return &s.Dimming }),
-	flagField("local-override", func(s *LightingActuatorStatus) *bool { return &s.LocalOverride }),
-	flagField("failure", func(s *LightingActuatorStatus) *bool { return &s.Failure }),
 	ratioField("actual", 100, func(s *LightingActuatorStatus) *float64 { return &s.ActualValue }),
+	flagField("failure", func(s *LightingActuatorStatus) *bool { return &s.Failure }),
+	flagField("local-override", func(s *LightingActuatorStatus) *bool { return &s.LocalOverride }),
+	flagField("dimming", func(s *LightingActuatorStatus) *bool { return &s.Dimming }),
+	flagField("staircase", func(s *LightingActuatorStatus) *bool { return &s.Staircase }),
+	flagField("night-mode", func(s *LightingActuatorStatus) *bool { return &s.NightMode }),
+	flagField("forced", func(s *LightingActuatorStatus) *bool { return &s.Forced }),
+	flagField("locked", func(s *LightingActuatorStatus) *bool { return &s.Locked }),
+	flagField("actual-valid", func(s *LightingActuatorStatus) *bool { return &s.ActualValueValid }),
 }
 
 // BlindsStatus is a DPT 241.800 value: the status of a sunblind or
@@ -472,27 +473,27 @@ type BlindsStatus struct {
 	HeightValid, SlatsValid                              bool
 }
 
-// String returns "height=100.0 slats=50.2 lower-end target-reached
-// height-valid slats-valid" with the flags that are set.
+// String returns "height=100.0 slats=50.2 slats-valid height-valid
+// target-reached lower-end" with the flags that are set.
 func (b BlindsStatus) String() string { return formatFields(blindsStatusFields, &b) }
 
 var blindsStatusFields = []field[BlindsStatus]{
 	ratioField("height", 100, func(b *BlindsStatus) *float64 { return &b.Height }),
 	ratioField("slats", 100, func(b *BlindsStatus) *float64 { return &b.Slats }),
-	flagField("upper-end", func(b *BlindsStatus) *bool { return &b.UpperEnd }),
-	flagField("lower-end", func(b *BlindsStatus) *bool { return &b.LowerEnd }),
-	flagField("lower-predefined", func(b *BlindsStatus) *bool { return &b.LowerPredefined }),
-	flagField("target-reached", func(b *BlindsStatus) *bool { return &b.TargetReached }),
-	flagField("height-restricted", func(b *BlindsStatus) *bool { return &b.HeightRestricted }),
-	flagField("slats-restricted", func(b *BlindsStatus) *bool { return &b.SlatsRestricted }),
-	flagField("weather-alarm", func(b *BlindsStatus) *bool { return &b.WeatherAlarm }),
-	flagField("forced", func(b *BlindsStatus) *bool { return &b.Forced }),
-	flagField("locked", func(b *BlindsStatus) *bool { return &b.Locked }),
-	flagField("local-override", func(b *BlindsStatus) *bool { return &b.LocalOverride }),
-	flagField("failure", func(b *BlindsStatus) *bool { return &b.Failure }),
-	reserved[BlindsStatus](3),
-	flagField("height-valid", func(b *BlindsStatus) *bool { return &b.HeightValid }),
 	flagField("slats-valid", func(b *BlindsStatus) *bool { return &b.SlatsValid }),
+	flagField("height-valid", func(b *BlindsStatus) *bool { return &b.HeightValid }),
+	reserved[BlindsStatus](3),
+	flagField("failure", func(b *BlindsStatus) *bool { return &b.Failure }),
+	flagField("local-override", func(b *BlindsStatus) *bool { return &b.LocalOverride }),
+	flagField("locked", func(b *BlindsStatus) *bool { return &b.Locked }),
+	flagField("forced", func(b *BlindsStatus) *bool { return &b.Forced }),
+	flagField("weather-alarm", func(b *BlindsStatus) *bool { return &b.WeatherAlarm }),
+	flagField("slats-restricted", func(b *BlindsStatus) *bool { return &b.SlatsRestricted }),
+	flagField("height-restricted", func(b *BlindsStatus) *bool { return &b.HeightRestricted }),
+	flagField("target-reached", func(b *BlindsStatus) *bool { return &b.TargetReached }),
+	flagField("lower-predefined", func(b *BlindsStatus) *bool { return &b.LowerPredefined }),
+	flagField("lower-end", func(b *BlindsStatus) *bool { return &b.LowerEnd }),
+	flagField("upper-end", func(b *BlindsStatus) *bool { return &b.UpperEnd }),
 }
 
 // BatteryInfo is a DPT 246.600 value: battery failures and the charge
@@ -507,54 +508,54 @@ func (b BatteryInfo) String() string { return formatFields(batteryFields, &b) }
 
 var batteryFields = []field[BatteryInfo]{
 	reserved[BatteryInfo](5),
-	flagField("battery-failure", func(b *BatteryInfo) *bool { return &b.BatteryFailure }),
-	flagField("duration-failure", func(b *BatteryInfo) *bool { return &b.DurationFailure }),
 	flagField("fully-charged", func(b *BatteryInfo) *bool { return &b.FullyCharged }),
+	flagField("duration-failure", func(b *BatteryInfo) *bool { return &b.DurationFailure }),
+	flagField("battery-failure", func(b *BatteryInfo) *bool { return &b.BatteryFailure }),
 	unsignedField("charge", 8, 0, func(b *BatteryInfo) *uint8 { return &b.ChargeLevel }),
 }
 
 // RelativeRGBW is a DPT 252.600 value: a relative step (DPT 3) of each
 // of red, green, blue and white, each with a validity flag. On the wire
-// the validity octet comes first, then white, blue, green and red.
+// red comes first, then green, blue, white and the validity octet.
 type RelativeRGBW struct {
 	R, G, B, W                     Step
 	ValidR, ValidG, ValidB, ValidW bool
 }
 
-// String returns "valid-w valid-r w=+3 b=stop g=stop r=-1" with the
+// String returns "r=-1 g=stop b=stop w=+3 valid-r valid-w" with the
 // validity flags that are set.
 func (c RelativeRGBW) String() string { return formatFields(relativeRGBWFields, &c) }
 
 var relativeRGBWFields = []field[RelativeRGBW]{
 	reserved[RelativeRGBW](4),
-	flagField("valid-w", func(c *RelativeRGBW) *bool { return &c.ValidW }),
-	flagField("valid-b", func(c *RelativeRGBW) *bool { return &c.ValidB }),
-	flagField("valid-g", func(c *RelativeRGBW) *bool { return &c.ValidG }),
-	flagField("valid-r", func(c *RelativeRGBW) *bool { return &c.ValidR }),
-	reserved[RelativeRGBW](4),
-	stepField("w", func(c *RelativeRGBW) *Step { return &c.W }),
-	reserved[RelativeRGBW](4),
-	stepField("b", func(c *RelativeRGBW) *Step { return &c.B }),
+	stepField("r", func(c *RelativeRGBW) *Step { return &c.R }),
 	reserved[RelativeRGBW](4),
 	stepField("g", func(c *RelativeRGBW) *Step { return &c.G }),
 	reserved[RelativeRGBW](4),
-	stepField("r", func(c *RelativeRGBW) *Step { return &c.R }),
+	stepField("b", func(c *RelativeRGBW) *Step { return &c.B }),
+	reserved[RelativeRGBW](4),
+	stepField("w", func(c *RelativeRGBW) *Step { return &c.W }),
+	reserved[RelativeRGBW](4),
+	flagField("valid-r", func(c *RelativeRGBW) *bool { return &c.ValidR }),
+	flagField("valid-g", func(c *RelativeRGBW) *bool { return &c.ValidG }),
+	flagField("valid-b", func(c *RelativeRGBW) *bool { return &c.ValidB }),
+	flagField("valid-w", func(c *RelativeRGBW) *bool { return &c.ValidW }),
 }
 
 // RelativeRGB is a DPT 254.600 value: a relative step (DPT 3) of each of
-// red, green and blue. On the wire blue comes first, then green and red.
+// red, green and blue, in this order on the wire.
 type RelativeRGB struct {
 	R, G, B Step
 }
 
-// String returns "b=+1 g=stop r=-7".
+// String returns "r=-7 g=stop b=+1".
 func (c RelativeRGB) String() string { return formatFields(relativeRGBFields, &c) }
 
 var relativeRGBFields = []field[RelativeRGB]{
 	reserved[RelativeRGB](4),
-	stepField("b", func(c *RelativeRGB) *Step { return &c.B }),
+	stepField("r", func(c *RelativeRGB) *Step { return &c.R }),
 	reserved[RelativeRGB](4),
 	stepField("g", func(c *RelativeRGB) *Step { return &c.G }),
 	reserved[RelativeRGB](4),
-	stepField("r", func(c *RelativeRGB) *Step { return &c.R }),
+	stepField("b", func(c *RelativeRGB) *Step { return &c.B }),
 }
