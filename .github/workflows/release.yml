@@ -26,8 +26,8 @@ jobs:
       release-name-prefix: go-knx
       update-major-tag: false
       test-exclude-regex: "(/example(s)?($|/)|/interop($|/))"
-      # Direct dependants, built, vetted and tested against the candidate
-      # before the tag is created.
-      consumers: |
-        otfabric/knxctl
+      # No consumers input: a downstream module does not block a release.
+      # The dependants (otfabric/knxctl) are bumped to the new version after
+      # it is cut, each in its own pull request (standards/release.md,
+      # "follow-up bumps are planned").
     secrets: inherit
