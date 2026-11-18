@@ -265,13 +265,19 @@ func enumField[V any](name string, p func(*V) *Enum) field[V] {
 // bits of the types that use it, at most 64.
 func layoutCodec[V any](fields []field[V]) codec {
 	total := 0
-	for _, f := range fields {
+	widths := make([]int, len(fields))
+	for i, f := range fields {
 		total += f.bits
+		widths[i] = f.bits
+		if f.name == "" {
+			widths[i] = -f.bits
+		}
 	}
 	if total > 64 || total%8 != 0 {
 		panic(fmt.Sprintf("dpt: layout of %T has %d bits", *new(V), total))
 	}
 	return codec{
+		layout: widths,
 		encode: func(t *Type, v any) ([]byte, error) {
 			x, ok := v.(V)
 			if !ok {

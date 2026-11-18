@@ -67,7 +67,9 @@
 // it). Dates are checked field by field, not against the calendar.
 //
 // Only subtypes whose semantics are published (KNX Standard volume 3/7/2,
-// Datapoint Types) are registered; an unknown subtype of a known main type
+// Datapoint Types, and the KNX master data that ETS uses) are registered;
+// the registry is checked against the master data version recorded in
+// dpt/masterdata.lock. An unknown subtype of a known main type
 // can still be used through [Lookup] of the main type ("9"), which has the
 // format of the family and no application semantics.
 package dpt
@@ -291,6 +293,10 @@ type codec struct {
 	decode func(t *Type, b []byte) (any, error)
 	parse  func(t *Type, s string) (any, error)
 	format func(t *Type, v any) (string, bool)
+	// layout is the bit width of each field of a layout codec, most
+	// significant first, negative for reserved bits; nil for other codecs.
+	// TestLayoutsAgainstMasterData compares it with the master data.
+	layout []int
 }
 
 var registry = map[ID]*Type{}

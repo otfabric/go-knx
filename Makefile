@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-multicast coverage coverage-check cover bench fuzz check clean coverpkg-check cross e2e interop interop-images interop-matrix docs-check captures-verify captures-fetch captures-extended captures-generate
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-multicast coverage coverage-check cover bench fuzz check clean coverpkg-check cross e2e interop interop-images interop-matrix docs-check captures-verify captures-fetch captures-extended captures-generate generate masterdata-fetch masterdata-update masterdata-check
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -160,6 +160,21 @@ captures-generate: ## Rewrite the derived fields of manifest.json and SHA256SUMS
 	@KNX_CAPTURE_GENERATE=1 go test -count=1 -run '^TestGenerate$$' ./internal/capture/
 
 check: fmt-check lint lint-ci vet vuln captures-verify test coverage-check coverage-pkg-check examples cross docs-check ## Everything CI checks except the interop job
+
+# The datapoint table generated from the KNX master data (dpt/masterdata_gen.go).
+# dpt/masterdata.lock pins the XML (URL, schema, version, SHA-256); it is
+# downloaded into .cache/ and never committed. Needs network; CI does not run these.
+generate: ## Regenerate dpt/masterdata_gen.go from the pinned KNX master data
+	@scripts/masterdata.sh generate
+
+masterdata-fetch: ## Download the pinned KNX master data into .cache/ and verify it
+	@scripts/masterdata.sh fetch
+
+masterdata-update: ## Pin the newest published KNX master data and regenerate
+	@scripts/masterdata.sh update
+
+masterdata-check: ## Report how the published KNX master data differs from the pin (exit 1)
+	@scripts/masterdata.sh check
 
 clean: ## Remove binaries and coverage files
 	@rm -rf $(BIN_DIR) coverage.out coverage.html

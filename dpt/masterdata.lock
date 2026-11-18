@@ -1,0 +1,7 @@
+# The KNX master data that dpt/masterdata_gen.go was generated from.
+# Written by `make masterdata-update`; `make generate` downloads this file
+# and refuses any other. The XML is not kept in the repository.
+url https://update.knx.org/data/XML/project-23/knx_master.xml
+schema 23
+version 326
+sha256 bed4f3ffa2dd703bd5b1a31e39bb8222604137a616cabf65db4ab5233e0acfdf

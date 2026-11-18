@@ -22,3 +22,6 @@ coverage.out
 
 # Independent decodes over 50 MB, downloaded by make captures-fetch
 /testdata/captures/cache/
+
+# The KNX master data, downloaded by make generate (never committed)
+/.cache/

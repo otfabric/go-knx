@@ -1,0 +1,167 @@
+name: KNX master data check
+run-name: "KNX master data check (${{ github.event_name }})"
+
+# Once a week, compare the KNX master data pinned in dpt/masterdata.lock with
+# what update.knx.org publishes now (the pinned ETS project schema and the
+# next ones). When upstream has a new file, open an issue (or update the open
+# one) listing the datapoint subtypes added, removed or changed, with the
+# diff of the generated dpt/masterdata_gen.go; the full diff is kept as an
+# artifact. When the pin is current again, the issue is closed. Nothing in the
+# repository is modified: updating is `make masterdata-update` and a pull
+# request. The XML itself is never stored, here or in the artifact.
+
+on:
+  schedule:
+    # Mondays at 05:43 UTC (off the hour, when scheduled runs are less delayed).
+    - cron: "43 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: masterdata-check
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Compare with update.knx.org
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_TITLE: "KNX master data: upstream changes available"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Compare the pin with upstream
+        id: check
+        shell: bash
+        run: |
+          # GitHub runs this step with `bash -e`. The check exits 1 when upstream
+          # differs, which is a result, not a failure: capture the status instead.
+          set -uo pipefail
+          : > masterdata.diff
+          status=0
+          scripts/masterdata.sh check --diff-file masterdata.diff | tee report.txt || status=$?
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          # The report and the diff hold upstream text. Each code block is fenced
+          # with more backticks than the longest backtick run in that text.
+          fence='```'
+          while grep -qF -- "${fence}" report.txt masterdata.diff; do fence="${fence}\`"; done
+          {
+            echo "## KNX master data check"
+            echo
+            echo "${fence}text"
+            cat report.txt
+            echo "${fence}"
+            if [ -s masterdata.diff ]; then
+              echo
+              echo "### dpt/masterdata_gen.go → published"
+              echo
+              echo "${fence}diff"
+              # The job summary is limited to 1 MiB; the artifact has the full diff.
+              head -c 500000 masterdata.diff
+              echo
+              echo "${fence}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          # 0 = in sync, 1 = upstream differs; anything else means the check itself failed.
+          if [ "${status}" -gt 1 ]; then
+            exit "${status}"
+          fi
+
+      - name: Upload the full diff
+        if: steps.check.outputs.status == '1'
+        id: artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: knx-masterdata-diff
+          path: |
+            report.txt
+            masterdata.diff
+          retention-days: 90
+
+      - name: Find the open tracking issue
+        id: issue
+        shell: bash
+        run: |
+          set -euo pipefail
+          number="$(gh issue list --state open --search "\"${ISSUE_TITLE}\" in:title" --json number,title \
+            --jq "[.[] | select(.title == env.ISSUE_TITLE)][0].number // empty")"
+          echo "number=${number}" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the tracking issue
+        if: steps.check.outputs.status == '1'
+        shell: bash
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+          # An issue body holds at most 65536 characters; leave room for the rest.
+          MAX_DIFF_BYTES: "50000"
+        run: |
+          set -euo pipefail
+          fence='```'
+          while grep -qF -- "${fence}" report.txt masterdata.diff; do fence="${fence}\`"; done
+          {
+            echo "The weekly check found that the KNX master data published at update.knx.org"
+            echo "differs from the version pinned in \`dpt/masterdata.lock\`."
+            echo
+            echo "${fence}text"
+            cat report.txt
+            echo "${fence}"
+            if [ -s masterdata.diff ]; then
+              echo
+              echo "## What changed"
+              echo
+              echo "The generated \`dpt/masterdata_gen.go\` (\`-\`) against the one the published file gives (\`+\`)."
+              echo
+              echo "${fence}diff"
+              head -c "${MAX_DIFF_BYTES}" masterdata.diff
+              echo
+              echo "${fence}"
+              if [ "$(wc -c < masterdata.diff)" -gt "${MAX_DIFF_BYTES}" ]; then
+                echo
+                echo "**The diff is truncated here.** The complete diff is in the"
+                echo "[workflow artifact](${ARTIFACT_URL:-$RUN_URL}) and can be reproduced with \`make masterdata-check\`."
+              fi
+            fi
+            echo
+            echo "## To update"
+            echo
+            echo '```sh'
+            echo "make masterdata-update   # pin the published file, regenerate dpt/masterdata_gen.go"
+            echo "make check"
+            echo '```'
+            echo
+            echo "New subtypes of the known formats are registered from the generated table. A subtype"
+            echo "that needs a codec of its own fails \`TestMasterDataCoverage\` until it is implemented"
+            echo "or listed in \`masterDataNotRegistered\`; a changed layout fails \`TestLayoutsAgainstMasterData\`"
+            echo "or \`TestRegistryAgainstMasterData\`. Changes callers see belong in the release notes."
+            echo
+            echo "_Last checked by [this workflow run](${RUN_URL}). This issue is updated by the"
+            echo "weekly check and closed automatically once the pin is current._"
+          } > body.md
+          if [ -n "${ISSUE_NUMBER}" ]; then
+            gh issue edit "${ISSUE_NUMBER}" --body-file body.md
+            echo "Updated issue #${ISSUE_NUMBER}."
+          else
+            gh issue create --title "${ISSUE_TITLE}" --body-file body.md
+          fi
+
+      - name: Close the tracking issue when in sync
+        if: steps.check.outputs.status == '0' && steps.issue.outputs.number != ''
+        shell: bash
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+        run: |
+          set -euo pipefail
+          gh issue close "${ISSUE_NUMBER}" --comment "\`dpt/masterdata.lock\` is current with update.knx.org again."

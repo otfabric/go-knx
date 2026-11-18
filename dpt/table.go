@@ -3,7 +3,10 @@
 package dpt
 
 // The registry. Names, units and ranges follow KNX Standard volume 3/7/2
-// (Datapoint Types); only subtypes with published semantics are listed.
+// (Datapoint Types) and the KNX master data; only subtypes with published
+// semantics are listed. The subtypes below are written by hand; the other
+// subtypes of the master data whose format is known are registered from
+// masterdata_gen.go at the end (registerMasterData).
 
 func init() {
 	// Main types: the format of the family without application semantics.
@@ -636,4 +639,8 @@ func init() {
 	register(&Type{ID: ID{251, 600}, Name: "DPT_Colour_RGBW", Description: "RGBW colour", Bits: 48, Kind: KindRGBW, codec: rgbwCodec})
 	register(&Type{ID: ID{249, 600}, Name: "DPT_Brightness_Colour_Temperature_Transition", Description: "transition to a colour temperature and brightness", Bits: 48, Kind: KindColourTransition, codec: layoutCodec(transitionFields)})
 	register(&Type{ID: ID{250, 600}, Name: "DPT_Brightness_Colour_Temperature_Control", Description: "relative colour temperature and brightness control", Bits: 24, Kind: KindColourTemperatureControl, codec: layoutCodec(temperatureControlFields)})
+
+	// The other subtypes of the KNX master data whose format is known
+	// (masterdata.go).
+	registerMasterData()
 }
