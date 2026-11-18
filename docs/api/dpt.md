@@ -25,8 +25,8 @@ Decoded values have these Go types, by [Kind](#type-kind):
 	KindScene     uint8                DPT 17
 	KindSceneControl SceneControl      DPT 18
 	KindDateTime  DateTime             DPT 19
-	KindEnum      Enum                 DPT 20
-	KindBits      uint64 (bit set)     DPT 21, 22, 26
+	KindEnum      Enum                 DPT 20, 23
+	KindBits      uint64 (bit set)     DPT 21, 22, 26, 30
 	KindRGB       RGB                  DPT 232
 	KindRGBW      RGBW                 DPT 251
 	KindXYY       XYY                  DPT 242
@@ -34,6 +34,24 @@ Decoded values have these Go types, by [Kind](#type-kind):
 	KindOnOffInfo OnOffInfo            DPT 27
 	KindVersion   Version              DPT 217
 	KindSetpoints RoomSetpoints        DPT 222, 275
+	KindStatusMode StatusMode          DPT 6.020
+	KindDoubleNibble DoubleNibble      DPT 25
+	KindModeNext  ModeNext             DPT 206
+	KindAlarmInfo AlarmInfo            DPT 219
+	KindScalingSpeed ScalingSpeed      DPT 225
+	KindMeteringValue MeteringValue    DPT 229
+	KindMBusAddress MBusAddress        DPT 230
+	KindHSV       HSV                  DPT 232.601
+	KindTariffEnergy TariffEnergy      DPT 235
+	KindPriorityControl PriorityControl DPT 236
+	KindDALIGearDiagnostic DALIGearDiagnostic DPT 237
+	KindDALIDiagnostic DALIDiagnostic  DPT 238
+	KindCombinedPosition CombinedPosition DPT 240
+	KindConverterStatus ConverterStatus DPT 244
+	KindConverterTestResult ConverterTestResult DPT 245
+	KindColourTransition ColourTransition DPT 249
+	KindColourTemperatureControl ColourTemperatureControl DPT 250
+	KindGeoLocation GeoLocation        DPT 255
 
 Encode accepts these types and, where unambiguous, convertible ones (any Go integer or float for a number, a name for an enumeration).
 
@@ -113,6 +131,93 @@ func (a AccessData) String() string
 
 String returns "012345 index=3", followed by the names of the set flags (error, permission, right-to-left, encrypted).
 
+### type AlarmInfo
+
+```go
+type AlarmInfo struct {
+	LogNumber uint8
+	// Priority, ApplicationArea and ErrorClass are numbers with the
+	// meanings of 20.004, 20.006 and 20.011.
+	Priority, ApplicationArea, ErrorClass uint8
+	// The alarm supports an error code, an alarm text, a time stamp and
+	// an acknowledgement.
+	ErrorCodeSupported, AlarmTextSupported, TimestampSupported, AckSupported bool
+	Locked, Unacknowledged, InAlarm                                          bool
+}
+```
+
+AlarmInfo is a DPT 219.001 value: the description of an alarm.
+
+#### func (AlarmInfo) String
+
+```go
+func (a AlarmInfo) String() string
+```
+
+String returns "log=1 priority=0 area=20 error-class=3 ack-sup in-alarm" with the flags that are set.
+
+### type ColourTemperatureControl
+
+```go
+type ColourTemperatureControl struct {
+	Temperature, Brightness           Step
+	TemperatureValid, BrightnessValid bool
+}
+```
+
+ColourTemperatureControl is a DPT 250.600 value: a relative step of the colour temperature and one of the brightness (each a direction and a step code, as DPT 3), each with a validity flag.
+
+#### func (ColourTemperatureControl) String
+
+```go
+func (c ColourTemperatureControl) String() string
+```
+
+String returns "temperature=+3 brightness=stop temperature-valid".
+
+### type ColourTransition
+
+```go
+type ColourTransition struct {
+	// Period is the transition time in milliseconds, in steps of 100 ms.
+	Period uint32
+	// Temperature is the absolute colour temperature in K.
+	Temperature uint16
+	// Brightness is 0..100 % in 255 steps.
+	Brightness                                     float64
+	PeriodValid, TemperatureValid, BrightnessValid bool
+}
+```
+
+ColourTransition is a DPT 249.600 value: a transition to a colour temperature and a brightness, each field with a validity flag.
+
+#### func (ColourTransition) String
+
+```go
+func (c ColourTransition) String() string
+```
+
+String returns "period=1000 temperature=2700 brightness=50.2" followed by the validity flags that are set.
+
+### type CombinedPosition
+
+```go
+type CombinedPosition struct {
+	Height, Slats           float64
+	HeightValid, SlatsValid bool
+}
+```
+
+CombinedPosition is a DPT 240.800 value: the height and slats positions of a blind, 0..100 % in 255 steps, each with a validity flag.
+
+#### func (CombinedPosition) String
+
+```go
+func (c CombinedPosition) String() string
+```
+
+String returns "height=50.2 slats=100.0 height-valid slats-valid".
+
 ### type Control
 
 ```go
@@ -124,6 +229,102 @@ type Control struct {
 ```
 
 Control is a DPT 2 value: a control bit and a value bit.
+
+### type ConverterStatus
+
+```go
+type ConverterStatus struct {
+	// Mode is the converter mode, 0..15 (for example 1 normal, 4 rest,
+	// 5 emergency).
+	Mode uint8
+	// HardwiredSwitch and HardwiredInhibit are set when active.
+	HardwiredSwitch, HardwiredInhibit bool
+	// The pending states of the function, duration and partial duration
+	// tests and the failure state, 0..3 (0 unknown, 1 no, 2 yes).
+	FunctionTest, DurationTest, PartialDurationTest, Failure uint8
+}
+```
+
+ConverterStatus is a DPT 244.600 value: the state of a DALI emergency converter.
+
+#### func (ConverterStatus) String
+
+```go
+func (c ConverterStatus) String() string
+```
+
+String returns "mode=1 function-test=1 duration-test=2 partial-test=1 failure=1" with the hardwired flags that are set.
+
+### type ConverterTestResult
+
+```go
+type ConverterTestResult struct {
+	// The results of the function, duration and partial duration tests,
+	// 0..15 (for example 1 passed in time, 3 failed).
+	FunctionTestResult, DurationTestResult, PartialTestResult uint8
+	// How each test was started, 0..3 (1 automatically, 2 by the
+	// gateway).
+	FunctionTestStart, DurationTestStart, PartialTestStart uint8
+	// LDTR is the result of the last duration test, 0..510; LPDTR that
+	// of the last partial duration test.
+	LDTR  uint16
+	LPDTR uint8
+}
+```
+
+ConverterTestResult is a DPT 245.600 value: the results of the last tests of a DALI emergency converter.
+
+#### func (ConverterTestResult) String
+
+```go
+func (c ConverterTestResult) String() string
+```
+
+String returns "function-result=1 duration-result=1 partial-result=0 function-start=1 duration-start=2 partial-start=0 ldtr=180 lpdtr=200".
+
+### type DALIDiagnostic
+
+```go
+type DALIDiagnostic struct {
+	BallastFailure, LampFailure bool
+	Address                     uint8 // 0..63
+}
+```
+
+DALIDiagnostic is a DPT 238.600 value: the failures of a DALI device and its address.
+
+#### func (DALIDiagnostic) String
+
+```go
+func (d DALIDiagnostic) String() string
+```
+
+String returns "ballast-failure address=12" with the flags that are set.
+
+### type DALIGearDiagnostic
+
+```go
+type DALIGearDiagnostic struct {
+	ConverterError, BallastFailure, LampFailure bool
+	// Read set: a read request; clear: a response or a spontaneous
+	// message.
+	Read bool
+	// Group set: Address is a DALI group address; clear: a device
+	// address.
+	Group   bool
+	Address uint8 // 0..63
+}
+```
+
+DALIGearDiagnostic is a DPT 237.600 value: the failures of a DALI control gear and its address.
+
+#### func (DALIGearDiagnostic) String
+
+```go
+func (d DALIGearDiagnostic) String() string
+```
+
+String returns "lamp-failure group address=3" with the flags that are set.
 
 ### type Date
 
@@ -179,6 +380,24 @@ func (d DateTime) String() string
 
 String returns "2026-10-29 12:30:05".
 
+### type DoubleNibble
+
+```go
+type DoubleNibble struct {
+	Busy, Nak uint8
+}
+```
+
+DoubleNibble is a DPT 25 value: two 4-bit numbers. For 25.1000 they are the busy and NAK repetitions, 0..3 each.
+
+#### func (DoubleNibble) String
+
+```go
+func (d DoubleNibble) String() string
+```
+
+String returns "busy=1 nak=3".
+
 ### type Enum
 
 ```go
@@ -197,6 +416,42 @@ func (e Enum) String() string
 ```
 
 String returns the name, or the number when there is none.
+
+### type GeoLocation
+
+```go
+type GeoLocation struct {
+	Longitude, Latitude float64
+}
+```
+
+GeoLocation is a DPT 255.001 value: longitude and latitude in degrees, each a 4-octet float.
+
+#### func (GeoLocation) String
+
+```go
+func (g GeoLocation) String() string
+```
+
+String returns "longitude=4.35 latitude=50.85".
+
+### type HSV
+
+```go
+type HSV struct {
+	H, S, V float64
+}
+```
+
+HSV is a DPT 232.601 colour: hue 0..360° and saturation and value 0..100 %, each in 255 steps.
+
+#### func (HSV) String
+
+```go
+func (c HSV) String() string
+```
+
+String returns "h=120.0 s=50.2 v=100.0".
 
 ### type ID
 
@@ -257,6 +512,24 @@ const (
 	KindOnOffInfo
 	KindVersion
 	KindSetpoints
+	KindStatusMode
+	KindDoubleNibble
+	KindModeNext
+	KindAlarmInfo
+	KindScalingSpeed
+	KindMeteringValue
+	KindMBusAddress
+	KindHSV
+	KindTariffEnergy
+	KindPriorityControl
+	KindDALIGearDiagnostic
+	KindDALIDiagnostic
+	KindCombinedPosition
+	KindConverterStatus
+	KindConverterTestResult
+	KindColourTransition
+	KindColourTemperatureControl
+	KindGeoLocation
 )
 ```
 
@@ -269,6 +542,74 @@ func (k Kind) String() string
 ```
 
 String names the kind.
+
+### type MBusAddress
+
+```go
+type MBusAddress struct {
+	Manufacturer uint16
+	IdentNumber  uint32
+	Version      uint8
+	// Medium is the device type code, for example 2 for an electricity
+	// meter or 7 for a water meter.
+	Medium uint8
+}
+```
+
+MBusAddress is a DPT 230.1000 value: the address of an M-Bus meter.
+
+#### func (MBusAddress) String
+
+```go
+func (m MBusAddress) String() string
+```
+
+String returns "manufacturer=1234 ident=56789 version=1 medium=7".
+
+### type MeteringValue
+
+```go
+type MeteringValue struct {
+	Count int32
+	// ValueInfo is the code of the unit and resolution of Count, for
+	// example 3 for energy in Wh or 19 for volume in l.
+	ValueInfo uint8
+	// The status bits, as DPT 21.001.
+	Unacknowledged, InAlarm, Overridden, Fault, OutOfService bool
+}
+```
+
+MeteringValue is a DPT 229.001 value: a counter, the code of its unit and resolution (value information), and the status of the datapoint.
+
+#### func (MeteringValue) String
+
+```go
+func (m MeteringValue) String() string
+```
+
+String returns "count=1234 value-info=3" followed by the set status bits.
+
+### type ModeNext
+
+```go
+type ModeNext struct {
+	// Delay is the time until the mode applies, in minutes.
+	Delay uint16
+	// Mode has the values and names of the subtype (206.100 HVAC mode,
+	// 206.102 DHW mode, 206.104 occupancy mode, 206.105 building mode).
+	Mode Enum
+}
+```
+
+ModeNext is a DPT 206 value: a mode and the delay before it applies.
+
+#### func (ModeNext) String
+
+```go
+func (m ModeNext) String() string
+```
+
+String returns \`delay=30 mode=economy\`.
 
 ### type OnOffInfo
 
@@ -290,6 +631,27 @@ func (o OnOffInfo) String() string
 ```
 
 String returns "valid=0x0003 on=0x0001".
+
+### type PriorityControl
+
+```go
+type PriorityControl struct {
+	// Deactivate set ends the priority; clear activates it.
+	Deactivate bool
+	Priority   uint8 // 0..7
+	Mode       uint8 // 0..15
+}
+```
+
+PriorityControl is a DPT 236.001 value: a mode level with a priority level, or the deactivation of that priority.
+
+#### func (PriorityControl) String
+
+```go
+func (p PriorityControl) String() string
+```
+
+String returns "priority=2 mode=5", preceded by "deactivate" when set.
 
 ### type RGB
 
@@ -344,6 +706,27 @@ func (r RoomSetpoints) String() string
 
 String returns "comfort=21 standby=19 economy=17 protection=7".
 
+### type ScalingSpeed
+
+```go
+type ScalingSpeed struct {
+	// Period is in milliseconds.
+	Period uint32
+	// Percent is 0..100 % in 255 steps.
+	Percent float64
+}
+```
+
+ScalingSpeed is a DPT 225 value: a time period and a percentage. 225.001 (scaling speed) sends the period in steps of 100 ms, 225.002 (scaling step time) in steps of 1 ms.
+
+#### func (ScalingSpeed) String
+
+```go
+func (s ScalingSpeed) String() string
+```
+
+String returns "period=2000 percent=50.2".
+
 ### type SceneControl
 
 ```go
@@ -358,6 +741,27 @@ type SceneControl struct {
 
 SceneControl is a DPT 18 value.
 
+### type StatusMode
+
+```go
+type StatusMode struct {
+	// A to E are the status bits (true: the bit is set).
+	A, B, C, D, E bool
+	// Mode is the active mode, 0..2 (sent as 001, 010 or 100).
+	Mode uint8
+}
+```
+
+StatusMode is a DPT 6.020 value: five status bits and the active one of three modes.
+
+#### func (StatusMode) String
+
+```go
+func (s StatusMode) String() string
+```
+
+String returns "a c mode=1", the set status bits and the mode.
+
 ### type Step
 
 ```go
@@ -369,6 +773,28 @@ type Step struct {
 ```
 
 Step is a DPT 3 value (dimming, blinds): a direction and a step code. StepCode 0 means break (stop); 1..7 divide the range into 2^(StepCode-1) intervals.
+
+### type TariffEnergy
+
+```go
+type TariffEnergy struct {
+	Energy int32
+	Tariff uint8
+	// EnergyInvalid and TariffInvalid are set when the field is not
+	// valid.
+	EnergyInvalid, TariffInvalid bool
+}
+```
+
+TariffEnergy is a DPT 235.001 value: active energy in Wh with its tariff, each with an invalid flag.
+
+#### func (TariffEnergy) String
+
+```go
+func (e TariffEnergy) String() string
+```
+
+String returns "energy=1500 tariff=2" followed by the set flags.
 
 ### type TimeOfDay
 
@@ -410,7 +836,8 @@ type Type struct {
 	// Labels are the names of the two values of a DPT 1 subtype (false,
 	// true), or of the enumeration values of a DPT 20 subtype.
 	Labels []string
-	// Enum maps the values of an enumeration to their names.
+	// Enum maps the values of an enumeration (DPT 20, 23, and the mode of
+	// DPT 206) to their names.
 	Enum map[uint8]string
 
 }
