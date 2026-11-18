@@ -27,7 +27,7 @@
 //	KindSceneControl SceneControl      DPT 18
 //	KindDateTime  DateTime             DPT 19
 //	KindEnum      Enum                 DPT 20, 23
-//	KindBits      uint64 (bit set)     DPT 21, 22, 26
+//	KindBits      uint64 (bit set)     DPT 21, 22, 26, 30
 //	KindRGB       RGB                  DPT 232
 //	KindRGBW      RGBW                 DPT 251
 //	KindXYY       XYY                  DPT 242

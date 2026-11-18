@@ -34,6 +34,7 @@ func init() {
 		{ID: ID{26, 0}, Name: "DPT_26", Description: "scene information (bit set)", Bits: 8, Kind: KindBits, codec: bitsCodec(1)},
 		{ID: ID{27, 0}, Name: "DPT_27", Description: "combined on/off information (16-bit mask, 16-bit state)", Bits: 32, Kind: KindOnOffInfo, codec: onOffInfoCodec},
 		{ID: ID{29, 0}, Name: "DPT_29", Description: "8-octet signed value", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)},
+		{ID: ID{30, 0}, Name: "DPT_30", Description: "24-bit set", Bits: 24, Kind: KindBits, codec: bitsCodec(3)},
 		{ID: ID{217, 0}, Name: "DPT_217", Description: "version (magic, version, revision)", Bits: 16, Kind: KindVersion, codec: versionCodec},
 		{ID: ID{222, 0}, Name: "DPT_222", Description: "3 × 2-octet float", Bits: 48, Kind: KindSetpoints, Min: Float16Min, Max: Float16Max, HasRange: true, codec: setpointsCodec(3)},
 		{ID: ID{232, 0}, Name: "DPT_232", Description: "3 × 8-bit colour", Bits: 24, Kind: KindRGB, codec: rgbCodec},
@@ -206,6 +207,7 @@ func init() {
 		{28, "DPT_Value_Wsp_kmh", "wind speed", "km/h", 0, max9},
 		{29, "DPT_Value_Absolute_Humidity", "absolute humidity", "g/m³", 0, max9},
 		{30, "DPT_Concentration_ygm3", "concentration", "µg/m³", 0, max9},
+		{31, "DPT_Coefficient", "coefficient", "", 0, max9},
 	} {
 		register(&Type{ID: ID{9, f.sub}, Name: f.name, Description: f.desc, Unit: f.unit, Bits: 16, Kind: KindFloat, Min: f.min, Max: f.max, HasRange: true, codec: float16Codec})
 	}
@@ -245,6 +247,8 @@ func init() {
 		{15, "DPT_ReactiveEnergy_kVARh", "reactive energy", "kVARh", 1},
 		{16, "DPT_ActiveEnergy_MWh", "active energy", "MWh", 1},
 		{100, "DPT_LongDeltaTimeSec", "time lag", "s", 1},
+		{1200, "DPT_DeltaVolumeLiquid_Litre", "volume of liquid difference", "l", 1},
+		{1201, "DPT_DeltaVolume_m3", "volume difference", "m³", 1},
 	} {
 		k := KindSigned
 		if s.scale != 1 {
@@ -339,6 +343,8 @@ func init() {
 	} {
 		register(&Type{ID: ID{14, uint16(i)}, Name: q.name, Description: q.desc, Unit: q.unit, Bits: 32, Kind: KindFloat, codec: float32Codec})
 	}
+	register(&Type{ID: ID{14, 1200}, Name: "DPT_Volume_Flux_Meter", Description: "volume flux of a meter", Unit: "m³/h", Bits: 32, Kind: KindFloat, codec: float32Codec})
+	register(&Type{ID: ID{14, 1201}, Name: "DPT_Volume_Flux_ls", Description: "volume flux of a meter", Unit: "l/s", Bits: 32, Kind: KindFloat, codec: float32Codec})
 
 	// DPT 15.
 	register(&Type{ID: ID{15, 0}, Name: "DPT_Access_Data", Description: "access data (6 BCD digits, flags, index)", Bits: 32, Kind: KindAccess, codec: accessCodec})
@@ -508,6 +514,7 @@ func init() {
 		{21, 104, "DPT_FuelTypeSet", "fuel type set (bit set)"},
 		{21, 105, "DPT_StatusRCC", "room cooling controller status (bit set)"},
 		{21, 106, "DPT_StatusAHU", "air handling unit status (bit set)"},
+		{21, 107, "DPT_CombinedStatus_RTSM", "room temperature setpoint manager combined status (bit set)"},
 		{21, 601, "DPT_LightActuatorErrorInfo", "lighting actuator error information (bit set)"},
 		{21, 1000, "DPT_RF_ModeInfo", "RF communication mode information (bit set)"},
 		{21, 1001, "DPT_RF_FilterInfo", "RF filter information (bit set)"},
@@ -516,6 +523,7 @@ func init() {
 		{21, 1201, "DPT_Phases_Status", "phase status (bit set)"},
 		{22, 100, "DPT_StatusDHWC", "DHW controller status (16-bit set)"},
 		{22, 101, "DPT_StatusRHCC", "room heating/cooling controller status (16-bit set)"},
+		{22, 102, "DPT_CombinedStatus_HVA", "HVAC valve actuator combined status (16-bit set)"},
 		{22, 103, "DPT_CombinedStatus_RTC", "room temperature controller combined status (16-bit set)"},
 		{22, 1000, "DPT_Media", "supported media (16-bit set)"},
 		{22, 1010, "DPT_Channel_Activation_16", "activation of 16 channels (16-bit set)"},
@@ -533,6 +541,9 @@ func init() {
 	register(&Type{ID: ID{29, 10}, Name: "DPT_ActiveEnergy_V64", Description: "active energy", Unit: "Wh", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)})
 	register(&Type{ID: ID{29, 11}, Name: "DPT_ApparantEnergy_V64", Description: "apparent energy", Unit: "VAh", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)})
 	register(&Type{ID: ID{29, 12}, Name: "DPT_ReactiveEnergy_V64", Description: "reactive energy", Unit: "VARh", Bits: 64, Kind: KindSigned, codec: intCodec(8, true, 1)})
+
+	// DPT 30.
+	register(&Type{ID: ID{30, 1010}, Name: "DPT_Channel_Activation_24", Description: "activation of 24 channels (24-bit set)", Bits: 24, Kind: KindBits, codec: bitsCodec(3)})
 
 	// DPT 217.
 	register(&Type{ID: ID{217, 1}, Name: "DPT_Version", Description: "version (magic 0..31, version 0..31, revision 0..63)", Bits: 16, Kind: KindVersion, codec: versionCodec})

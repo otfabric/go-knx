@@ -82,7 +82,7 @@ func TestAccessData(t *testing.T) {
 }
 
 func TestBitSetSubtypes(t *testing.T) {
-	for _, id := range []string{"21.002", "21.100", "21.101", "21.102", "21.103", "21.104", "21.105", "21.106",
+	for _, id := range []string{"21.002", "21.100", "21.101", "21.102", "21.103", "21.104", "21.105", "21.106", "21.107",
 		"21.601", "21.1000", "21.1001", "21.1010", "21.1200", "21.1201"} {
 		if b := enc(t, id, 0x81); !bytes.Equal(b, hx("81")) {
 			t.Errorf("%s = % X", id, b)
@@ -90,7 +90,7 @@ func TestBitSetSubtypes(t *testing.T) {
 		_, err := MustLookup(id).Encode(256)
 		wantInvalid(t, id+" 256", err)
 	}
-	for _, id := range []string{"22.100", "22.101", "22.103", "22.1000", "22.1010"} {
+	for _, id := range []string{"22.100", "22.101", "22.102", "22.103", "22.1000", "22.1010"} {
 		if b := enc(t, id, 0x8001); !bytes.Equal(b, hx("8001")) {
 			t.Errorf("%s = % X", id, b)
 		}
