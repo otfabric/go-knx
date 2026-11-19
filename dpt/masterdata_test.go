@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -389,5 +390,104 @@ func TestLayoutsAgainstMasterData(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no layout compared")
+	}
+}
+
+// Every bit set with a subtype in the master data names its bits, least
+// significant first, the hand-written ones included; the others, and the
+// other kinds, have no Flags.
+func TestBitSetFlags(t *testing.T) {
+	md := masterByID()
+	n := 0
+	for id, r := range registry {
+		if r.Kind != KindBits || md[id] == nil {
+			if r.Flags != nil {
+				t.Errorf("%s (%s) has flags %q", id, r.Kind, r.Flags)
+			}
+			continue
+		}
+		if len(r.Flags) != r.Bits {
+			t.Errorf("%s: %d flags for %d bits", id, len(r.Flags), r.Bits)
+			continue
+		}
+		n++
+	}
+	if n == 0 {
+		t.Fatal("no bit set has flags")
+	}
+	for _, c := range []struct {
+		id    string
+		bit   int
+		name  string
+		empty []int
+	}{
+		{"21.100", 7, "roomHMax", nil},
+		{"21.100", 0, "forceRequest", nil},
+		{"21.101", 0, "forceRequest", []int{1, 7}},
+		{"22.1000", 5, "KNX IP", []int{0, 3, 6, 15}},
+		{"22.1000", 1, "TP1", nil},
+		// The scene number of 26.001 is not a flag; its bit is named by its set value.
+		{"26.001", 6, "scene is inactive", []int{0, 5, 7}},
+		{"30.1010", 23, "activation state of channel 1", nil},
+	} {
+		typ := MustLookup(c.id)
+		if typ.Flags[c.bit] != c.name {
+			t.Errorf("%s bit %d is %q, want %q", c.id, c.bit, typ.Flags[c.bit], c.name)
+		}
+		for _, b := range c.empty {
+			if typ.Flags[b] != "" {
+				t.Errorf("%s bit %d is %q, want none", c.id, b, typ.Flags[b])
+			}
+		}
+	}
+	if MustLookup("21.1200").Flags != nil || MustLookup("9.001").Flags != nil {
+		t.Error("a type without named bits has flags")
+	}
+}
+
+// mdFlags names one-bit fields by position, least significant bit first,
+// and leaves the rest unnamed.
+func TestMDFlags(t *testing.T) {
+	named := mdField{Kind: mdBit, Width: 1, Name: "Fault"}
+	for _, tc := range []struct {
+		name   string
+		bits   int
+		fields []mdField
+		want   []string
+	}{
+		{"no fields", 8, nil, nil},
+		{"only reserved and wide fields", 8, []mdField{{Kind: mdReserved, Width: 2}, {Kind: mdUnsigned, Width: 6, Name: "scene"}}, nil},
+		{"a bit with the default set text", 2, []mdField{{Kind: mdBit, Width: 1, Set: "true"}, {Kind: mdReserved, Width: 1}}, nil},
+		{"most significant field first", 4, []mdField{named, {Kind: mdReserved, Width: 2}, {Kind: mdBit, Width: 1, Name: "ok"}}, []string{"ok", "", "", "fault"}},
+		{"named by the set value", 2, []mdField{{Kind: mdBit, Width: 1, Set: "Scene is inactive"}, {Kind: mdReserved, Width: 1}}, []string{"", "scene is inactive"}},
+		{"a wide bit field", 3, []mdField{{Kind: mdBit, Width: 2, Name: "two"}, named}, []string{"fault", "", ""}},
+		{"fields beyond the size", 1, []mdField{named, named}, []string{"fault"}},
+	} {
+		s := mdSubtype{Bits: tc.bits, Fields: tc.fields}
+		got := mdFlags(&s)
+		if !slices.Equal(got, tc.want) || (got == nil) != (tc.want == nil) {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// A named flag is a one-bit field of the master data layout, so setting it
+// alone encodes and decodes to that bit.
+func TestBitSetFlagsRoundTrip(t *testing.T) {
+	for _, typ := range All() {
+		for i, name := range typ.Flags {
+			if name == "" {
+				continue
+			}
+			v := uint64(1) << i
+			b, err := typ.Encode(v)
+			if err != nil {
+				t.Fatalf("%s bit %d (%s): encode: %v", typ.ID, i, name, err)
+			}
+			got, err := typ.Decode(b)
+			if err != nil || got != v {
+				t.Errorf("%s bit %d (%s): %x decodes to %v, %v", typ.ID, i, name, b, got, err)
+			}
+		}
 	}
 }

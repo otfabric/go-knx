@@ -213,6 +213,12 @@ type Type struct {
 	// Enum maps the values of an enumeration (DPT 20, 23, and the mode of
 	// DPT 206) to their names.
 	Enum map[uint8]string
+	// Flags names the bits of a bit set (DPT 21, 22, 26, 30) as the KNX
+	// master data names them, least significant bit first: Flags[i] is
+	// bit i of the decoded value, "" for a reserved bit or a field that
+	// is not one bit (the scene number of 26.001). Nil for the other
+	// kinds and for a bit set without a subtype in the master data.
+	Flags []string
 
 	codec codec
 }

@@ -104,11 +104,15 @@ var masterDataNotRegistered = map[ID]string{
 var masterRegistered []ID
 
 // registerMasterData registers the subtypes of the master data that the
-// table does not have and whose format masterType knows.
+// table does not have and whose format masterType knows, and names the
+// bits of every bit set it has a subtype for (hand-written ones too).
 func registerMasterData() {
 	for i := range masterSubtypes {
 		s := &masterSubtypes[i]
-		if _, ok := registry[s.ID]; ok {
+		if t, ok := registry[s.ID]; ok {
+			if t.Kind == KindBits && t.Flags == nil {
+				t.Flags = mdFlags(s)
+			}
 			continue
 		}
 		if t, ok := masterType(s); ok {
@@ -116,6 +120,33 @@ func registerMasterData() {
 			masterRegistered = append(masterRegistered, t.ID)
 		}
 	}
+}
+
+// mdFlags names the one-bit fields of a subtype by their position, least
+// significant bit first: the field's name, or the text of its set value
+// when the master data names only the values (26.001). Nil when no bit is
+// named.
+func mdFlags(s *mdSubtype) []string {
+	flags := make([]string, s.Bits)
+	named := false
+	pos := s.Bits
+	for _, f := range s.Fields {
+		pos -= f.Width
+		if f.Kind != mdBit || f.Width != 1 || pos < 0 {
+			continue
+		}
+		name := f.Name
+		if name == "" && f.Set != "true" {
+			name = f.Set
+		}
+		if flags[pos] = mdText(name); flags[pos] != "" {
+			named = true
+		}
+	}
+	if !named {
+		return nil
+	}
+	return flags
 }
 
 // masterType returns the type of a master data subtype whose main type
@@ -187,7 +218,7 @@ func masterType(s *mdSubtype) (*Type, bool) {
 				return nil, false
 			}
 		}
-		t.Kind, t.codec = KindBits, bitsCodec(s.Bits/8)
+		t.Kind, t.codec, t.Flags = KindBits, bitsCodec(s.Bits/8), mdFlags(s)
 	default:
 		return nil, false
 	}

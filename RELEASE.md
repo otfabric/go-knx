@@ -5,6 +5,41 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.16.0
+
+**Date:** 2026-11-19
+**Previous release:** v0.15.0
+
+## Summary
+
+The bits of a bit set are named, and the KNX master data pin moves to version 327. Matthew Reed's `dpt.Type.Flags` (otfabric/go-knx#48) names each bit of the DPT 21, 22, 26 and 30 subtypes as the KNX master data names them, least significant bit first. It covers the hand-written subtypes as well as those registered from the master data, so an application can show or set a bit set's flags by name instead of by bit number. update.knx.org republished the schema-23 master data in place as version 327, which adds 253.600; the pin follows it, and the pinned file is now cached where every pull request can read it (otfabric/go-knx#49).
+
+## Changes
+
+### Added
+
+- `dpt.Type.Flags`: the names of a bit set's bits (DPT 21, 22, 26, 30). `Flags[i]` names bit i of the decoded value; it is `""` for a reserved bit or a field wider than one bit (the scene number of 26.001). A bit the master data names only by its values takes the text of its set value (26.001 bit 6, "scene is inactive"). Nil for the other kinds and for the bit sets without a subtype in the master data (21.1200, 21.1201). The names are the master data's own, spelling included. Contributed by Matthew Reed (otfabric/go-knx#48).
+
+### Changed
+
+- `dpt/masterdata.lock` pins KNX master data version 327 (was 326; schema 23). It adds 253.600 `DPT_Relative_Control_xyY`, which is listed in `masterDataNotRegistered` (no codec for its layout). No subtype is removed or changed, and the registry still has 334 subtypes.
+
+### Fixed
+
+- CI: `make generate-check` failed on every pull request once update.knx.org replaced the pinned file, because the only cached copy was saved in pull request scopes, which other pull requests cannot read. `masterdata-check.yml` now saves the pinned file in main's cache, when the lock changes and daily (otfabric/go-knx#49).
+
+### Documentation
+
+- ARCHITECTURE.md, TESTING.md, docs/IMPLEMENTATION-STATUS.md and docs/standards/SPECIFICATIONS.md describe `Type.Flags`, master data version 327 and the cache on main; docs/api/dpt.md regenerated.
+
+### Tests
+
+- dpt `TestBitSetFlags`: every registered bit set with a master data subtype has one name (or none) per bit, and the others and the other kinds have none. It also checks named and reserved bits of 21.100, 21.101, 22.1000, 26.001 and 30.1010.
+- dpt `TestMDFlags`: no named bit, reserved and wide fields, the default set text, the order of the fields, a bit named by its set value, fields beyond the size.
+- dpt `TestBitSetFlagsRoundTrip`: every named bit, set alone, encodes and decodes to that bit.
+
+---
+
 ## v0.15.0
 
 **Date:** 2026-11-18
