@@ -94,6 +94,8 @@ jobs:
       - run: make build examples cross coverpkg-check captures-verify
       # The KNX master data pinned in dpt/masterdata.lock, kept by the lock's
       # hash: update.knx.org republishes in place, so a pin can disappear.
+      # masterdata-check.yml saves it on main, where every pull request can
+      # read it.
       - uses: actions/cache@v5
         with:
           path: .cache/masterdata/knx_master.xml

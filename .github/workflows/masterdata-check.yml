@@ -10,10 +10,24 @@ run-name: "KNX master data check (${{ github.event_name }})"
 # repository is modified: updating is `make masterdata-update` and a pull
 # request. The XML itself is never stored, here or in the artifact.
 
+#
+# The cache job keeps the pinned file in the Actions cache of main, under the
+# key ci.yml restores (knx-masterdata-<hash of the lock>). update.knx.org
+# republishes in place, so once upstream changes the pinned file can only
+# come from that cache; a cache saved on main can be read by every pull
+# request, one saved by a pull request only by that pull request. It runs
+# when the lock changes on main and daily, since an entry not read for
+# seven days is evicted.
+
 on:
   schedule:
     # Mondays at 05:43 UTC (off the hour, when scheduled runs are less delayed).
     - cron: "43 5 * * 1"
+    # Daily at 04:17 UTC: the cache job only.
+    - cron: "17 4 * * *"
+  push:
+    branches: [main]
+    paths: [dpt/masterdata.lock]
   workflow_dispatch:
 
 permissions:
@@ -25,8 +39,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  cache:
+    name: Cache the pinned master data
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Restore or save the pinned file
+        id: cache
+        uses: actions/cache@v5
+        with:
+          path: .cache/masterdata/knx_master.xml
+          key: knx-masterdata-${{ hashFiles('dpt/masterdata.lock') }}
+
+      # On a miss, download the pinned file. This fails when upstream has
+      # changed and no cache entry is left: then the pin cannot be restored
+      # and has to be updated (make masterdata-update).
+      - name: Download the pinned file
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: make masterdata-fetch
+
   check:
     name: Compare with update.knx.org
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '43 5 * * 1'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

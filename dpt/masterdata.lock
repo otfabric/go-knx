@@ -3,5 +3,5 @@
 # and refuses any other. The XML is not kept in the repository.
 url https://update.knx.org/data/XML/project-23/knx_master.xml
 schema 23
-version 326
-sha256 bed4f3ffa2dd703bd5b1a31e39bb8222604137a616cabf65db4ab5233e0acfdf
+version 327
+sha256 3dc9971115358f6ec8435515b39cbe1d74a91386c8a039663ca7cd6e734db0ca

@@ -8,8 +8,8 @@ package dpt
 const (
 	masterDataURL     = "https://update.knx.org/data/XML/project-23/knx_master.xml"
 	masterDataSchema  = 23
-	masterDataVersion = 326
-	masterDataSHA256  = "bed4f3ffa2dd703bd5b1a31e39bb8222604137a616cabf65db4ab5233e0acfdf"
+	masterDataVersion = 327
+	masterDataSHA256  = "3dc9971115358f6ec8435515b39cbe1d74a91386c8a039663ca7cd6e734db0ca"
 )
 
 // masterSubtypes are the datapoint subtypes of the master data, by identifier.
@@ -1453,6 +1453,21 @@ var masterSubtypes = []mdSubtype{
 		{Kind: mdBit, Width: 1, Name: "MaskCs", Cleared: "invalid", Set: "valid"},
 		{Kind: mdBit, Width: 1, Name: "MaskCv", Cleared: "invalid", Set: "valid"},
 		{Kind: mdBit, Width: 1, Name: "MaskCw", Cleared: "invalid", Set: "valid"},
+	}},
+	{ID: ID{253, 600}, Name: "DPT_Relative_Control_xyY", Text: "Relative Control xyY", Bits: 32, Fields: []mdField{
+		{Kind: mdReserved, Width: 4},
+		{Kind: mdBit, Width: 1, Name: "cS", Cleared: "decrease distance to white point", Set: "increase distance to white point"},
+		{Kind: mdUnsigned, Width: 3, Name: "Step Code Saturation", Min: 0, Max: 7, HasRange: true},
+		{Kind: mdReserved, Width: 4},
+		{Kind: mdBit, Width: 1, Name: "cC", Cleared: "decrease colour wave length", Set: "increase colour wave length"},
+		{Kind: mdUnsigned, Width: 3, Name: "Step Code Colour", Min: 0, Max: 7, HasRange: true},
+		{Kind: mdReserved, Width: 4},
+		{Kind: mdBit, Width: 1, Name: "cB", Cleared: "decrease brightness", Set: "increase brightness"},
+		{Kind: mdUnsigned, Width: 3, Name: "Step Code Brightness", Min: 0, Max: 7, HasRange: true},
+		{Kind: mdReserved, Width: 5},
+		{Kind: mdBit, Width: 1, Name: "validity of the fields Cs and Step Code Saturation", Cleared: "invalid", Set: "valid"},
+		{Kind: mdBit, Width: 1, Name: "validity of the fields CB and Step Code Colour Blue", Cleared: "invalid", Set: "valid"},
+		{Kind: mdBit, Width: 1, Name: "validity of the fields CW and Step Code Colour White", Cleared: "invalid", Set: "valid"},
 	}},
 	{ID: ID{254, 600}, Name: "DPT_Relative_Control_RGB", Text: "RGB relative control", Bits: 24, Fields: []mdField{
 		{Kind: mdReserved, Width: 4},

@@ -220,7 +220,10 @@ do not all come back at once.
   neither registered nor listed with a reason in `masterDataNotRegistered`.
   A weekly workflow (`masterdata-check.yml`) compares the pin with what is
   published and opens an issue when it differs; updating is
-  `make masterdata-update` in a pull request.
+  `make masterdata-update` in a pull request. update.knx.org republishes
+  in place, so the pinned file is kept in the Actions cache of main (by
+  the lock's hash, refreshed daily by the same workflow), where every pull
+  request's `make generate-check` reads it.
 - **Standard and extended frames**: an L_Data whose NPDU exceeds 15 octets
   must be an extended frame, on encode and on decode.
 - **Routing safety**: hop count 0 is never routed. Outgoing indications

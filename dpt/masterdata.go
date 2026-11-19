@@ -83,6 +83,7 @@ var masterDataNotRegistered = map[ID]string{
 	{28, 1}:    "variable-length string: the registry has fixed sizes only",
 	{251, 601}: "HSVW colour: no codec for its layout",
 	{252, 601}: "relative HSVW control: no codec for its layout",
+	{253, 600}: "relative xyY control: no codec for its layout",
 	{254, 601}: "relative HSV control: no codec for its layout",
 	{247, 600}: "DALI converter test info: no codec for its layout",
 	{248, 600}: "DALI converter information: no codec for its layout",

@@ -57,7 +57,7 @@ The code was written from:
    `DatapointTypes` of `knx_master.xml` at update.knx.org, one file per
    ETS project schema: `project-10` to `project-14` and `project-20` to
    `project-23`). `dpt/masterdata.lock` pins the file used (schema 23,
-   master data version 326, by SHA-256); `internal/cmd/gendpt` generates
+   master data version 327, by SHA-256); `internal/cmd/gendpt` generates
    `dpt/masterdata_gen.go` from it, and the XML is not kept in the
    repository. It gives the names, field layouts, enumeration values, units
    and ranges of the datapoint types added in 0.15.0, and the tests compare
